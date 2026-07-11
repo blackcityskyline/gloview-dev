@@ -31,6 +31,11 @@ struct LayoutCfg {
     double padLeft   = 80.0;
     double gap       = 36.0;  // min spacing between tiles
     double maxScale  = 1.0;   // never blow a window up past this * its real size
+    // Rows engine normally re-sorts tiles into spatial reading order (top-to-bottom,
+    // left-to-right by their NATURAL on-screen position), ignoring input order. When true,
+    // the caller's input order is authoritative instead (row-major fill, no re-sort) — used
+    // by the Alt-Tab grid so it visually reflects MRU order rather than screen position.
+    bool   preserveOrder = false;
 };
 
 // `naturals` are the windows' real monitor-local rects; result is parallel,

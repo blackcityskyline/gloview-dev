@@ -21,7 +21,13 @@ pkg_search_module(LUA REQUIRED lua lua5.4 lua-5.4 lua54 luajit)
 
 add_library(gloview SHARED
   src/main.cpp
-  src/overview.cpp
+  src/overview_core.cpp
+  src/overview_build.cpp
+  src/overview_render.cpp
+  src/overview_tiles_render.cpp
+  src/overview_input.cpp
+  src/overview_keys.cpp
+  src/overview_actions.cpp
   src/layout.cpp
 )
 set_target_properties(gloview PROPERTIES PREFIX "")  # produce gloview.so, not libgloview.so

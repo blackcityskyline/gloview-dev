@@ -67,6 +67,16 @@ SDispatchResult dispAllWorkspaces(std::string) {
         g_overview->toggleAllWorkspaces();
     return {.success = true};
 }
+SDispatchResult dispAltTab(std::string) {
+    if (g_overview)
+        g_overview->altTabInvoke(false);
+    return {.success = true};
+}
+SDispatchResult dispAltTabBack(std::string) {
+    if (g_overview)
+        g_overview->altTabInvoke(true);
+    return {.success = true};
+}
 
 int luaToggle(lua_State*) {
     if (g_overview)
@@ -93,6 +103,16 @@ int luaAllWorkspaces(lua_State*) {
         g_overview->toggleAllWorkspaces();
     return 0;
 }
+int luaAltTab(lua_State*) {
+    if (g_overview)
+        g_overview->altTabInvoke(false);
+    return 0;
+}
+int luaAltTabBack(lua_State*) {
+    if (g_overview)
+        g_overview->altTabInvoke(true);
+    return 0;
+}
 } // namespace
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
@@ -111,6 +131,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     addFloat("plugin:gloview:max_scale", Config::FLOAT{1.0F});    // never upscale past real*this
     addInt("plugin:gloview:duration", Config::INTEGER{360});      // open/close animation (ms)
     addInt("plugin:gloview:preview_round", Config::INTEGER{12});
+    addFloat("plugin:gloview:preview_round_power", Config::FLOAT{2.0F}); // corner curve exponent for preview rounding (2 = circular; higher = squarer "squircle"); applied to the LIVE window surface too, so it now matches the chrome ring instead of showing square corners under a round border
+    addInt("plugin:gloview:strip_preview_round", Config::INTEGER{4});   // deprecated, no longer read: strip window previews now share preview_round/preview_round_power (clamped to the card slot) — kept registered so existing configs setting it don't error
     addFloat("plugin:gloview:blur", Config::FLOAT{1.0F});         // backdrop/strip blur strength 0..1 (0 = off; floats allowed)
 
     // --- workspace strip ---
@@ -141,8 +163,9 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     addInt("plugin:gloview:debug_logs", Config::INTEGER{0});              // verbose [gloview] logging
     addInt("plugin:gloview:select_border_size", Config::INTEGER{3});      // keyboard-selected tile ring thickness (px)
     addColor("plugin:gloview:select_border", Config::INTEGER{0xf066ccffLL}); // keyboard-selected tile ring (distinct from hover)
+    addInt("plugin:gloview:hover_border_size", Config::INTEGER{3});        // hovered/focused tile ring thickness (px)
 
-    // --- keybinds (key names: esc/tab/enter/left/right/up/down/shift/hjkl/f1…/super/ctrl/alt;
+    // --- keybinds (key names: esc/tab/enter/left/right/up/down/shift/hjkl/f1…/super/ctrl/alt/grave;
     //     a bare digit = that number-row key; comma/space separated; modifier combos as
     //     "shift+tab" / "ctrl+shift+k"; "" disables → key falls through) ---
     addStr("plugin:gloview:key_close", "escape");              // dismiss (tab now cycles workspaces; add it back here to restore the old behavior)
@@ -156,18 +179,32 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     addStr("plugin:gloview:key_down", "down");
     addStr("plugin:gloview:key_desktop", "shift");        // flip canvas<->grid
     addStr("plugin:gloview:key_all_workspaces", "a");     // toggle the all-workspaces (expo) view; "" disables
-    addStr("plugin:gloview:key_workspace", "1,2,3,4,5,6,7,8,9,0"); // each key switches to the Nth strip card's workspace (slot position = card index)
+    addStr("plugin:gloview:key_workspace", "1,2,3,4,5,6,7,8,9,0"); // key at position N (0-based) switches DIRECTLY to workspace N+1 (so "0" is always workspace 10) — creates it first if it doesn't exist yet, same as clicking "+"; independent of what's currently on the strip
+    addStr("plugin:gloview:key_workspace_mode", "switch");  // switch (default): a digit changes the DISPLAYED workspace and the overview stays open (Ctrl+digit is a no-op) — jump: a digit switches AND immediately closes the overview, landing you there with no Enter needed; hold Ctrl+digit in this mode for the old switch-and-stay behavior
+    // Alt-Tab is triggered by the gloview:alttab / gloview:alttabback DISPATCHERS, not a raw
+    // key combo here — bind them to whatever modifier+key you like (typically the same one
+    // you'd bind gloview:allworkspaces to), e.g.:  bind = SUPER, TAB, gloview:alttab
+    // alt_tab_modifier says WHICH modifier's release commits the selection (see
+    // alt_tab_commit_on_release) — set it to match whatever modifier is in that bind.
+    addStr("plugin:gloview:alt_tab_modifier", "alt");            // alt | ctrl | shift | super — which modifier's release commits, when alt_tab_commit_on_release is on
+    addInt("plugin:gloview:alt_tab_commit_on_release", Config::INTEGER{1}); // 1 (default): releasing alt_tab_modifier focuses the selection & closes, like a normal alt-tab — 0: releasing does nothing, confirm with key_activate/click instead
+    addStr("plugin:gloview:alt_tab_mode", "smart");   // smart (default): first hop lands on the most-recently-focused window (Hyprland's own system-wide focus history), then walks back through recency; linear: simple fixed circular order
 
     // --- workspace scope / strip contents ---
     addInt("plugin:gloview:show_all_workspaces", Config::INTEGER{0}); // main area shows every window on the monitor (expo), not just the displayed workspace
-    addInt("plugin:gloview:show_empty", Config::INTEGER{1});          // keep empty workspaces as strip cards
+    addStr("plugin:gloview:strip_empty_mode", "show"); // show (default): every workspace, even empty — neighbors: occupied ones plus the displayed workspace's immediate empty numeric neighbors, cascading as you navigate into a run of them — hide: only occupied workspaces, no empty ones at all
     addInt("plugin:gloview:show_special", Config::INTEGER{0});        // include the special (scratchpad) workspace as a strip card
     addInt("plugin:gloview:strip_all_card", Config::INTEGER{0});      // show a leading "All workspaces" card on the strip that toggles the expo view
     addInt("plugin:gloview:switch_on_drop", Config::INTEGER{0});      // dropping a window on a card also follows it to that workspace
     addInt("plugin:gloview:drag_to_swap", Config::INTEGER{1});        // dragging a preview onto another swaps the two windows' places
     addInt("plugin:gloview:exit_on_switch", Config::INTEGER{0});      // dismiss the overview when the live workspace changes underneath
     addInt("plugin:gloview:switch_on_new_workspace", Config::INTEGER{1}); // clicking "+" follows the display to the new workspace
-    addColor("plugin:gloview:close_button_color", Config::INTEGER{0xe6e23b3bLL}); // desktop-mode "✕" close button fill
+    addStr("plugin:gloview:new_workspace_mode", "fill"); // fill (default): "+" takes the lowest free workspace id (backfills a gap) — linear: always appends past the highest existing id
+    addColor("plugin:gloview:close_button_color", Config::INTEGER{0xe6e23b3bLL}); // "✕" close button fill (both per-window and per-workspace)
+    addStr("plugin:gloview:close_button_visibility", "shift");  // shift (default, "standard"): close buttons only show in desktop/canvas mode (key_desktop) — always: show them on every tile and strip card all the time
+    addStr("plugin:gloview:close_button_icon", "✕");            // glyph drawn in the close buttons
+    addFloat("plugin:gloview:close_button_size", Config::FLOAT{1.0F}); // scale multiplier over the computed base button size
+    addStr("plugin:gloview:close_button_position", "top-right"); // top-right | top-left | bottom-right | bottom-left
 
     // --- bar / layer-shell hiding (waybar, quickshell-based bars, …) ---
     addInt("plugin:gloview:hide_top_layers", Config::INTEGER{0});     // fade out Top layer surfaces (bars) while the overview is up
@@ -192,6 +229,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     HyprlandAPI::addDispatcherV2(handle, "gloview:close", dispClose);
     HyprlandAPI::addDispatcherV2(handle, "gloview:desktop", dispDesktop); // toggle the free-arrange desktop mode
     HyprlandAPI::addDispatcherV2(handle, "gloview:allworkspaces", dispAllWorkspaces); // open/toggle the all-workspaces expo view
+    HyprlandAPI::addDispatcherV2(handle, "gloview:alttab", dispAltTab);         // alt-tab cycling — see the alt_tab_* config keys
+    HyprlandAPI::addDispatcherV2(handle, "gloview:alttabback", dispAltTabBack); // …backward
 
     // hyprctl command (exact, not lua-evaluated) — reliable invoke path:  hyprctl gloview
     HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{
@@ -254,6 +293,27 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                                                     },
                                                 });
 
+    // alt-tab cycling:  hyprctl gloviewalttab / gloviewalttabback — closed → opens into expo
+    // seeded on the previous window; open → advances the cycle. See gloview:alttab[back].
+    HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{
+                                                    .name  = "gloviewalttab",
+                                                    .exact = true,
+                                                    .fn    = [](eHyprCtlOutputFormat, std::string) -> std::string {
+                                                        if (g_overview)
+                                                            g_overview->altTabInvoke(false);
+                                                        return "ok\n";
+                                                    },
+                                                });
+    HyprlandAPI::registerHyprCtlCommand(handle, SHyprCtlCommand{
+                                                    .name  = "gloviewalttabback",
+                                                    .exact = true,
+                                                    .fn    = [](eHyprCtlOutputFormat, std::string) -> std::string {
+                                                        if (g_overview)
+                                                            g_overview->altTabInvoke(true);
+                                                        return "ok\n";
+                                                    },
+                                                });
+
     const bool isLua = Config::mgr() && Config::mgr()->type() == Config::CONFIG_LUA;
     bool       luaOk = false;
     if (isLua) {
@@ -262,6 +322,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         HyprlandAPI::addLuaFunction(handle, "gloview", "close", luaClose);
         HyprlandAPI::addLuaFunction(handle, "gloview", "desktop", luaDesktop);
         HyprlandAPI::addLuaFunction(handle, "gloview", "allworkspaces", luaAllWorkspaces);
+        HyprlandAPI::addLuaFunction(handle, "gloview", "alttab", luaAltTab);
+        HyprlandAPI::addLuaFunction(handle, "gloview", "alttabback", luaAltTabBack);
     }
     (void)luaOk;
 
