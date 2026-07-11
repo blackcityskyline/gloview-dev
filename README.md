@@ -48,8 +48,9 @@ hot-reloads into the running Hyprland.
 ## Usage
 
 Dispatchers: `gloview:toggle`, `gloview:open`, `gloview:close`, `gloview:desktop`,
-`gloview:allworkspaces` (the all-workspaces "expo" view — opens into it if closed)
-Or `hyprctl gloview` / `gloviewclose` / `gloviewdesktop` / `gloviewall`
+`gloview:allworkspaces` (the all-workspaces "expo" view — opens into it if closed),
+`gloview:alttab` / `gloview:alttabback` (alt-tab cycling — see `alt_tab_*` below).
+Or `hyprctl gloview` / `gloviewclose` / `gloviewdesktop` / `gloviewall` / `gloviewalttab` / `gloviewalttabback`
 
 Lua:
 
@@ -64,6 +65,28 @@ bind = SUPER, TAB, gloview:toggle
 bind = SUPER SHIFT, TAB, gloview:desktop
 bind = SUPER CTRL, TAB, gloview:allworkspaces
 ```
+
+### Alt-Tab
+
+`gloview:alttab` / `gloview:alttabback` are meant to be bound to a single modifier+key
+combo, the same way you'd normally bind a real alt-tab — bind the SAME key you might
+otherwise give `gloview:allworkspaces`:
+
+```ini
+bind = SUPER, TAB, gloview:alttab
+bind = SUPER SHIFT, TAB, gloview:alttabback
+```
+
+Closed → opens straight into the all-workspaces view with the grid itself reordered into MRU
+(most-recently-used) order — not the usual spatial layout — and the cursor already on the
+*previously* focused window (that first invocation already counts as "one tab", and always
+lands there regardless of whether it was `gloview:alttab` or `gloview:alttabback` that
+opened it, same as a real alt-tab's first press). Already open → tapping the same bound key
+again (while still holding the modifier) advances the cycle — Hyprland re-invokes the
+dispatcher on every physical press, exactly like holding Alt and tapping Tab; cycling all the
+way around returns to the window you started on, same as a real alt-tab. Set `alt_tab_modifier`
+to whatever modifier is in that bind (`alt` by default) so releasing it can commit the
+selection — see the config table.
 
 ## Config
 
@@ -82,7 +105,9 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `padding_bottom` | int (px) | `70` | Bottom outer margin |
 | `max_scale` | float | `1.0` | Never enlarge a preview past real size × this |
 | `duration` | int (ms) | `360` | Open/close animation length |
-| `preview_round` | int (px) | `12` | Window preview corner radius |
+| `preview_round` | int (px) | `12` | Corner radius for every window-shaped preview — main grid tiles AND strip card previews (with their borders/shadows) — clamped down automatically on the smaller strip thumbnails |
+| `preview_round_power` | float | `2.0` | Corner curve exponent (`2` = circular, higher = squarer "squircle"), applied consistently to the same set of elements as `preview_round` |
+| `strip_preview_round` | — | — | **Deprecated**, no longer read — strip window previews now share `preview_round`/`preview_round_power` |
 | `blur` | float `0`..`1` | `1.0` | Backdrop + strip blur strength (`0` = off; fractions allowed) |
 | `anchor` | `top` \| `bottom` \| `left` \| `right` | `top` | Edge the workspace strip attaches to |
 | `strip_offset` | int (px) | `0` | Inset from the anchored edge (0 = flush, no gap) |
@@ -101,6 +126,7 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `hover_border` | color | `0xf0ffffff` | Hovered window preview outline |
 | `select_border` | color | `0xf066ccff` | Keyboard-selected preview outline |
 | `select_border_size` | int (px) | `3` | Keyboard-selected preview outline thickness |
+| `hover_border_size` | int (px) | `3` | Hovered/focused preview outline thickness |
 | `focus_follows_mouse` | bool (0/1) | `1` | Keyboard selection tracks the hovered preview |
 | `scroll_switches_workspace` | bool (0/1) | `1` | Wheel over the main area steps prev/next workspace |
 | `passthrough_keys` | bool (0/1) | `1` | Let keys the overview doesn't use reach Hyprland (keybinds keep working) |
@@ -112,17 +138,27 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `key_left` / `key_right` / `key_up` / `key_down` | key names | `left` / `right` / `up` / `down` | Move the keyboard selection (e.g. set `h`/`l`/`k`/`j` for vim nav) |
 | `key_desktop` | key names | `shift` | Flip canvas↔grid |
 | `key_all_workspaces` | key names | `a` | Toggle the all-workspaces (expo) view; `""` to disable |
-| `key_workspace` | key names | `1,2,3,4,5,6,7,8,9,0` | Each key switches to the Nth strip card's workspace, for real (slot position = card index) |
+| `key_workspace` | key names | `1,2,3,4,5,6,7,8,9,0` | Key at position N switches DIRECTLY to workspace N+1 (so `0` is always workspace 10) — creates it first if needed, independent of what's currently on the strip |
+| `key_workspace_mode` | `switch` \| `jump` | `switch` | `switch`: a digit changes the displayed workspace and the overview stays open (Ctrl+digit is a no-op) — `jump`: a digit switches AND immediately closes the overview; hold Ctrl+digit for the old stay-open behavior |
+| `alt_tab_modifier` | `alt` \| `ctrl` \| `shift` \| `super` | `alt` | Which modifier's release commits the Alt-Tab selection (match whatever you bound `gloview:alttab` with) |
+| `alt_tab_commit_on_release` | bool (0/1) | `1` | Releasing `alt_tab_modifier` focuses the selection & closes, like a normal alt-tab — off: releasing does nothing, confirm with `key_activate`/click instead |
+| `alt_tab_mode` | `smart` \| `linear` | `smart` | `smart`: first hop lands on the most-recently-focused window (Hyprland's own system-wide focus history — not just windows gloview itself focused), then walks back through recency — `linear`: simple fixed circular order |
 | `exit_on_click` | bool (0/1) | `1` | Click on empty space dismisses the overview |
 | `exit_on_switch` | bool (0/1) | `0` | Dismiss when the live workspace changes underneath (e.g. a keybind) |
 | `show_all_workspaces` | bool (0/1) | `0` | Main area shows every window on the monitor (expo), not just the displayed workspace. Toggle live with `gloview:allworkspaces`, the `key_all_workspaces` key, or the strip's "All" card |
-| `show_empty` | bool (0/1) | `1` | Keep empty workspaces as strip cards |
+| `strip_empty_mode` | `show` \| `neighbors` \| `hide` | `show` | `show`: every numeric workspace up to the highest one in use (at least 1-10) gets a strip card, even ones that were never created — `neighbors`: only occupied workspaces plus the displayed one's immediate numeric neighbors (reveals a run of empties one hop at a time as you navigate into it) — `hide`: only occupied workspaces, no empty ones at all. `show`/`neighbors` cards for a workspace that doesn't exist yet are created lazily on click/drop, same as `+` but at that specific number. |
 | `show_special` | bool (0/1) | `0` | Include the special (scratchpad) workspace as a strip card |
 | `strip_all_card` | bool (0/1) | `0` | Show a leading "All workspaces" card on the strip that toggles the expo view |
-| `drag_to_swap` | bool (0/1) | `1` | Grid mode: dropping a preview onto another swaps the two windows' places |
+| `drag_to_swap` | bool (0/1) | `1` | Grid mode: dropping a preview onto another swaps the two windows' places — works across workspaces too in the all-workspaces (expo) view |
 | `switch_on_drop` | bool (0/1) | `0` | Dropping a window on a card also follows it to that workspace |
+| — | — | — | Dragging a preview (grid or strip) onto a workspace **card** with the left button moves it there; the **right** button swaps it with that workspace's last-focused window instead |
 | `switch_on_new_workspace` | bool (0/1) | `1` | Clicking `+` follows the display to the new workspace |
-| `close_button_color` | color | `0xe6e23b3b` | Desktop-mode `✕` close-button fill |
+| `new_workspace_mode` | `fill` \| `linear` | `fill` | `fill`: `+` takes the lowest free workspace id (backfills a gap left by a closed one) — `linear`: always appends past the highest existing id, never backfills |
+| `close_button_color` | color | `0xe6e23b3b` | `✕` close-button fill — per-window, and per-workspace (closes every window on it) |
+| `close_button_visibility` | `shift` \| `always` | `shift` | `shift`: close buttons only show in desktop/canvas mode (`key_desktop`) — `always`: show them on every tile and strip card all the time |
+| `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |
+| `close_button_size` | float | `1.0` | Scale multiplier over the computed base button size |
+| `close_button_position` | `top-right` \| `top-left` \| `bottom-right` \| `bottom-left` | `top-right` | Corner the close button sits in |
 | `hide_top_layers` | bool (0/1) | `0` | Fade out Top layer surfaces (bars, e.g. Waybar) while open |
 | `hide_overlay_layers` | bool (0/1) | `0` | Fade out Overlay layer surfaces (popups/notifications) while open |
 | `above_namespaces` | string | `""` | Comma/space list of layer namespaces to draw *above* the overview (trailing `*` glob; a namespace containing `aboveoverview` always qualifies) |
@@ -144,7 +180,8 @@ supersedes the older `bar_position` (top/bottom only); set `anchor` and it wins.
                 padding_bottom = 70,
                 max_scale      = 1.0,
                 duration       = 200,
-                preview_round  = 12,
+                preview_round       = 12,
+                preview_round_power = 2.0,
                 blur           = 1,
 
                 anchor           = "top",
@@ -172,14 +209,19 @@ supersedes the older `bar_position` (top/bottom only); set `anchor` and it wins.
                 key_desktop   = "shift",
                 key_all_workspaces = "a",
                 key_workspace = "1,2,3,4,5,6,7,8,9,0",
+                key_workspace_mode = "switch",
+                alt_tab_modifier              = "alt",
+                alt_tab_commit_on_release     = 1,
+                alt_tab_mode                  = "smart",
 
                 show_all_workspaces     = 0,
-                show_empty              = 1,
+                strip_empty_mode        = "show",
                 show_special            = 0,
                 strip_all_card          = 1,
                 drag_to_swap            = 1,
                 switch_on_drop          = 0,
                 switch_on_new_workspace = 1,
+                new_workspace_mode      = "fill",
 
                 hide_top_layers     = 0,
                 hide_overlay_layers = 0,
@@ -188,7 +230,12 @@ supersedes the older `bar_position` (top/bottom only); set `anchor` and it wins.
 
                 select_border_size  = 3,
                 select_border       = 0xf066ccff,
-                close_button_color  = 0xe6e23b3b,
+                hover_border_size   = 3,
+                close_button_color    = 0xe6e23b3b,
+                close_button_visibility = "shift",
+                close_button_icon       = "✕",
+                close_button_size       = 1.0,
+                close_button_position   = "top-right",
                 backdrop_color      = 0x73070a10,
                 strip_band_color    = 0x24ffffff,
                 strip_card_color    = 0x3a0e131c,
@@ -216,6 +263,7 @@ plugin {
         max_scale = 1.0
         duration = 200
         preview_round = 12
+        preview_round_power = 2.0
         blur = 1
 
         anchor = top
@@ -243,14 +291,19 @@ plugin {
         key_desktop   = shift
         key_all_workspaces = a
         key_workspace = 1,2,3,4,5,6,7,8,9,0
+        key_workspace_mode = switch
+        alt_tab_modifier = alt
+        alt_tab_commit_on_release = 1
+        alt_tab_mode = smart
 
         show_all_workspaces     = 0
-        show_empty              = 1
+        strip_empty_mode        = show
         show_special            = 0
         strip_all_card          = 0
         drag_to_swap            = 1
         switch_on_drop          = 0
         switch_on_new_workspace = 1
+        new_workspace_mode      = fill
 
         hide_top_layers     = 0
         hide_overlay_layers = 0
@@ -259,7 +312,12 @@ plugin {
 
         select_border_size  = 3
         select_border       = 0xf066ccff
-        close_button_color  = 0xe6e23b3b
+        hover_border_size   = 3
+        close_button_color    = 0xe6e23b3b
+        close_button_visibility = shift
+        close_button_icon       = ✕
+        close_button_size       = 1.0
+        close_button_position   = top-right
         backdrop_color      = 0x73070a10
         strip_band_color    = 0x24ffffff
         strip_card_color    = 0x3a0e131c

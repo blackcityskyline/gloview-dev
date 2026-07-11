@@ -60,15 +60,19 @@ std::vector<LRect> layoutRows(const std::vector<LRect>& w, const LRect& area, co
     if (n == 0)
         return {};
 
-    // sorted reading order (top-to-bottom, then left-to-right) keeps tiles near
-    // where the real windows live, which reads more naturally than raw order.
+    // Sorted reading order (top-to-bottom, then left-to-right) keeps tiles near where the
+    // real windows live, which reads more naturally than raw order — UNLESS the caller
+    // already put them in a meaningful order (e.g. MRU for Alt-Tab) and wants it preserved;
+    // cfg.preserveOrder skips this spatial re-sort so row-major fill reflects input order.
     std::vector<int> order(n);
     std::iota(order.begin(), order.end(), 0);
-    std::sort(order.begin(), order.end(), [&](int a, int b) {
-        if (std::abs(w[a].cy() - w[b].cy()) > std::min(w[a].h, w[b].h) * 0.5)
-            return w[a].cy() < w[b].cy();
-        return w[a].cx() < w[b].cx();
-    });
+    if (!cfg.preserveOrder) {
+        std::sort(order.begin(), order.end(), [&](int a, int b) {
+            if (std::abs(w[a].cy() - w[b].cy()) > std::min(w[a].h, w[b].h) * 0.5)
+                return w[a].cy() < w[b].cy();
+            return w[a].cx() < w[b].cx();
+        });
+    }
     std::vector<LRect> sorted(n);
     for (int i = 0; i < n; ++i)
         sorted[i] = w[order[i]];
