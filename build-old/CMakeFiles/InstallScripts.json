@@ -1,7 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/home/black/git/clone/gloview/build/cmake_install.cmake"
-	],
-	"Parallel" : false
-}

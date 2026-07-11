@@ -1,8 +1,0 @@
-/home/black/git/clone/gloview/build/CMakeFiles/gloview.dir
-/home/black/git/clone/gloview/build/CMakeFiles/reload.dir
-/home/black/git/clone/gloview/build/CMakeFiles/edit_cache.dir
-/home/black/git/clone/gloview/build/CMakeFiles/rebuild_cache.dir
-/home/black/git/clone/gloview/build/CMakeFiles/list_install_components.dir
-/home/black/git/clone/gloview/build/CMakeFiles/install.dir
-/home/black/git/clone/gloview/build/CMakeFiles/install/local.dir
-/home/black/git/clone/gloview/build/CMakeFiles/install/strip.dir
