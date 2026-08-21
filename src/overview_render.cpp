@@ -806,14 +806,18 @@ void Overview::renderBackdrop() const {
     m_entryPrime = false;
   }
 
-  // Crossfade factor: the blurred backdrop dissolves IN over the frozen
-  // pre-open frame along the main animation curve, and back OUT on close.
+  // Crossfade factor. Entry: blurred+dim dissolves IN over the frozen
+  // pre-open frame along the main curve, masking the instant Hyprland-blur/
+  // window disappearance behind it. Exit: it dissolves back OUT over live
+  // currentFB — plain wallpaper, NO snapshot base — so no frozen window
+  // ghosts bleed through under the tiles gliding home; the real windows land
+  // exactly once, as the previews reach their natural slots.
   // Deliberately just `e` — blur_strength keeps meaning "filter radius", it
   // must not turn into a permanent sharp/blurred blend at settle.
   const float k = static_cast<float>(e);
-  // The snapshot is usable as the fade base?
   const bool haveBase = m_openSnapFB && m_openSnapFB->isAllocated();
-  const bool fading = haveBase && k < 0.999F;
+  // The frozen base is an ENTRY-only device (see comment above).
+  const bool fading = haveBase && m_opening && k < 0.999F;
 
   if (!blurEnabled()) {
     // ---- No-blur backdrop ----
@@ -826,9 +830,8 @@ void Overview::renderBackdrop() const {
   if (k <= 0.0F && !fading)
     return; // nothing visible yet (no snapshot to keep the screen covered)
 
-  // While fading, draw the frozen pre-open frame (real windows + Hyprland's
-  // own decoration blur behind them) as the opaque base layer: what the user
-  // saw before opening never blinks out, it dissolves into the plugin blur.
+  // Entry mid-flight: draw the frozen pre-open frame (real windows +
+  // Hyprland's own decoration blur behind them) as the opaque base layer.
   if (fading)
     g_pHyprOpenGL->renderTexture(m_openSnapFB->getTexture(), fullPx,
                                  {.a = 1.0F});
@@ -914,7 +917,10 @@ void Overview::renderBackdrop() const {
   // the animation curve (k==1 ⇒ opaque ⇒ exactly the settled look).
   const auto tex = m_blur.fb ? m_blur.fb->getTexture() : nullptr;
   if (tex && tex->ok())
-    g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = fading ? k : 1.0F});
+    // Fade BOTH ways with k: entry dissolves in over the frozen base, exit
+    // dissolves out over live currentFB (plain wallpaper — windows are still
+    // suppressed until deactivate, so nothing ghosts through). k==1 ⇒ opaque.
+    g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = k});
   else {
     m_blur.valid = false;
     // Cache unavailable — never leave the base/currentFB exposed (see
