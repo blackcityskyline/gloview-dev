@@ -41,6 +41,18 @@ using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
 
+bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
+                               int skipItem) {
+  const int idx = stripItemAt(lx, ly);
+  if (idx < 0 || idx == skipItem)
+    return false;
+  if (m_pressButton == BTN_RIGHT)
+    swapOnWorkspace(w, m_strip[idx]);
+  else
+    dropOnWorkspace(w, m_strip[idx]);
+  return true;
+}
+
 void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
   const auto m = m_monitor.lock();
   if (!w || !m) {
@@ -81,13 +93,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
     return;
   }
 
-  std::vector<std::pair<PHLWINDOW, LRect>> oldBoxes;
-  oldBoxes.reserve(m_tiles.size());
-  for (size_t i = 0; i < m_tiles.size(); ++i) {
-    const auto win = m_tiles[i].win.lock();
-    if (win && win != w)
-      oldBoxes.emplace_back(win, currentBox(m_tiles[i], static_cast<int>(i)));
-  }
+  auto oldBoxes = captureCurrentBoxes(w);
 
   Desktop::globalWindowController()->moveWindowToWorkspace(w, target);
 
@@ -143,11 +149,7 @@ void Overview::swapTiles(int a, int b) {
 
   // capture where every tile sits NOW so the previews glide from their current
   // spots into the post-swap slots (same tail as dropOnWorkspace).
-  std::vector<std::pair<PHLWINDOW, LRect>> oldBoxes;
-  oldBoxes.reserve(m_tiles.size());
-  for (size_t i = 0; i < m_tiles.size(); ++i)
-    if (const auto win = m_tiles[i].win.lock())
-      oldBoxes.emplace_back(win, currentBox(m_tiles[i], static_cast<int>(i)));
+  auto oldBoxes = captureCurrentBoxes();
 
   // Real swap. ITarget::swap() already recalculates both spaces it touches
   // (same-space or cross-space), so no manual recalculate() call is needed here
@@ -207,11 +209,7 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
     return;
   }
 
-  std::vector<std::pair<PHLWINDOW, LRect>> oldBoxes;
-  oldBoxes.reserve(m_tiles.size());
-  for (size_t i = 0; i < m_tiles.size(); ++i)
-    if (const auto win = m_tiles[i].win.lock())
-      oldBoxes.emplace_back(win, currentBox(m_tiles[i], static_cast<int>(i)));
+  auto oldBoxes = captureCurrentBoxes();
 
   g_layoutManager->switchTargets(ta, tb);
 

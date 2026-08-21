@@ -12,6 +12,9 @@ namespace gloview {
 struct LRect {
     double x = 0.0, y = 0.0, w = 0.0, h = 0.0;
 
+    [[nodiscard]] bool contains(double px, double py) const {
+        return px >= x && py >= y && px <= x + w && py <= y + h;
+    }
     [[nodiscard]] double cx() const { return x + w / 2.0; }
     [[nodiscard]] double cy() const { return y + h / 2.0; }
     [[nodiscard]] double aspect() const { return h > 0.0 ? w / h : 1.0; }

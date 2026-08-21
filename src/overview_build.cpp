@@ -476,6 +476,17 @@ void Overview::layoutTiles() {
 // Rebuild tiles/strip, then glide each survivor from its captured box into its
 // new slot without re-running the chrome reveal (m_progress pinned at 1).
 // Shared by drop-to-workspace and close-window.
+std::vector<std::pair<PHLWINDOW, LRect>>
+Overview::captureCurrentBoxes(PHLWINDOW exclude) const {
+  std::vector<std::pair<PHLWINDOW, LRect>> boxes;
+  boxes.reserve(m_tiles.size());
+  for (size_t i = 0; i < m_tiles.size(); ++i) {
+    if (const auto win = m_tiles[i].win.lock(); win && win != exclude)
+      boxes.emplace_back(win, currentBox(m_tiles[i], static_cast<int>(i)));
+  }
+  return boxes;
+}
+
 void Overview::replayReflow(
     std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes) {
   m_hovered = m_hoveredStrip = -1;
@@ -537,11 +548,7 @@ void Overview::syncTiles() {
   if (!diff)
     return;
 
-  std::vector<std::pair<PHLWINDOW, LRect>> oldBoxes;
-  oldBoxes.reserve(m_tiles.size());
-  for (size_t i = 0; i < m_tiles.size(); ++i)
-    if (const auto win = m_tiles[i].win.lock())
-      oldBoxes.emplace_back(win, currentBox(m_tiles[i], static_cast<int>(i)));
+  auto oldBoxes = captureCurrentBoxes();
 
   // Desktop mode: adding/removing a window must NOT shuffle the others.
   // Non-dragged previews track their REAL window position, which Hyprland
