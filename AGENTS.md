@@ -1,0 +1,111 @@
+# AGENTS.md — правила разработки gloview
+
+Прочитай это перед любыми изменениями. Рабочая память рефакторинга и текущий
+план живут в **REFACTORING.md** — начинай сессию с него, заканчивай обновлением.
+Детали blur-пайплайна — в **CLAUDE.md**.
+
+## Критически важная информация
+
+1. **Плагин = `.so` в адресном пространстве Hyprland.** Любой краш, use-after-free
+   или RASSERT внутри плагина роняет ВСЮ сессию пользователя. Рискованные изменения
+   (хуки, порядок проходов, teardown) проверяй в nested Hyprland.
+2. **Hot-reload:** `cmake --build build --target reload` — сам делает безопасный
+   teardown (`hyprctl gloviewunload`, синхронный hardClose), выгружает обе копии
+   (build + hyprpm-кэш) и грузит свежую. Не грузи `plugin load` вручную, пока
+   загружена hyprpm-копия: два инстанса не могут поставить hook на
+   `shouldRenderWindow` дважды — второй молча останется без хука.
+3. **`-fno-gnu-unique` в CMakeLists не удалять.** Без него static-init guard'ы
+   становятся STB_GNU_UNIQUE, glibc помечает .so NODELETE, `dlclose` не выгружает,
+   и hot-reload молча гоняет СТАРЫЙ код.
+4. **Хуки ставятся по demangled-signature substring** (`shouldRenderWindow`,
+   `damageSurface`). Ломаются при смене ABI Hyprland (уже ломались на 0.56 —
+   namespace move). После обновления Hyprland первым делом проверять их.
+5. **currentFB нельзя использовать как источник блюра/полос:** фуллскрин-окно на
+   активном воркспейсе идёт через «solitary client» fast path в обход
+   `shouldRenderWindow`. Источники — только `backdropSource()` /
+   `renderBackdropSource()` (см. комментарий в `renderBackdrop`).
+6. **Координаты:** весь chrome пишется в monitor-local LOGICAL пикселях; перед
+   любым immediate GL вызовом — через `pxb()/pxr()` (масштаб + `.round()`,
+   round обязателен: pixman-регион renderBorder'а trunc'ает дробные боксы → дырки
+   в тонких рамках). Live-поверхностиокон конвертируют себя сами.
+   Всё, что рисует в приватный FBO, требует `RPT_EXPORT` + `fbSize=(W,H)`
+   с сохранением/восстановлением окружающего состояния (см. существующие примеры).
+7. **Конфиг читается только через `cfg*`-хелперы** (V2 `value()`), НЕ через
+   deprecated `HyprlandAPI::getConfigValue()` — последний игнорирует Lua-конфиг.
+8. **Порядок фаз оверлея менять осознанно:** Back(хром) → surfaces → Buttons → … —
+   кнопки рисуются ПОСЛЕ своих поверхностей, иначе opaque-контент окон затирает их.
+9. **`m_pendingDeactivate`:** не деактивировать mid-frame — должен отрисоваться
+   финальный кадр оверлея, иначе один прозрачный кадр (flicker).
+
+## Минные поля (семантика, которую легко сломать)
+
+- `close()`: resume закрытия — `m_timeline.seek(1.0 - m_progress)`; при закрытии
+  `m_progress = 1 - timeline.raw()` (инверсия направления!). Менять вместе.
+- Blur-кэш: source-identity проверка выполняется КАЖДЫЙ кадр ВНЕ dirty-guard —
+  именно так работает инвалидация mpv↔wallpaper. Не задвигать обратно внутрь.
+- Entry-snapshot кроссфейд: контракт `open()` ставит `m_entryPrime` →
+  `shouldHideWindow` держит окна видимыми этот кадр → `renderBackdrop` захватывает
+  currentFB и снимает флаг → release в dtor/deactivate/hardClose. Все три места
+  обязательны.
+- Кэш блюра несёт ПОЛНЫЙ dim и полную силу (анимация — только альфа блита `k=eased()`),
+  `blur_strength` означает ТОЛЬКО радиус фильтра. Не смешивать с fade-фактором.
+- Tween: длительности читаются на месте КАЖДЫЙ кадр (живой отклик на смену конфига),
+  Tween владеет только стартовой точкой.
+
+## Сборка и проверка
+
+```bash
+cmake --build build -j$(nproc)          # цель build/gloview.so; зелёная сборка = минимум
+cmake --build build --target reload     # пересобрать + горячо перезагрузить в живой Hyprland
+```
+
+Окружение базовой сессии: Hyprland 0.56.2, lua 5.5.1, GLES 3.2, C++23.
+Критерий готовности шага: сборка без error/warning + поведение не изменилось
+(если шаг не багфикс/фича). Визуальные проверки перечислены в REFACTORING.md.
+
+## Карта исходников (`src/`)
+
+| Файл | Ответственность |
+|---|---|
+| `overview.hpp` | класс Overview (+Tween, BlurCache), состояние сессии |
+| `main.cpp` | регистрация: конфиг-таблицы, единый реестр действий kActions |
+| `overview_core.cpp` | lifecycle (open/close/hardClose/deactivate), хуки, конфиг-хелперы |
+| `overview_render.cpp` | renderStage, backdrop+blur+entry-snapshot, strip chrome, cursor |
+| `overview_tiles_render.cpp` | хром плиток, drag-хром |
+| `overview_build.cpp` | buildTiles/buildStrip/layoutTiles/replayReflow/syncTiles |
+| `overview_input.cpp` | мышь (press/release/drag), hover, hit-test хелперы |
+| `overview_keys.cpp` | клавиатура, alt-tab, digit-jump |
+| `overview_actions.cpp` | drop/swap/add workspace, switchToWorkspace, stepWorkspace |
+| `blur.*` | self-contained dual-Kawase+gaussian (детали в CLAUDE.md) |
+| `cursor.*` | HW/SW курсор поверх оверлея (следствие RENDER_LAST_MOMENT) |
+| `layout.hpp/.cpp` | чистая геометрия лейаута, без Hyprland (юнит-разумно) |
+| `overlay_gl.hpp` | общие GL-хелперы двух рендер-TU |
+
+## Правила работы
+
+- **Сессии:** начал — прочёл REFACTORING.md; сделал шаг — отметил в нём же
+  (чекбокс, строка в «Результаты», запись в «Лог сессий»).
+- **Один логический шаг = один коммит.** Коммит только после зелёной сборки.
+  Стиль сообщений: `type(scope): summary` на английском, тело объясняет why
+  (примеры в `git log`). Не коммитить без запроса пользователя.
+- **Комментарии в коде** — английские, документируют «почему» и верифицированные
+  факты о внутренностях Hyprland (файл:строка источника). Археологию удалённых
+  багов в комментариях не плодить — для этого git history. Общие эссе — в общий
+  заголовок (overlay_gl.hpp как образец), не копировать между TU.
+- **Дедупликация прежде копипасты:** повторившийся 3+ раз паттерн → хелпер
+  (`captureCurrentBoxes`, `releaseNewWorkspaces` — образцы). Хит-тесты — через
+  `LRect::contains`.
+- **Новые карты по окнам** не ключевые raw-указателями (ABA при переиспользовании
+  адреса) — PHLWINDOWREF или явный жизненный цикл с очисткой.
+- Стиль: 2 пробела, clang-format-подобный (как в большинстве файлов);
+  `layout.*` исторически 4 пробела — не переформатировать целиком.
+- Без эмодзи. README/CLAUDE.md обновлять, если меняется пользовательское
+  поведение или добавляются конфиги.
+
+## Чеклист перед коммитом
+
+- [ ] сборка зелёная (error И warning)
+- [ ] нет обращений к удалённым членам/API (grep по имени)
+- [ ] новые конфиги: добавлены в таблицы main.cpp + описаны в README
+- [ ] поведение по умолчанию не изменилось (если это не задумано)
+- [ ] REFACTORING.md обновлён
