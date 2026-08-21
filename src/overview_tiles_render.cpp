@@ -1,4 +1,5 @@
 #include "overview.hpp"
+#include "overlay_gl.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -44,53 +45,6 @@ void renderWindowLive(const PHLWINDOW& w, const PHLMONITOR& mon, const CBox& des
 
 namespace {
 
-// Hyprland's immediate-mode renderRect/renderTexture/renderRoundedShadow feed the box
-// STRAIGHT to projectBoxToTarget, which expects transformed monitor-PIXEL coordinates and
-// applies NO monitor scale itself (verified against Renderer.cpp: clipBox/scaledWindowBox are
-// pre-.scale(m_scale)'d before applyToBox). All gloview chrome is authored in monitor-LOGICAL
-// pixels, so it MUST be pre-scaled by mon->m_scale before drawing — otherwise on any monitor
-// with scale != 1 (HiDPI / fractional like 1.2) the whole chrome renders at 1/scale size and
-// top-left-biased, while the live window surfaces (renderWindowLive, which converts to pixels
-// itself) land correctly → the overview looks "distorted". Chrome-only; surfaces are already
-// pixel-space. Round radii / blur ranges scale too so corners/shadows keep their proportion.
-// .round() at the end is NOT optional — verified against every decoration in the pinned
-// source that scales a box to pixels before drawing (CHyprBorderDecoration::draw(),
-// CHyprDropShadowDecoration::draw(), CHyprInnerGlowDecoration::draw(),
-// CHyprGroupBarDecoration::draw(): every one of them ends with `.scale(pMonitor->m_scale
-// ).round()`), never a bare `.scale()`. Root cause of thin/gappy borders (task #11): inside
-// CHyprOpenGLImpl::renderBorder() the scissor-culling optimization builds a CRegion from the
-// UN-rounded box — `CRegion(const CBox&)` (hyprutils) forwards straight into
-// `pixman_region32_init_rect(..., box.x, box.y, box.w, box.h)`, whose params are ints, so a
-// fractional box silently TRUNCATES (not rounds) on that implicit double->int conversion. The
-// actual ring shape comes from float shader math and stays precise regardless, but the region
-// that decides WHICH pixels the shader even runs on can end up off by up to ~1px on any given
-// edge — invisible on a thick ring (5px+, where the shader still draws the surviving 4px+), but
-// at border_size 1-3px that stray pixel is most or all of the ring, and each edge/corner can be
-// off by a different amount since box.x/y/w/h each carry their own fractional remainder — which
-// is exactly why the missing side/corner isn't consistent between 1px and 3px. `.round()` (which
-// snaps x/y AND recomputes w/h from the rounded RIGHT/BOTTOM edge, not just floor+size) makes the
-// box exactly representable in the same integer pixel grid the CRegion math already assumes,
-// closing the gap at any thickness — same fix Hyprland's own border decoration relies on.
-CBox pxb(const CBox& b, double s) {
-    return CBox{b.x * s, b.y * s, b.w * s, b.h * s}.round();
-}
-CBox pxb(const LRect& r, double s) {
-    return CBox{r.x * s, r.y * s, r.w * s, r.h * s}.round();
-}
-int pxr(double round, double s) {
-    return static_cast<int>(round * s);
-}
-
-// renderBorder's own outerRound == -1 fallback (round + scaledBorderSize, no correction) is
-// what caused thin borders to show gaps near corners: real Hyprland window borders NEVER rely
-// on that fallback, they always compute this explicitly (CHyprBorderDecoration::draw()) with a
-// squircle-power correction term. round/borderSize are LOGICAL (unscaled) px, matching that
-// source; the whole expression is scaled once at the end, same as there.
-int outerRoundPx(double round, double borderSize, double roundingPower, double scale) {
-    const double correction = borderSize * (M_SQRT2 - 1.0) * std::max(2.0 - roundingPower, 0.0);
-    return static_cast<int>(std::lround((round + borderSize - correction) * scale));
-}
-
 LRect fitInside(const LRect& outer, double aspect) {
     if (outer.w <= 0.0 || outer.h <= 0.0 || aspect <= 0.0)
         return outer;
@@ -106,20 +60,6 @@ LRect fitInside(const LRect& outer, double aspect) {
 
     const double h = outer.w / aspect;
     return LRect{outer.x, outer.y + (outer.h - h) / 2.0, outer.w, h};
-}
-
-CHyprColor argb(Hyprlang::INT raw, double alphaMul = 1.0) {
-    const auto a = static_cast<double>((raw >> 24) & 0xFF) / 255.0;
-    const auto r = static_cast<double>((raw >> 16) & 0xFF) / 255.0;
-    const auto g = static_cast<double>((raw >> 8) & 0xFF) / 255.0;
-    const auto b = static_cast<double>(raw & 0xFF) / 255.0;
-    return CHyprColor(r, g, b, a * std::clamp(alphaMul, 0.0, 1.0));
-}
-
-// The unified preview_round (task #6) is authored against full-size grid tiles; a strip-drag
-// preview is much smaller, so clamp per call site to whatever the box allows.
-int clampRound(int round, double w, double h) {
-    return static_cast<int>(std::clamp(static_cast<double>(round), 0.0, std::min(w, h) * 0.5));
 }
 
 } // namespace
