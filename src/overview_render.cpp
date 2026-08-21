@@ -576,6 +576,7 @@ void Overview::renderStage(eRenderStage stage) {
   // at progress 0. deactivate() damages the next frame.
   if (m_pendingDeactivate) {
     m_pendingDeactivate = false;
+    dbg("handoff: final overlay frame queued, deactivating");
     deactivate();
     return;
   }
@@ -789,6 +790,7 @@ void Overview::renderBackdrop() const {
   // identities invalidates only on genuine source changes while plain
   // workspace switches sharing the same wallpaper keep the cached blur.
   bool liveSrc = false;
+  bool layersSrc = false;
   auto src = backdropSource(liveSrc);
   if (!src) {
     // Wallpaper layers → private FBO; its immediate draws want pixel coords,
@@ -800,7 +802,15 @@ void Overview::renderBackdrop() const {
     src = renderBackdropSource(W, H);
     g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
     g_pHyprRenderer->setProjectionType(oldProj);
+    layersSrc = true;
   }
+  dbg(std::string("backdrop e=") + std::to_string(e).substr(0, 5) +
+      " opening=" + std::to_string(m_opening) +
+      " k=" + std::to_string(k).substr(0, 5) +
+      " src=" + (liveSrc ? "live" : layersSrc ? "layers"
+                : src       ? "direct"
+                            : "NONE") +
+      " cached=" + std::to_string(m_blur.valid));
 
   // Skip work only when nothing can be visible this frame: mid-ENTRY the
   // opaque source base alone justifies drawing even at k≈0.
@@ -868,6 +878,7 @@ void Overview::renderBackdrop() const {
       // everything with an OPAQUE background rect + dim overlay, and retry
       // next frame.
       m_blur.valid = false;
+      dbg("backdrop FALLBACK: blur unavailable / no source");
       static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
       g_pHyprOpenGL->renderRect(fullPx, argb(*PBG, 1.0), {});
       g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, e), {});
