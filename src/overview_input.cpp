@@ -20,7 +20,7 @@
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/layout/space/Space.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
-#include <hyprland/src/managers/PointerManager.hpp>
+#include <hyprland/src/pointer/PointerManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopTimer.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
@@ -80,12 +80,29 @@ bool Overview::onMouseAxis(const IPointer::SAxisEvent &e) {
 }
 
 void Overview::onMouseMove() {
+  // Remember where the cursor is so a move only repaints its old+new footprint
+  // (renderCursorOnTop draws the SW cursor over our overlay). updateHover
+  // already full-damages on hover *change* (its ring/highlight needs it), so
+  // here we damage just the union of the cursor boxes instead of the whole
+  // monitor on every move — on a Haswell iGPU a full-monitor damage per
+  // mousemove was ~40% GPU with the overview up.
+  const auto m = m_monitor.lock();
+  if (!m || !Pointer::mgr()) {
+    updateHover();
+    return;
+  }
+  // If HW cursor is active there's nothing to erase/redraw — the KMS plane
+  // handles it with zero framebuffer writes. Skip the union damage entirely.
+  if (m_cursor.hasHardwareCursor(m)) {
+    updateHover();
+    return;
+  }
+  const CBox unionBox = m_cursor.moveDamage(m);
   updateHover();
-  // We repaint the cursor ourselves (renderCursorOnTop). updateHover only
-  // damages on hover *change*, so moving within one tile would leave the old
-  // cursor → trail. Damage every move.
-  if (m_active)
-    damage();
+  if (!m_active || unionBox.w <= 0 || unionBox.h <= 0)
+    return;
+  if (g_pHyprRenderer)
+    g_pHyprRenderer->damageBox(unionBox);
 }
 
 void Overview::updateHover() {
@@ -157,6 +174,11 @@ constexpr int PRESS_CONSUMED =
     -4; // press fully handled (e.g. desktop ✕) — release must do nothing
 // BTN_MIDDLE (0x112) comes from linux/input-event-codes.h, pulled in
 // transitively.
+// close_trigger == "doubleclick": max gap between two clicks on the same tile
+// to count as one double-click, instead of two independent single clicks. A
+// touchpad "double-tap" arrives as the same two-click sequence, so this covers
+// both without any separate handling.
+constexpr auto DBLCLICK_WINDOW = std::chrono::milliseconds(400);
 } // namespace
 
 bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
@@ -197,8 +219,10 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     }
 
     // the "✕" button on a preview closes that window — shown in desktop mode,
-    // or always when close_button_visibility is "always" (task 9)
-    if (m_desktopMode || closeButtonsAlwaysOn()) {
+    // or always when close_button_visibility is "always" (task 9); replaced
+    // entirely by a tile double-click when close_trigger is "doubleclick"
+    // (see the deferred single-click handling on release, below)
+    if (!closeOnDoubleClick() && (m_desktopMode || closeButtonsAlwaysOn())) {
       for (size_t i = 0; i < m_tiles.size(); ++i) {
         const LRect lb =
             tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
@@ -362,8 +386,44 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       damage(); // dropped in empty space → tile snaps back to its slot
       return true;
     }
-    // a plain click → focus that window and dismiss (see focusAndClose for the
-    // expo-mode close-animation fix, task #5).
+    // A plain click activates that window — normally immediately (focus +
+    // dismiss, see focusAndClose's expo-mode close-animation fix, task #5).
+    // With close_trigger=doubleclick this can't fire immediately: the
+    // overview would already be gone before a possible second click ever
+    // arrives, so nothing could tell a genuine double-click apart from two
+    // unrelated single clicks. Instead the activate is deferred behind
+    // DBLCLICK_WINDOW; a second click on the SAME window before it fires
+    // cancels the activate and closes the window instead (staying open) —
+    // see cancelPendingClick() for how every other path that ends the
+    // overview also drops this state so a stale timer can't fire later
+    // against a tile that no longer means anything.
+    if (closeOnDoubleClick()) {
+      const auto now = std::chrono::steady_clock::now();
+      if (w && m_lastClickWin.lock() == w &&
+          (now - m_lastClickTime) <= DBLCLICK_WINDOW) {
+        cancelPendingClick();
+        closeTileWindow(press);
+        return true;
+      }
+      cancelPendingClick(); // drop any OTHER tile's still-pending timer first
+      m_lastClickWin = w;
+      m_lastClickTime = now;
+      if (w && g_pEventLoopManager) {
+        m_pendingClickWin = w;
+        m_clickTimer = makeShared<CEventLoopTimer>(
+            DBLCLICK_WINDOW,
+            [this](SP<CEventLoopTimer>, void *) {
+              const auto pw = m_pendingClickWin.lock();
+              m_pendingClickWin.reset();
+              if (pw && m_active)
+                focusAndClose(pw, Desktop::FOCUS_REASON_CLICK);
+            },
+            nullptr);
+        g_pEventLoopManager->addTimer(m_clickTimer);
+        return true;
+      }
+      // no event loop / no window — fall through rather than eat the click.
+    }
     focusAndClose(w, Desktop::FOCUS_REASON_CLICK);
     return true;
   }
@@ -469,10 +529,68 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
 // `m_workspace` — that's the only thing that actually determines whether
 // m_tiles still holds other-workspace tiles that need to be dropped before the
 // close glide starts.
+//
+// Whether committing to `w` right now would make Hyprland switch the
+// monitor's REAL active workspace synchronously. Verified against the pinned
+// Hyprland source (FocusState.cpp CFocusState::rawWindowFocus): when the
+// target's workspace isn't the currently VISIBLE one, fullWindowFocus() calls
+// CMonitor::changeWorkspace(ws, /*internal=*/false, ...) right there on the
+// spot — and `internal=false` is exactly what makes changeWorkspace() kick off
+// Hyprland's own native workspace-switch slide via
+// g_pDesktopAnimationManager->startAnimation(...) (Monitor.cpp). Called from
+// two places: focusAndClose (to decide whether to defer the real focus call)
+// and nowhere else — kept as a member so both agree on the same definition.
+bool Overview::crossesRealWorkspace(const PHLWINDOW &w) const {
+  const auto m = m_monitor.lock();
+  return w && m && w->m_workspace && w->m_workspace != m->m_activeWorkspace;
+}
+
 void Overview::focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason) {
+  // Bug: Hyprland's native workspace-switch animation played visibly BEFORE
+  // gloview's own close glide (a jarring double-transition) whenever an
+  // Alt-Tab/expo commit landed on a window living on a workspace other than
+  // the monitor's real, currently-visible one. Root cause: the unconditional
+  // `Desktop::focusState()->fullWindowFocus(w, reason)` at the bottom of this
+  // function used to fire IMMEDIATELY, i.e. at the START of the close glide —
+  // and for a cross-workspace target, fullWindowFocus's own cross-workspace
+  // path calls CMonitor::changeWorkspace(..., /*internal=*/false, ...)
+  // synchronously right then, which is precisely what starts Hyprland's native
+  // slide (see crossesRealWorkspace()'s comment). The fix: for a cross-
+  // workspace commit, skip that immediate call entirely and let it happen
+  // through the EXISTING m_pendingFocus mechanism instead — deactivate()
+  // already re-does both the real changeWorkspace() and the fullWindowFocus()
+  // together, but only once gloview's own close animation has FULLY finished
+  // (m_pendingDeactivate, gated on progress reaching 0/1 — see its comment in
+  // overview.hpp and updateAnimation()). That means Hyprland's native
+  // animation, if any, only ever starts after our own overlay is completely
+  // gone — never underneath or before it. Same-workspace commits don't touch
+  // the active workspace at all, so focusing them immediately is still safe
+  // and keeps focus (and any passthrough keybinds) in lockstep during the
+  // glide, exactly as before.
+  const bool deferFocus = crossesRealWorkspace(w);
   if (w) {
     if (const auto ws = w->m_workspace;
         ws && (showAllWorkspaces() || ws != m_workspace.lock())) {
+      // Capture every currently-shown tile's ON-SCREEN box (its slot in
+      // whatever's visible right now — e.g. the multi-workspace expo grid)
+      // BEFORE collapsing m_tiles down to just `ws`'s own windows below.
+      // Without this, buildTiles()+layoutTiles() hands every surviving tile
+      // a BRAND NEW grid slot computed from scratch for the collapsed
+      // single-workspace layout, and close() (called right after) treats
+      // THAT as the glide's starting point — so the tile teleports there in
+      // one frame before the close/zoom glide even begins: a hard cut
+      // sandwiched between the alt-tab navigation and the close animation.
+      // Reusing the captured box as the rebuilt tile's `target` instead
+      // makes close()'s glide (target -> real window position, see its own
+      // comment) start from exactly where the tile visually already was, so
+      // the workspace collapse and the close/focus zoom read as one
+      // continuous motion instead of a jump followed by an animation.
+      std::unordered_map<void *, LRect> oldBoxes;
+      oldBoxes.reserve(m_tiles.size());
+      for (size_t i = 0; i < m_tiles.size(); ++i)
+        if (const auto win = m_tiles[i].win.lock())
+          oldBoxes.emplace(win.get(), currentBox(m_tiles[i], static_cast<int>(i)));
+
       m_allOverride = 0; // leave expo — showAllWorkspaces() must reflect
                          // single-ws before rebuild
       m_workspace = ws;
@@ -480,6 +598,13 @@ void Overview::focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason) {
       buildTiles();
       buildStrip();
       layoutTiles();
+      for (auto &t : m_tiles) {
+        if (const auto win = t.win.lock()) {
+          const auto it = oldBoxes.find(win.get());
+          if (it != oldBoxes.end())
+            t.target = it->second;
+        }
+      }
       m_selected = -1;
       for (size_t i = 0; i < m_tiles.size(); ++i)
         if (m_tiles[i].win.lock() == w) {
@@ -488,9 +613,31 @@ void Overview::focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason) {
         }
     }
   }
+  // Re-asserted once more at the very end of deactivate(), after the real
+  // workspace switch settles — see m_pendingFocus's comment in overview.hpp.
+  // For a cross-workspace commit (deferFocus) that reassertion is now the
+  // ONLY real focus call — see this function's own comment above.
+  m_pendingFocus = w;
   close();
-  if (w)
+  if (w && !deferFocus)
     Desktop::focusState()->fullWindowFocus(w, reason);
+}
+
+// Drops any pending close_trigger=doubleclick single-click timer (see its
+// state's comment in overview.hpp). Called before arming a new one (a click on
+// a DIFFERENT tile shouldn't leave the previous one's activate lying around to
+// fire later out of nowhere) and by every path that can end the session (close
+// / hardClose / dtor) or start a fresh one (open), so a stale timer can never
+// fire against a tile from a session that's already gone.
+void Overview::cancelPendingClick() {
+  m_lastClickWin.reset();
+  m_pendingClickWin.reset();
+  if (m_clickTimer) {
+    m_clickTimer->cancel();
+    if (g_pEventLoopManager)
+      g_pEventLoopManager->removeTimer(m_clickTimer);
+    m_clickTimer.reset();
+  }
 }
 
 } // namespace gloview

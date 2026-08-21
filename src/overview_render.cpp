@@ -5,9 +5,11 @@
 #include <cmath>
 #include <numeric>
 #include <utility>
+#include <vector>
 
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/config/ConfigValue.hpp>
+#include <hyprland/src/config/shared/complex/ComplexDataTypes.hpp>
 #include <hyprland/src/debug/log/Logger.hpp>
 #include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/desktop/history/WindowHistoryTracker.hpp>
@@ -21,10 +23,11 @@
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/layout/space/Space.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
-#include <hyprland/src/managers/PointerManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopTimer.hpp>
+#include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
+#include <hyprland/src/pointer/PointerManager.hpp>
 #include <hyprland/src/protocols/core/Compositor.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/render/Renderer.hpp>
@@ -32,6 +35,7 @@
 #include <hyprland/src/render/pass/PassElement.hpp>
 #include <hyprland/src/render/pass/RendererHintsPassElement.hpp>
 #include <hyprland/src/render/pass/SurfacePassElement.hpp>
+#include <hyprutils/math/Region.hpp>
 #include <hyprutils/utils/ScopeGuard.hpp>
 
 using Render::GL::g_pHyprOpenGL;
@@ -52,16 +56,6 @@ double easeOutCubic(double t) {
   return 1.0 - inv * inv * inv;
 }
 
-// Decelerate with a gentle overshoot — tiles "pop" as they settle into their
-// slot.
-double easeOutBack(double t) {
-  t = std::clamp(t, 0.0, 1.0);
-  const double c1 = 1.70158 * 0.6; // softened overshoot
-  const double c3 = c1 + 1.0;
-  const double inv = t - 1.0;
-  return 1.0 + c3 * inv * inv * inv + c1 * inv * inv;
-}
-
 double lerp(double a, double b, double t) { return a + (b - a) * t; }
 
 CBox box(const LRect &r) { return CBox{r.x, r.y, r.w, r.h}; }
@@ -77,13 +71,34 @@ CBox box(const LRect &r) { return CBox{r.x, r.y, r.w, r.h}; }
 // (renderWindowLive, which converts to pixels itself) land correctly → the
 // overview looks "distorted". Chrome-only; surfaces are already pixel-space.
 // Round radii / blur ranges scale too so corners/shadows keep their proportion.
+// .round() at the end is NOT optional — see overview_tiles_render.cpp's copy of
+// this same helper for the full, source-verified explanation. Short version:
+// CHyprOpenGLImpl:: renderBorder()'s scissor-culling CRegion is built from this
+// box via hyprutils' CRegion(const CBox&) ->
+// pixman_region32_init_rect(int,int,uint,uint), which silently TRUNCATES a
+// fractional box on the implicit double->int conversion, which can eat part or
+// all of a thin (1-3px) border ring depending on each edge's own leftover
+// fraction — every Hyprland decoration that scales a box to pixels
+// (border/shadow/glow/group-bar) ends with
+// `.scale(...).round()`, never a bare `.scale()`, for exactly this reason.
 CBox pxb(const CBox &b, double s) {
-  return CBox{b.x * s, b.y * s, b.w * s, b.h * s};
+  return CBox{b.x * s, b.y * s, b.w * s, b.h * s}.round();
 }
 CBox pxb(const LRect &r, double s) {
-  return CBox{r.x * s, r.y * s, r.w * s, r.h * s};
+  return CBox{r.x * s, r.y * s, r.w * s, r.h * s}.round();
 }
 int pxr(double round, double s) { return static_cast<int>(round * s); }
+
+// Same correction real window borders use for outerRound instead of
+// renderBorder's naive "-1 auto" — see overview_tiles_render.cpp's copy for the
+// rationale.
+int outerRoundPx(double round, double borderSize, double roundingPower,
+                 double scale) {
+  const double correction =
+      borderSize * (M_SQRT2 - 1.0) * std::max(2.0 - roundingPower, 0.0);
+  return static_cast<int>(
+      std::lround((round + borderSize - correction) * scale));
+}
 
 // The unified preview_round (task #6) is authored against full-size grid tiles;
 // strip card previews are much smaller, so a raw radius that's fine on a grid
@@ -106,34 +121,65 @@ int clampRound(int round, double w, double h) {
 // transparency (an `opacity` windowrule, a window fading in/out, …), which is
 // why a transparent terminal looked solid on the strip/grid while looking
 // transparent for real.
-float windowRealAlpha(const PHLWINDOW &w) {
+//
+// The active/inactive component is recomputed here (matching
+// CWindow::updateDecorationValues()'s own formula, Window.cpp) instead of
+// read from the window's animated WINDOW_ALPHA_ACTIVE slot, because that slot
+// is only refreshed on a real focus-change EVENT. A tile whose window sits on
+// a hidden workspace never gets one while the overview is up — syncFocus()
+// deliberately only calls fullWindowFocus() for a tile on the monitor's REAL
+// active workspace (doing it for every hovered/selected cross-workspace tile
+// would yank the visible desktop there on every mouse move). So that slot
+// just keeps whatever active/inactive value real focus history last left it,
+// stale by however long ago the workspace was actually visited — one window
+// on a background workspace stayed rendered at its "active" windowrule
+// opacity indefinitely regardless of overview navigation, while its sibling
+// on the very same workspace correctly showed the "inactive" one. Keying the
+// recompute off whether `w` is REALLY the live, on-screen focused window
+// right now (true only on the monitor's real active workspace) instead fixes
+// this: every hidden-workspace tile unconditionally renders with its
+// inactive-opacity windowrule, the only value that can ever be correct for a
+// window nothing is actually looking at.
+float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
   if (!w)
     return 1.0F;
-  float active = w->alphaValue(Desktop::View::WINDOW_ALPHA_ACTIVE);
-  if (w->m_ruleApplicator && w->m_ruleApplicator->opaque().valueOrDefault())
-    active = 1.0F;
+  float active = 1.0F;
+  if (w->m_ruleApplicator) {
+    static auto PACTIVEALPHA =
+        CConfigValue<Config::FLOAT>("decoration:active_opacity");
+    static auto PINACTIVEALPHA =
+        CConfigValue<Config::FLOAT>("decoration:inactive_opacity");
+    static auto PFULLSCREENALPHA =
+        CConfigValue<Config::FLOAT>("decoration:fullscreen_opacity");
+    if (Fullscreen::controller()->isFullscreen(w,
+                                               Fullscreen::FSMODE_FULLSCREEN)) {
+      active =
+          w->m_ruleApplicator->alphaFullscreen().valueOrDefault().applyAlpha(
+              *PFULLSCREENALPHA);
+    } else {
+      const bool reallyFocused = mon &&
+                                 w->m_workspace == mon->m_activeWorkspace &&
+                                 w == Desktop::focusState()->window();
+      active = reallyFocused
+                   ? w->m_ruleApplicator->alpha().valueOrDefault().applyAlpha(
+                         *PACTIVEALPHA)
+                   : w->m_ruleApplicator->alphaInactive()
+                         .valueOrDefault()
+                         .applyAlpha(*PINACTIVEALPHA);
+    }
+    if (w->m_ruleApplicator->opaque().valueOrDefault())
+      active = 1.0F;
+  }
   const float fade = w->alphaValue(Desktop::View::WINDOW_ALPHA_FADE) *
                      w->alphaValue(Desktop::View::WINDOW_ALPHA_FULLSCREEN) *
                      w->alphaValue(Desktop::View::WINDOW_ALPHA_LAYOUT);
   return std::clamp(active * fade, 0.0F, 1.0F);
 }
 
-// Mirrors IHyprRenderer::shouldBlur(PHLWINDOW) (Renderer.cpp; private there, so
-// re-derived here from the same public bits it reads) — blur-behind is a
-// per-window opt-out (noblur/RGBX windowrules, or a surface Hyprland already
-// knows is fully opaque) gated by the global decoration:blur:enabled toggle,
-// exactly like any window on the real desktop. Without this every preview had
-// blur hard-disabled, so a transparent window showed hard, unblurred edges in
-// the overview instead of the frosted look it actually has.
-bool windowShouldBlur(const PHLWINDOW &w) {
-  if (!w || !w->m_ruleApplicator)
-    return false;
-  static auto PBLUR = CConfigValue<Config::INTEGER>("decoration:blur:enabled");
-  const bool dontBlur = w->m_ruleApplicator->noBlur().valueOrDefault() ||
-                        w->m_ruleApplicator->RGBX().valueOrDefault() ||
-                        w->opaque();
-  return *PBLUR != 0 && !dontBlur;
-}
+// NOTE: a windowShouldBlur() helper used to live here (mirroring
+// IHyprRenderer::shouldBlur), feeding data.blur below. Removed — see
+// renderWindowLive()'s data.blur comment for why Hyprland's own per-surface
+// blur-behind isn't used at all anymore.
 
 } // namespace
 
@@ -166,8 +212,8 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // goal(), so scaling by value() mid-resize fills only part of the box → black
   // side strips. Position cancels in the translate remap below, so only size
   // matters.
-  const auto pos = w->m_realPosition->goal();
-  const auto size = w->m_realSize->goal();
+  const auto pos = w->positionAnimation()->goal();
+  const auto size = w->sizeAnimation()->goal();
   const float logicalW = std::max((float)size.x, 5.F);
   const float logicalH = std::max((float)size.y, 5.F);
   // Over-cover the slot (fill BOTH axes via max + ~1.5px pad), don't just fit
@@ -205,7 +251,63 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
             .renderModif = Render::SRenderModifData{}}));
   });
 
-  g_pHyprRenderer->damageWindow(w);
+  // NOTE: damageWindow(w) used to be called here for every window on every
+  // frame. That is a SELF-SUSTAINING render loop while the overview is open:
+  // damageWindow schedules a compositor frame, the frame runs renderStage →
+  // renderWindowLive for every tile → damageWindow again... → the whole overlay
+  // recomposited at full refresh even with nothing changing (measured ~20% GPU
+  // idle on a Haswell iGPU). Removed. Live previews stay live because the
+  // CLIENT's own surface damage (a new buffer commit, video frames, caret
+  // blink) already schedules the compositor frame that renderWindowLive draws
+  // the fresh texture into; and the open/close/reflow/drag animations force
+  // frames via Overview::damage() (renderStage's `animating` branch). Neither
+  // path needs an explicit poke here.
+
+  // ---- snapshot mode (plugin:gloview:preview_mode == "snapshot") ----
+  // Render ONE CSurfacePassElement from the window's frozen texture instead of
+  // walking the live surface tree. The tree walk is the per-frame cost of the
+  // live path (and every sub-surface it queues); a static texture draws the
+  // same tile for a tiny fraction of the GPU work — measured on a Haswell iGPU
+  // with a playing video tile: overview idle went from ~20% to ~0% Render/3D
+  // busy, and the open/hover/cursor animation still drives frames via the
+  // usual damage() paths (snapshot textures are static, but they're drawn on
+  // whatever frame the overlay renders — nothing about the compositor's
+  // scheduling changes, we just stopped RE-FETCHING the live surface every
+  // frame). Window content changes (video, caret, animation) simply won't
+  // update the preview until the next build — that's the intended tradeoff.
+  // The snapshot is the window's LAST COMMITTED main-surface texture, captured
+  // at build time (updateSnapshots()); sub-surfaces (popups) aren't included.
+  if (g_overview && g_overview->snapshotMode()) {
+    const auto snapIt = g_overview->snapshots().find(w.get());
+    if (snapIt != g_overview->snapshots().end() && snapIt->second &&
+        snapIt->second->ok()) {
+      CSurfacePassElement::SRenderData sdata{};
+      sdata.pMonitor = mon;
+      sdata.when = when;
+      sdata.pos = logicalTL;
+      sdata.w = std::max(size.x, 5.0);
+      sdata.h = std::max(size.y, 5.0);
+      sdata.surface = w->wlSurface()->resource();
+      sdata.localPos = Vector2D{};
+      sdata.mainSurface = true;
+      sdata.texture = snapIt->second;
+      sdata.dontRound = false;
+      sdata.fadeAlpha = windowRealAlpha(w, mon);
+      sdata.alpha = std::clamp(alpha, 0.F, 1.F);
+      sdata.decorate = false;
+      sdata.rounding = roundPx;
+      sdata.roundingPower = roundingPower;
+      sdata.blur = false;
+      sdata.pWindow = w;
+      sdata.clipBox = clipPx;
+      sdata.squishOversized = true;
+      sdata.surfaceCounter = 0;
+      g_pHyprRenderer->m_renderPass.add(makeUnique<CSurfacePassElement>(sdata));
+      return;
+    }
+    // no captured texture yet (window appeared this frame) → fall through to
+    // the live path; updateSnapshots() grabs it next build.
+  }
 
   CSurfacePassElement::SRenderData data{};
   data.pMonitor = mon;
@@ -227,7 +329,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // progress) — both factors multiply in CSurfacePassElement's draw, so either
   // field can carry either one; splitting them this way keeps `alpha` meaning
   // exactly what every call site already passes it as.
-  data.fadeAlpha = windowRealAlpha(w);
+  data.fadeAlpha = windowRealAlpha(w, mon);
   data.alpha = std::clamp(alpha, 0.F, 1.F);
   data.decorate = false;
   data.rounding = roundPx;
@@ -236,7 +338,21 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // noblur/RGBX/ opaque state) instead of a hardcoded `false` — a transparent
   // preview otherwise showed hard edges instead of the frosted look the window
   // actually has on the real desktop.
-  data.blur = windowShouldBlur(w);
+  // Hyprland's own per-surface blur-behind is unreliable for us: verified
+  // against the pinned source, its internal optimization path is decided by a
+  // GLOBAL renderer field (m_renderData.currentWindow) that Hyprland's own
+  // per-window render loop sets — a loop we never go through, since these
+  // surfaces are queued out-of-band via our own render-modif translate+scale
+  // trick. That field ends up holding whichever window Hyprland's real desktop
+  // last rendered normally, not the tile actually being drawn, which is why
+  // windows came out fully opaque specifically once there were 2+ of them
+  // sharing a workspace. Two earlier attempts to compensate for this (forcing
+  // blockBlurOptimization=true, and drawing our own live-blurred backing rect)
+  // both introduced their own new visual bugs, so this stays simple and
+  // low-risk instead: blur is just off, and drawPreviewTile's backing rect
+  // alpha (< 1.0) is what lets transparent windows read as translucent instead
+  // of solid — see its comment.
+  data.blur = false;
   data.pWindow = w;
   data.clipBox = clipPx;
   data.squishOversized = true;
@@ -287,6 +403,9 @@ public:
   std::vector<UP<IPassElement>> draw() override {
     if (!m_owner)
       return {};
+    // Immediate GL calls read Hyprland's own clipBox, scoped per queued element
+    // elsewhere — clear it here so leftovers can't eat a ring edge.
+    g_pHyprRenderer->m_renderData.clipBox = CBox();
     switch (m_phase) {
     case Phase::Back:
       m_owner->renderBackdrop();
@@ -371,14 +490,25 @@ double Overview::tileProgress(int i) const {
   const int n = static_cast<int>(m_tiles.size());
   if (n <= 1)
     return base;
-  const double spread = std::min(0.35, 0.05 * n); // total cascade window
+  // Cascade window, deliberately tight: tiles used to fan out over up to 35%
+  // of the whole duration (0.05 * n, capped at 0.35), which read as a loose
+  // scatter of individually-arriving tiles rather than one cohesive motion —
+  // "not smooth, not monolithic". Capped much lower now so the whole grid
+  // reads as a single group gliding together, with just enough offset left
+  // to still hint at depth/order rather than a dead-flat snap.
+  const double spread = std::min(0.08, 0.015 * n); // total cascade window
   const double start = spread * (static_cast<double>(i) / (n - 1));
   const double span = std::max(0.001, 1.0 - spread);
   return std::clamp((base - start) / span, 0.0, 1.0);
 }
 
 LRect Overview::currentBox(const Tile &t, int i) const {
-  const double e = easeOutBack(tileProgress(i));
+  // Plain smooth deceleration instead of easeOutBack's overshoot/"pop" — the
+  // bounce is a nice touch in isolation but combined with the (now much
+  // shorter) stagger above it read as jerky rather than fluid, since each
+  // tile's own little bounce landed at a visibly different moment. A single
+  // shared curve with no overshoot is what actually reads as "monolithic".
+  const double e = easeOutCubic(tileProgress(i));
   const auto &a = t.natural;
   const auto &b = t.target;
   return LRect{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
@@ -413,11 +543,6 @@ void Overview::updateAnimation() {
 void Overview::renderStage(eRenderStage stage) {
   if (!m_active)
     return;
-  // captureSnapshots drives a nested render pass that re-emits render-stage
-  // events; without this guard we'd re-add the overlay pass mid-snapshot →
-  // reentrant render → SEGV.
-  if (m_capturing)
-    return;
   const auto rm = g_pHyprRenderer->m_renderData.pMonitor.lock();
   const auto m = m_monitor.lock();
   // RENDER_LAST_MOMENT is after the top/overlay layers (bars), so the overview
@@ -434,6 +559,8 @@ void Overview::renderStage(eRenderStage stage) {
 
   updateHover(); // keep hover fresh even when the pointer is warped, not moved
   syncTiles(); // window opened/closed/moved on this workspace → reflow the grid
+  updateSnapshots(); // snapshot mode: grab any tile/strip window we don't have
+                     // a frozen texture for yet (cheap: contains() + refcount)
 
   // Live workspace changed underneath us — a passthrough keybind we don't
   // intercept ourselves (`workspace N`, a waybar/widget click, anything outside
@@ -457,6 +584,14 @@ void Overview::renderStage(eRenderStage stage) {
       buildTiles();
       buildStrip();
       layoutTiles();
+      // Do NOT clearBlurCache() here — the blur cache depends only on the
+      // backdrop source (frozen wallpaper layers or a live mpv texture), not
+      // on which workspace is displayed.  A workspace switch between two
+      // non-mpv workspaces shares the same wallpaper source, so re-blurring
+      // would introduce unnecessary per-frame variation into the cached result
+      // (visible as a ~20 % brightness shift on the backdrop).  The identity
+      // check inside renderBackdrop handles transitions to/from workspaces
+      // with a featured fullscreen mpv window.
       if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
         m_selected = m_tiles.empty() ? -1 : 0;
       damage();
@@ -533,26 +668,260 @@ void Overview::renderStage(eRenderStage stage) {
   // Every actual change during a session (a tab step, a hover/selection change,
   // a click) already calls damage() itself (stepAltTab, moveSelection,
   // updateHover, …), so nothing needs a per-frame poke on top of that.
-  const bool animating =
-      m_reflowing || m_newCardAnim || m_dragging || m_recaptureLeft > 0 ||
-      (m_opening && m_progress < 1.0) || (!m_opening && m_progress > 0.0);
+  const bool animating = m_reflowing || m_newCardAnim || m_dragging ||
+                         (m_opening && m_progress < 1.0) ||
+                         (!m_opening && m_progress > 0.0);
   if (animating)
     damage();
 }
 
-void Overview::renderBackdrop() const {
+SP<Render::ITexture> Overview::backdropSource(bool &live) const {
+  live = false;
   const auto m = m_monitor.lock();
   if (!m)
+    return nullptr;
+  const auto fsBg = cfgInt("plugin:gloview:fullscreen_background", 0);
+  if (fsBg) {
+    const auto ws = m_workspace.lock();
+    for (const auto &w : Desktop::windowState()->windows()) {
+      if (!w || w->isHidden() || !w->m_isMapped || w->m_workspace != ws)
+        continue;
+      if (!Fullscreen::controller()->isFullscreen(w))
+        continue;
+      if (w->m_class != "mpv")
+        continue;
+      const auto surf = w->wlSurface() ? w->wlSurface()->resource()
+                                       : SP<CWLSurfaceResource>{};
+      if (surf && surf->m_current.texture && surf->m_current.texture->ok() &&
+          surf->m_current.size.x > 0 && surf->m_current.size.y > 0) {
+        live = true; // a playing video: re-blur every frame, don't cache
+        return surf->m_current.texture;
+      }
+    }
+  }
+  if (m->m_background && m->m_background->ok())
+    return m->m_background;
+  return nullptr;
+}
+
+SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
+  const auto m = m_monitor.lock();
+  if (!m || !g_pHyprOpenGL || !g_pHyprRenderer)
+    return nullptr;
+
+  // (Re)allocate the source FBO at the monitor's pixel size.
+  bool needRedraw = false;
+  if (!m_backdropSrcFB) {
+    m_backdropSrcFB = g_pHyprRenderer->createFB("gloview backdrop");
+    needRedraw = true;
+  }
+  if (!m_backdropSrcFB->isAllocated() ||
+      m_backdropSrcFB->m_size != Vector2D(W, H)) {
+    m_backdropSrcFB->alloc(W, H);
+    needRedraw = true;
+    m_backdropDrawn = false;
+  }
+
+  // Once drawn for this overview session, just return the cached FBO texture —
+  // wallpaper layers are static and a re-draw could pick up transient window
+  // content captured by a wallpaper engine that screen-captures the composited
+  // desktop for its rendering effects.
+  if (m_backdropDrawn && !needRedraw)
+    return m_backdropSrcFB->getTexture();
+
+  // Bind the FBO as both the GL target AND the renderer's currentFB (the
+  // immediate-mode renderRect/renderTexture draw into currentFB), then restore
+  // both plus the GL viewport on exit.
+  const auto oldFB = g_pHyprRenderer->m_renderData.currentFB;
+  GLint oldVp[4];
+  glGetIntegerv(GL_VIEWPORT, oldVp);
+  m_backdropSrcFB->bind();
+  g_pHyprRenderer->m_renderData.currentFB = m_backdropSrcFB;
+  g_pHyprOpenGL->setViewport(0, 0, W, H);
+  Hyprutils::Utils::CScopeGuard guard([&] {
+    g_pHyprRenderer->m_renderData.currentFB = oldFB;
+    if (oldFB)
+      oldFB->bind();
+    g_pHyprOpenGL->setViewport(oldVp[0], oldVp[1], oldVp[2], oldVp[3]);
+  });
+
+  // 1. Solid background color under everything (never read currentFB — it can
+  // hold a solitary fullscreen window that bypasses shouldRenderWindow).
+  static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
+  g_pHyprOpenGL->renderRect(CBox(0, 0, W, H), argb(*PBG, 1.0), {});
+
+  // 2. Hyprland's own wallpaper texture, cover-fit like renderBackground.
+  if (m->m_background && m->m_background->ok()) {
+    const double MONRATIO = static_cast<double>(W) / H;
+    const double WPRATIO =
+        m->m_background->m_size.x / m->m_background->m_size.y;
+    double scale;
+    Vector2D origin;
+    if (MONRATIO > WPRATIO) {
+      scale = static_cast<double>(W) / m->m_background->m_size.x;
+      origin.y = (H - m->m_background->m_size.y * scale) / 2.0;
+    } else {
+      scale = static_cast<double>(H) / m->m_background->m_size.y;
+      origin.x = (W - m->m_background->m_size.x * scale) / 2.0;
+    }
+    g_pHyprOpenGL->renderTexture(m->m_background,
+                                 CBox{origin.x, origin.y,
+                                      m->m_background->m_size.x * scale,
+                                      m->m_background->m_size.y * scale},
+                                 {.a = 1.0F});
+  }
+
+  // 3. Every wallpaper engine's background/bottom layer-shell surface
+  // (noctalia, swaybg, swww, hyprpaper, ...).
+  const double s = m->m_scale;
+  for (const int li : {0, 1}) { // LAYER_BACKGROUND, LAYER_BOTTOM
+    for (const auto &lr : m->m_layerSurfaceLayers[li]) {
+      const auto layer = lr.lock();
+      if (!layer || !layer->m_mapped || !layer->visible() ||
+          !layer->wlSurface() || !layer->wlSurface()->resource())
+        continue;
+      const auto surf = layer->wlSurface()->resource();
+      if (!surf->m_current.texture || !surf->m_current.texture->ok())
+        continue;
+      const auto pos =
+          layer->position(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+      const auto sz = layer->size(Desktop::View::IGeometric::GEOMETRIC_CURRENT);
+      if (sz.x < 1.0 || sz.y < 1.0)
+        continue;
+      const float a = layer->alpha()[Desktop::View::LS_ALPHA_FADE]->value();
+      g_pHyprOpenGL->renderTexture(
+          surf->m_current.texture,
+          pxb(CBox{pos.x - m->m_position.x, pos.y - m->m_position.y, sz.x,
+                   sz.y},
+              s),
+          {.a = a});
+    }
+  }
+
+  m_backdropDrawn = true;
+  return m_backdropSrcFB->getTexture();
+}
+
+void Overview::renderBackdrop() const {
+  const auto m = m_monitor.lock();
+  if (!m || !g_pHyprRenderer || !g_pHyprOpenGL)
     return;
   const double e = eased();
-  const auto col =
-      argb(cfgColor("plugin:gloview:backdrop_color", 0x73070a10), e);
+  const auto col = argb(cfgColorScheme("backdrop_color", "0x73070a10"), e);
   if (col.a <= 0.0)
     return;
   const double s = m->m_scale;
-  g_pHyprOpenGL->renderRect(
-      pxb(CBox(0, 0, m->m_size.x, m->m_size.y), s), col,
-      {.blur = blurEnabled(), .blurA = static_cast<float>(e) * blurStrength()});
+  const auto fullPx = pxb(CBox(0, 0, m->m_size.x, m->m_size.y), s);
+  const int W = m->m_pixelSize.x;
+  const int H = m->m_pixelSize.y;
+  const float blurA = static_cast<float>(e) * blurStrength();
+
+  if (!blurEnabled()) {
+    // ---- No-blur backdrop ----
+    g_pHyprOpenGL->renderRect(fullPx, col, {});
+    return;
+  }
+
+  // ---- Cached-blur backdrop ----
+  // The blurred backdrop depends only on the desktop behind it, which is
+  // static while the overview is open (shouldRenderWindow hides every window),
+  // so the blur result is identical every frame — we blur ONCE into a private
+  // FBO and blit that FBO's texture on all subsequent frames (one cheap
+  // textured quad). The blur itself is our own tunable filter (blur_passes /
+  // blur_size / blur_resolution), NOT Hyprland's global-decoration pipeline:
+  // it downscales to 1/resolution, runs `passes` separable gaussians with
+  // LINEAR filtering throughout, and upscales — smooth, no "stepping".
+  if (m_blurDirty || !m_blurCacheFB || !m_blurCacheFB->isAllocated()) {
+    // (Re)allocate the cache at the monitor's pixel size.
+    if (!m_blurCacheFB)
+      m_blurCacheFB = g_pHyprRenderer->createFB("gloview blur");
+    if (!m_blurCacheFB->isAllocated() ||
+        m_blurCacheFB->m_size != Vector2D(W, H))
+      m_blurCacheFB->alloc(W, H);
+
+    // The blur filter manages projection/fbSize/viewport for its intermediate
+    // FBOs; we hold the surrounding state so the rest of the frame is intact.
+    // RPT_EXPORT + fbSize=(W,H) is also what the backdrop source render
+    // (renderBackdropSource) and the mpv/wallpaper blur need for pixel coords.
+    const auto oldProjType = g_pHyprRenderer->m_renderData.projectionType;
+    const auto oldFbSize = g_pHyprRenderer->m_renderData.fbSize;
+    g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
+    g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
+
+    // Source: the wallpaper texture (static, reliable) or — with the
+    // fullscreen_background feature — the displayed workspace's fullscreen mpv
+    // surface (a live video). We deliberately do NOT read currentFB here, for
+    // two reasons: (1) a fullscreen window on the active workspace renders
+    // through Hyprland's "solitary client" fast path in renderMonitor, which
+    // calls renderWindow DIRECTLY — bypassing shouldRenderWindow entirely — so
+    // currentFB holds that window and the blur shows it as the backdrop
+    // ("the foot terminal instead of the wallpaper"); (2) a workspace that
+    // never re-renders leaves currentFB holding a stale pre-overview frame.
+    bool liveSrc = false;
+    auto src = backdropSource(liveSrc);
+    if (!src)
+      src = renderBackdropSource(W, H); // wallpaper layers → FBO texture
+    // Invalidate the cached blur only when the BLUR SOURCE TEXTURE changes.
+    // The source is either the live mpv texture (featured fullscreen mpv) or
+    // the frozen wallpaper FBO (static layers).  A workspace switch between
+    // two non-mpv workspaces shares the same wallpaper source — re-blurring
+    // would introduce unnecessary per-frame variation into the cached result,
+    // visible as a ~20 % brightness shift / texture difference on the backdrop.
+    const void *curMpv = liveSrc ? src.get() : nullptr;
+    if (curMpv != m_cachedBackdropMpv) {
+      m_cachedBackdropWs = static_cast<void *>(m_workspace.lock().get());
+      m_cachedBackdropMpv = const_cast<void *>(curMpv);
+      m_blurDirty = true;
+    }
+    if (!src) {
+      // Even the background render produced nothing — fall back to an opaque
+      // background-color rect + dim so the backdrop is never blank or leaking.
+      m_blurDirty = true; // retry in case a wallpaper appears later
+      static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
+      g_pHyprOpenGL->renderRect(fullPx, argb(*PBG, 1.0), {});
+      g_pHyprOpenGL->renderRect(fullPx, col, {});
+      g_pHyprRenderer->m_renderData.fbSize = oldFbSize;
+      g_pHyprRenderer->setProjectionType(oldProjType);
+      return;
+    }
+
+    m_blurFilter.prepare(blurPasses(), static_cast<float>(blurSize()),
+                         blurResolution(), blurA);
+    const bool ok = m_blurFilter.render(src, m_blurCacheFB, W, H, col);
+
+    // Restore the renderer state we borrowed.
+    g_pHyprRenderer->m_renderData.fbSize = oldFbSize;
+    g_pHyprRenderer->setProjectionType(oldProjType);
+    const auto PMON = g_pHyprRenderer->m_renderData.pMonitor;
+    g_pHyprOpenGL->setViewport(0, 0, PMON ? (int)PMON->m_pixelSize.x : W,
+                               PMON ? (int)PMON->m_pixelSize.y : H);
+
+    if (!ok) {
+      // Blur unavailable — never leave currentFB exposed (it can hold a
+      // solitary fullscreen window that bypasses shouldRenderWindow, e.g.
+      // during a workspace-switch animation).  Cover it with an OPAQUE
+      // background rect + dim overlay, not a mere translucent dim.
+      m_blurDirty = true;
+      static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
+      g_pHyprOpenGL->renderRect(fullPx, argb(*PBG, 1.0), {});
+      g_pHyprOpenGL->renderRect(fullPx, col, {});
+      return;
+    }
+
+    m_blurDirty = liveSrc; // a playing video stays dirty → re-blur each frame
+  }
+
+  // Cheap path: blit the cached blurred backdrop to the screen.
+  const auto tex = m_blurCacheFB ? m_blurCacheFB->getTexture() : nullptr;
+  if (tex && tex->ok())
+    g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = 1.0F});
+  else {
+    // Cache unavailable — never leave currentFB exposed (see blur-fail
+    // path above).  Draw an opaque background rect + dim overlay.
+    static auto PBG2 = CConfigValue<Config::INTEGER>("misc:background_color");
+    g_pHyprOpenGL->renderRect(fullPx, argb(*PBG2, 1.0), {});
+    g_pHyprOpenGL->renderRect(fullPx, col, {});
+  }
 }
 
 void Overview::renderStrip() const {
@@ -569,8 +938,14 @@ void Overview::renderStrip() const {
 
   // translucent band behind the cards (kept faint per request)
   const auto bandCol =
-      argb(cfgColor("plugin:gloview:strip_band_color", 0x24ffffff), e);
-  const bool blur = blurEnabled();
+      argb(cfgColorScheme("strip_band_color", "0x24ffffff"), e);
+  const bool blur = false; // strip band never uses native blur: it samples
+                           // currentFB which can hold a solitary fullscreen
+                           // window (the workspace-switch fast path bypasses
+                           // shouldRenderWindow), leaking window content into
+                           // the band's blurred overlay.  The self-blur
+                           // backdrop already handles the blur behind the
+                           // strip — a flat band colour is sufficient.
   const LRect bandR = stripBand();
   const Vector2D slide =
       stripSlide(e); // slide the whole strip in from its edge
@@ -580,16 +955,17 @@ void Overview::renderStrip() const {
       bandCol, {.blur = blur, .blurA = static_cast<float>(e) * blurStrength()});
 
   const int cardRound = cfgInt("plugin:gloview:strip_card_round", 10);
-  const auto cardBg =
-      argb(cfgColor("plugin:gloview:strip_card_color", 0x3a0e131c), e);
+  const auto cardBg = argb(cfgColorScheme("strip_card_color", "0x3a0e131c"), e);
   const auto activeBg =
-      argb(cfgColor("plugin:gloview:strip_active_color", 0x4d1c2c44), e);
+      argb(cfgColorScheme("strip_active_color", "0x4d1c2c44"), e);
   const auto activeLine =
-      argb(cfgColor("plugin:gloview:strip_active_border", 0xf0ffffff), e);
+      argb(cfgColorScheme("strip_active_border", "0xf0ffffff"), e);
   const auto hoverLine =
-      argb(cfgColor("plugin:gloview:strip_hover_border", 0x80ffffff), e);
+      argb(cfgColorScheme("strip_hover_border", "0x80ffffff"), e);
   const auto plusCol =
-      argb(cfgColor("plugin:gloview:strip_plus_color", 0xd0eef4ff), e);
+      argb(cfgColorScheme("strip_plus_color", "0xd0eef4ff"), e);
+  const auto allCol = argb(cfgColorScheme("strip_all_color", "0xd0eef4ff"),
+                           e); // own key, no longer plusCol
   // Expo indicator: when all-workspaces is active, the "All" card (if present)
   // lights up active-style; otherwise outline every real card for feedback. The
   // live workspace keeps its activeBg fill either way.
@@ -652,7 +1028,7 @@ void Overview::renderStrip() const {
         for (int col = 0; col < 2; ++col)
           g_pHyprOpenGL->renderRect(
               pxb(CBox(gx + col * (cw + cg), gy + r * (ch + cg), cw, ch), s),
-              plusCol, {.round = pxr(2, s)});
+              allCol, {.round = pxr(2, s)});
     } else {
       // Opaque backing per window slot: the live surface (queued on top by
       // renderStripWindows) may carry transparency, so without it the
@@ -681,15 +1057,26 @@ void Overview::renderStrip() const {
                              static_cast<int>(j) == m_pressStripWin &&
                              !(m_dragging && m_pressStripItem >= 0);
         if (grabbed) {
-          const double gt = 2.0;
-          g_pHyprOpenGL->renderRect(
-              pxb(CBox(wb.x - gt, wb.y - gt, wb.w + 2 * gt, wb.h + 2 * gt), s),
-              argb(cfgColor("plugin:gloview:hover_border", 0xf0ffffff), e),
-              {.round = pxr(wRound + static_cast<int>(gt), s),
-               .roundingPower = roundPow});
+          const Config::CGradientValueData grad(
+              argb(cfgColorScheme("hover_border", "0xf0ffffff"), e));
+          g_pHyprOpenGL->renderBorder(
+              pxb(wb, s), grad,
+              {.round = pxr(wRound, s),
+               .roundingPower = roundPow,
+               .borderSize = 2,
+               .a = 1.0F,
+               .outerRound = outerRoundPx(wRound, 2, roundPow, s)});
         }
+        // Thin near-invisible backing — see drawPreviewTile's comment
+        // (overview_tiles_render.cpp) for the full reasoning: this used to be a
+        // flat opaque/semi-opaque tint standing in for "whatever's really
+        // behind the window", which is exactly what made transparent previews
+        // look more solid than the real desktop. The window's own config-driven
+        // alpha (fadeAlpha, computed the same way as any real Hyprland window)
+        // now blends almost entirely against the strip band's own already-drawn
+        // content instead.
         g_pHyprOpenGL->renderRect(
-            pxb(wb, s), argb(0xff14181f, e),
+            pxb(wb, s), argb(0xff14181f, 0.08 * e),
             {.round = pxr(wRound, s), .roundingPower = roundPow});
       }
     }
@@ -766,7 +1153,7 @@ void Overview::renderStripButtons() const {
       const double rad = br.w / 2.0;
       g_pHyprOpenGL->renderRect(
           pxb(box(br), s),
-          argb(cfgColor("plugin:gloview:close_button_color", 0xe6e23b3b), e),
+          argb(cfgColorScheme("close_button_color", "0xe6e23b3b"), e),
           {.round = pxr(rad, s)});
       if (m_closeGlyph && m_closeGlyph->m_size.x > 0) {
         const double gw = m_closeGlyph->m_size.x * 0.62,
@@ -878,8 +1265,8 @@ void Overview::renderAboveLayers() const {
         continue;
 
       const auto pos =
-          ls->m_realPosition->value(); // absolute logical (layout) coords
-      const auto size = ls->m_realSize->value();
+          ls->positionAnimation()->value(); // absolute logical (layout) coords
+      const auto size = ls->sizeAnimation()->value();
       if (!(size.x > 0 && size.y > 0))
         continue;
 
@@ -921,18 +1308,17 @@ void Overview::renderAboveLayers() const {
 }
 
 void Overview::renderCursorOnTop() const {
-  // Hyprland composites the software cursor before our RENDER_LAST_MOMENT pass,
-  // so the backdrop paints over it. Redraw on top so the pointer stays visible
-  // while up.
+  // Delegate to the cursor module: a hardware cursor (KMS plane) is
+  // composited above the framebuffer by the display hardware, so it's always
+  // visible over the dim backdrop with zero framebuffer writes — no redraw,
+  // no erase, no trails, zero GPU cost per move. Only when no HW cursor is
+  // available does the module draw a software cursor (with an opaque erase
+  // rect over the previous position to prevent trails).
   const auto m = m_monitor.lock();
-  if (!m || !g_pPointerManager || !g_pHyprOpenGL)
+  if (!m)
     return;
-  const auto tex = g_pPointerManager->getCurrentCursorTexture();
-  if (!tex)
-    return;
-  const CBox g = g_pPointerManager->getCursorBoxGlobal();
-  const CBox lb(g.x - m->m_position.x, g.y - m->m_position.y, g.w, g.h);
-  g_pHyprOpenGL->renderTexture(tex, pxb(lb, m->m_scale), {.a = 1.0F});
+  m_cursor.renderOnTop(
+      m, argb(cfgColorScheme("backdrop_color", "0x73070a10"), 1.0));
 }
 
 double Overview::newCardScale() const {

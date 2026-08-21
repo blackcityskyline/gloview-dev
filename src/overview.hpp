@@ -7,7 +7,6 @@
 #include <vector>
 
 #include <hyprland/src/SharedDefs.hpp>
-#include <hyprland/src/config/values/types/ColorValue.hpp>
 #include <hyprland/src/config/values/types/FloatValue.hpp>
 #include <hyprland/src/config/values/types/IntValue.hpp>
 #include <hyprland/src/config/values/types/StringValue.hpp>
@@ -22,8 +21,16 @@
 
 namespace Render {
 class ITexture;
+class IFramebuffer;
+} // namespace Render
+
+namespace Config {
+class CGradientValueData; // general:col.active_border / inactive_border's real
+                          // type
 }
 
+#include "blur.hpp"
+#include "cursor.hpp"
 #include "layout.hpp"
 
 class CFunctionHook;
@@ -37,10 +44,15 @@ namespace gloview {
 // from a Lua `hl.config{}` config — it returned the registered default, so
 // every setting looked like it "did nothing" under a Lua config. Reading the
 // IValue directly works for both the legacy/ini and Lua config frontends.
+//
+// No `colors` map: every plugin:gloview:<color> option is registered as a
+// plain STRING (see cfgColorScheme() in overview_core.cpp) so ONE field can
+// hold either a manual hex literal ("0xf0ffffff") or a scheme-role keyword
+// ("primary" / "secondary" / "error" / …, optionally "role:AA" for a custom
+// alpha) — no separate <name>_source key needed anymore.
 struct ConfigRegistry {
   std::unordered_map<std::string, SP<Config::Values::CIntValue>> ints;
   std::unordered_map<std::string, SP<Config::Values::CStringValue>> strings;
-  std::unordered_map<std::string, SP<Config::Values::CColorValue>> colors;
   std::unordered_map<std::string, SP<Config::Values::CFloatValue>> floats;
 };
 inline ConfigRegistry g_config;
@@ -55,9 +67,10 @@ inline ConfigRegistry g_config;
 //   │     └────┘   └────────┘                         │
 //   └───────────────────────────────────────────────┘
 //
-// The whole thing is drawn compositor-side from window snapshots over a blurred
-// backdrop; real windows are hidden while it is up. Layout math lives in
-// layout.hpp so it can be tweaked independently.
+// The whole thing is drawn compositor-side from windows' own LIVE surfaces over
+// a blurred backdrop (queued CSurfacePassElements, not snapshots); real windows
+// are hidden while it is up. Layout math lives in layout.hpp so it can be
+// tweaked independently.
 class Overview {
 public:
   explicit Overview(HANDLE handle);
@@ -85,6 +98,17 @@ public:
   // wired to Hyprland's event bus / render pass
   void renderStage(eRenderStage stage);
   void renderBackdrop() const;
+  // The texture the backdrop blur is sourced from (the wallpaper, or — with
+  // fullscreen_background=1 — the fullscreen mpv window on the displayed
+  // workspace). `live` reports whether that source is a playing video, which
+  // must be re-blurred every frame instead of cached.
+  SP<Render::ITexture> backdropSource(bool &live) const;
+  // Renders the true desktop background (background color, Hyprland's internal
+  // wallpaper texture if any, and every BACKGROUND/BOTTOM layer-shell surface —
+  // i.e. any wallpaper engine: noctalia, swaybg, swww, hyprpaper, ...) into the
+  // private m_backdropSrcFB at W x H and returns its texture, or nullptr if
+  // even that is unavailable.
+  SP<Render::ITexture> renderBackdropSource(int W, int H) const;
   void renderStrip() const;
   void
   renderStripWindows() const; // live window surfaces inside the strip cards
@@ -99,8 +123,9 @@ public:
       const; // per-window "✕", drawn after the tiles' live surfaces
   void
   renderDragTile() const; // the picked-up tile's chrome, drawn over the strip
-  void renderDragWindow() const;  // the picked-up tile's live surface
-  void renderCursorOnTop() const; // redraw the SW cursor over our overlay
+  void renderDragWindow() const; // the picked-up tile's live surface
+  void renderCursorOnTop()
+      const; // hardware or software cursor over our overlay (sees HW/SW split)
   bool isAboveLayer(const std::string &ns) const;
   void renderAboveLayers() const; // re-render opted-in TOP/OVERLAY layer
                                   // surfaces on top of the overview
@@ -111,26 +136,31 @@ public:
   void updateHover(); // recompute hovered tile/card from current cursor pos
   void onKey(const IKeyboard::SKeyEvent &e, bool &cancel);
   bool shouldHideWindow(const PHLWINDOW &w, const PHLMONITOR &m) const;
-  // true while capturing the given window's snapshot: forces Hyprland to render
-  // it even though it sits on an inactive workspace (otherwise the snapshot is
-  // blank → grey preview). Checked before shouldHideWindow in the render hook.
-  bool forceRenderWindow(const PHLWINDOW &w) const;
+  [[nodiscard]] bool isTileWindow(
+      const PHLWINDOW &w) const; // is w one of our
+                                 // tile windows?
+                                 // (distinguishes live-damage-worthy
+                                 // tile previews from hidden
+                                 // non-tile windows in hkDamageSurface)
 
   [[nodiscard]] bool active() const { return m_active; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
+  [[nodiscard]] const std::unordered_map<void *, SP<Render::ITexture>> &
+  snapshots() const { // read by renderWindowLive() for the static-texture path
+    return m_snapshots;
+  }
+  [[nodiscard]] bool
+  snapshotMode() const; // plugin:gloview:preview_mode == "snapshot" (queried
+                        // by renderWindowLive too)
 
 private:
   struct Tile {
     PHLWINDOWREF win;
     LRect natural; // monitor-local logical: real place (goal); animation start
     LRect target;  // monitor-local logical: grid slot
-    LRect snapSource; // window's frozen position when its snapshot was taken;
-                      // crop source
     SP<Render::ITexture> label; // cached window title, shown on hover
-    bool captured = false; // snapshot was (re)taken THIS session; guards stale
-                           // persistent FBs
   };
 
   struct StripWin {
@@ -173,10 +203,6 @@ private:
   // deactivate AFTER the pass is built, so the NEXT frame's early window
   // decision sees m_active=false and renders the real windows cleanly.
   bool m_pendingDeactivate = false;
-  bool m_capturing = false;  // true during captureSnapshots so windows aren't
-                             // hidden from makeSnapshot
-  PHLWINDOWREF m_captureWin; // the window whose snapshot is being taken
-                             // (force-rendered even if off-workspace)
   double m_progress = 0.0;
   std::chrono::steady_clock::time_point m_animStart;
   // A post-move reflow glides the tiles into their new slots WITHOUT re-running
@@ -191,13 +217,6 @@ private:
                                   // (exit_on_switch)
   std::vector<Tile> m_tiles;
   std::vector<StripItem> m_strip;
-  // window* -> monitor-local logical rect its persistent snapshot FB content
-  // sits in, recorded only when the window was SETTLED (value≈goal, client
-  // buffer matches its box) at capture. Lets a window retiled on a hidden
-  // workspace (frozen value!=goal, stale-size buffer) reuse its last good
-  // snapshot instead of re-snapshotting into a stretched/black thumbnail.
-  // Persists across the per-open tile/strip rebuilds.
-  std::unordered_map<void *, LRect> m_snapGeom;
   // layer surfaces (bars/popups) we faded out while up, with their pre-hide
   // alpha goal, so deactivate() restores them exactly — even if config changed
   // meanwhile.
@@ -205,6 +224,16 @@ private:
   int m_hovered = -1;      // index into m_tiles
   int m_hoveredStrip = -1; // index into m_strip
   int m_selected = -1;     // keyboard-nav cursor into m_tiles
+  // Window explicitly committed via focusAndClose() (Enter / click on a tile,
+  // possibly cross-workspace) whose real focus must survive the async
+  // close-animation teardown. CMonitor::changeWorkspace()'s own auto-focus —
+  // both the one deactivate() may trigger directly and the one chained
+  // synchronously inside fullWindowFocus()'s own cross-workspace path —
+  // resolves via CWorkspace::getLastFocusedWindow(), which can still land on
+  // whatever was ACTUALLY focused there before this session. Re-asserting
+  // this window one more time at the very end of deactivate() guarantees the
+  // committed choice wins over stale focus history (see its comment there).
+  PHLWINDOWREF m_pendingFocus;
 
   // free-arrange "desktop" mode: tiles sit at the windows' real positions and a
   // drag floats + repositions the real window instead of snapping to a grid.
@@ -220,6 +249,12 @@ private:
   // canvas box, monitor-local) so the arrangement survives per-frame rebuilds.
   // Dragging a preview never floats/moves the real window — that stays put.
   std::unordered_map<void *, LRect> m_canvasPos;
+  // plugin:gloview:preview_mode == "snapshot": PHLWINDOW* -> the window's main
+  // surface texture captured at tile-build time. renderWindowLive() renders
+  // this static texture (CSurfacePassElement with data.texture) instead of
+  // walking the LIVE surface tree every frame — see renderWindowLive()'s
+  // comment for the measured win. Keyed by raw pointer; cleared on teardown.
+  std::unordered_map<void *, SP<Render::ITexture>> m_snapshots;
   mutable SP<Render::ITexture>
       m_closeGlyph; // cached "✕" for the desktop-mode close buttons
   mutable std::string m_closeGlyphIcon; // which icon m_closeGlyph currently
@@ -239,11 +274,21 @@ private:
   std::vector<PHLWORKSPACEREF> m_newWorkspaces;
   double m_stripScroll = 0.0; // strip group scroll offset along its main axis
   double m_stripScrollMax = 0.0; // max scroll (0 when the cards fit the band)
-  SP<CEventLoopTimer>
-      m_recaptureTimer; // off-render-loop re-snapshot after a drop
-                        // (makeSnapshot mid-render crashes)
-  int m_recaptureLeft =
-      0; // remaining recapture ticks while windows repaint at their new size
+
+  // plugin:gloview:close_trigger == "doubleclick": a plain click on a tile
+  // normally activates it IMMEDIATELY (focusAndClose), which leaves no room to
+  // detect a second click on the same tile afterward — the overview is simply
+  // gone by then. So in this mode the single click is deferred behind a short
+  // timer instead: a genuine second click on the SAME window before it fires
+  // cancels the deferred activate and closes the window instead (keeping the
+  // overview open), the same single-select-vs-double-open pattern any desktop
+  // file manager uses. See onMouseButton / cancelPendingClick().
+  PHLWINDOWREF m_lastClickWin; // window from the most recent tile click,
+                               // whatever the outcome
+  PHLWINDOWREF
+      m_pendingClickWin; // window the deferred single click would focus+close
+  std::chrono::steady_clock::time_point m_lastClickTime;
+  SP<CEventLoopTimer> m_clickTimer;
 
   // drag-and-drop of a window preview onto a workspace card
   int m_pressTile = -1;              // tile under the press (drag candidate)
@@ -289,20 +334,131 @@ private:
       m_altTabRank; // PHLWINDOW* -> MRU rank, ROTATED so 0 = previously focused
                     // (see buildAltTabRank()); empty = "linear" mode
 
+  // Own, gloview-maintained focus history — buildAltTabRank() reads THIS, not
+  // Desktop::History::windowTracker(). Root-caused bug: syncFocus() (called on
+  // every hover/selection-cursor move WHILE THE OVERVIEW IS OPEN, so
+  // passthrough keybinds like killactive hit the right window — see its own
+  // comment) calls the SAME Desktop::focusState()->fullWindowFocus() a genuine
+  // user action does, which unconditionally emits the real
+  // events.window.active signal — the exact one Hyprland's OWN
+  // WindowHistoryTracker listens to. That means merely BROWSING the Alt-Tab
+  // grid (moving the cursor over candidates, even ones never committed to,
+  // even a session that's cancelled with Escape) permanently rewrites
+  // Hyprland's real, persistent focus history — which a LATER session then
+  // trusted as "what the user genuinely used most recently". That's what made
+  // a single tab often land back on the window the session started on (some
+  // earlier session's incidental cursor sweep had bumped it to the front) and
+  // get worse with more windows (more candidates the cursor sweeps past while
+  // stepping, each one a chance to overwrite real history with UI noise).
+  // buildAltTabRank() previously ONLY guarded against IN-SESSION
+  // contamination (snapshotting before its OWN syncFocus() calls); it never
+  // had a way to undo contamination from a PRIOR session.
+  //
+  // Fix: track focus changes ourselves, listening to the same
+  // events.window.active signal Hyprland's tracker uses, but skip recording
+  // whenever m_suppressHistoryTrack is set — syncFocus() sets it around its
+  // own fullWindowFocus() call and nothing else does, so only genuine commits
+  // (focusAndClose's direct call, deactivate()'s pending-focus reassertion —
+  // see grep for the other two fullWindowFocus() call sites) ever get
+  // recorded. Persists across sessions (never cleared on open/close), same as
+  // Hyprland's own tracker; seeded once from it in initialize() as a one-time,
+  // still-clean bootstrap.
+  std::vector<PHLWINDOWREF> m_focusHistory; // old -> new, mirrors
+                                            // CWindowHistoryTracker's own
+                                            // ordering convention
+  mutable bool m_suppressHistoryTrack =
+      false; // true only for the duration of syncFocus()'s own
+             // fullWindowFocus() call
+
   CHyprSignalListener m_renderStageL;
   CHyprSignalListener m_mouseButtonL;
   CHyprSignalListener m_mouseAxisL;
   CHyprSignalListener m_mouseMoveL;
   CHyprSignalListener m_keyL;
+  CHyprSignalListener m_windowActiveL;
   CFunctionHook *m_shouldRenderHook = nullptr;
-  CFunctionHook *m_shouldRenderWindowHook =
-      nullptr; // one-arg shouldRenderWindow, used by makeSnapshot()
+  CFunctionHook *m_damageSurfaceHook = nullptr;
+
+  // Hardware-accelerated cursor: prefers the KMS cursor plane (zero framebuffer
+  // writes, zero trails, zero GPU work per move). Falls back to a software
+  // cursor that erases its previous position with an opaque backdrop rect.
+  CCursorModule m_cursor;
+
+  // Blur cache: the first frame's backdrop blur result is captured into a
+  // persistent FBO. Every subsequent frame blits that FBO's texture instead
+  // of re-invoking the expensive blur shader. Since the desktop background
+  // doesn't change while the overview is open (all windows are hidden by
+  // shouldRenderWindow), the blur result is identical every frame.
+  // Marked dirty on open, workspace change, tile rebuild, and whenever the
+  // backdrop SOURCE identity changes (see m_cachedBackdropWs / ...Mpv).
+  mutable SP<Render::IFramebuffer> m_blurCacheFB;
+  // Full-res FBO holding the freshly-rendered desktop background (wallpaper
+  // layers) when there's no direct texture source to blur.  Drawn once per
+  // overview session (at open / on layer-surface commits only) so workspace
+  // switches re-blur from the same frozen source — a wallpaper engine that
+  // screen-captures the composited desktop would otherwise introduce window
+  // content (e.g. foot text) into the re-drawn FBO on every re-blur.
+  mutable SP<Render::IFramebuffer> m_backdropSrcFB;
+  mutable bool m_backdropDrawn = false; // false → redraw layers next time
+  mutable bool m_blurDirty = true;
+  void clearBlurCache(); // force re-blur next frame
+  // Cached backdrop-source identity, so the blur cache is invalidated the
+  // instant the workspace or the featured fullscreen mpv window changes —
+  // otherwise a stale cached frame (the previous workspace's live video, or a
+  // black frame captured before a wallpaper layer committed) lingers as the
+  // backdrop. m_cachedMpv == src.get() while the live-video source is active,
+  // else nullptr (wallpaper fallback path, whose source FB is itself stable).
+  mutable void *m_cachedBackdropWs = nullptr;
+  mutable void *m_cachedBackdropMpv = nullptr;
+  // Self-contained blur (own GL program): plugin-tunable blur_passes /
+  // blur_size / blur_resolution, independent of Hyprland's global
+  // decoration:blur:* (which plugins can't override per-call).
+  mutable CBlurFilter m_blurFilter;
 
   // config helpers
   int cfgInt(const char *name, int fallback) const;
   float cfgFloat(const char *name, float fallback) const;
-  Hyprlang::INT cfgColor(const char *name, Hyprlang::INT fallback) const;
   std::string cfgStr(const char *name, const char *fallback) const;
+  void updateSnapshots(); // snapshot mode: refresh m_snapshots from current
+                          // tile windows' last committed textures
+  // plugin:gloview:cursor_mode == "software" forces a software cursor
+  // (lockSoftware + erase+redraw on every frame). Default "auto" lets Hyprland
+  // use its hardware cursor plane when the driver supports one — zero GPU cost
+  // per move, zero framebuffer pollution, zero trails.
+  std::string cursorMode() const;
+  // Unified single-field color read. `base` is the bare option name (no
+  // "plugin:gloview:" prefix), e.g. "hover_border"; `fallback` is that
+  // option's own default written the same way a user would ("0xf0ffffff").
+  // The live config value at plugin:gloview:<base> is ONE string that can be
+  // EITHER:
+  //   - a manual color literal: "0xAARRGGBB" / "0xRRGGBB" / "#AARRGGBB" /
+  //     "#RRGGBB" / bare hex, OR
+  //   - a scheme-role keyword: "primary" | "secondary" | "error"/"danger" |
+  //     "group_active" | "group_inactive" (see schemeGradient()) — RGB comes
+  //     from that live Hyprland gradient, alpha comes from `fallback`'s own
+  //     alpha byte unless overridden with "role:AA" (e.g. "primary:cc").
+  // No separate <base>_source key anymore — one field does both jobs.
+  // Universal by construction: whatever tool (Noctalia/matugen/pywal/wallust/
+  // hand-edited hyprland.conf) set Hyprland's own general:col.*/group:col.*,
+  // variable substitution has already resolved by the time this reads it back.
+  Hyprlang::INT cfgColorScheme(const char *base, const char *fallback) const;
+  // Live Hyprland gradient for a scheme role keyword, or nullptr if `role`
+  // isn't one of the whitelisted names below. DELIBERATELY a closed
+  // whitelist, each entry a compile-time string literal bound the same way
+  // Hyprland's own internal CConfigValue users do (static local, bound once)
+  // — verified against ConfigValues.cpp on the pinned/running source. NEVER
+  // forward an arbitrary user-supplied path into CConfigValue: an unknown
+  // path fails Config::mgr()->getConfigValue()'s RASSERT and calls
+  // raise(SIGABRT) (ConfigValue.cpp), taking down the whole Hyprland session,
+  // not just the plugin — so only these pre-verified literals are reachable,
+  // no matter what a person types in their config.
+  //   primary        -> general:col.active_border
+  //   secondary      -> general:col.inactive_border
+  //   error / danger -> group:col.border_locked_active
+  //   group_active   -> group:col.border_active
+  //   group_inactive -> group:col.border_inactive
+  const Config::CGradientValueData *
+  schemeGradient(const std::string &role) const;
 
   // Which monitor edge the workspace strip is anchored to. Top/Bottom give a
   // horizontal strip (cards in a row); Left/Right give a vertical strip (cards
@@ -330,8 +486,6 @@ private:
   void buildTiles();
   void buildStrip();
   void layoutTiles();
-  void captureSnapshots();
-  void scheduleRecapture(); // arm the off-render-loop re-snapshot timer
   void updateAnimation();
   void deactivate();
   double eased() const; // opacity / backdrop progress
@@ -373,9 +527,17 @@ private:
                                 // every window on that workspace)
   bool closeButtonsAlwaysOn()
       const; // plugin:gloview:close_button_visibility == "always"
+  bool closeOnDoubleClick()
+      const; // plugin:gloview:close_trigger == "doubleclick" — replaces the
+             // per-window "✕" with a double-click/double-tap on the tile
+  void cancelPendingClick(); // drop any pending single-vs-double-click timer
+                             // (see m_clickTimer)
   double
   newCardScale() const; // 0..1(+overshoot) pop-in scale for the just-added card
   float blurStrength() const; // plugin:gloview:blur as 0..1 (float); 0 = off
+  int blurPasses() const;     // plugin:gloview:blur_passes (gauss iterations)
+  int blurSize() const;       // plugin:gloview:blur_size (radius, screen px)
+  int blurResolution() const; // plugin:gloview:blur_resolution (1/N downscale)
   // strip-card window drag (picking up and moving a window straight off the
   // strip)
   LRect
@@ -406,6 +568,11 @@ private:
   // targets the window's real final position instead of animating the stale
   // multi-workspace expo grid and only cutting over once it ends (#5).
   void focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason);
+  // Would focusing `w` right now make Hyprland switch the monitor's REAL
+  // active workspace synchronously (and therefore fire its native
+  // workspace-switch animation immediately)? See its definition in
+  // overview_input.cpp for the source-verified explanation.
+  bool crossesRealWorkspace(const PHLWINDOW &w) const;
   void syncFocus() const; // point Hyprland's real focus at the selected tile
                           // (passthrough keybinds)
   void
