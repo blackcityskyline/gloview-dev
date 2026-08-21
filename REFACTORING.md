@@ -58,22 +58,28 @@ cmake --build build -j$(nproc)   # цель: build/gloview.so, Hyprland 0.56.2, 
 
 Порядок = убывание ценность/риск. Каждый пункт = отдельный коммит + запись в «Результаты».
 
-### Фаза 1 — механическая чистка (нулевой риск) ← ТЕКУЩАЯ
+### Фаза 1 — механическая чистка (нулевой риск)
 
-- [ ] **R1. Blur-кэш: фикс инвалидации + одна структура** — заменить флаги
-      `m_blurDirty/m_backdropDrawn/m_cachedBackdropWs/m_cachedBackdropMpv` на единый кэш
-      `{srcId, fb, valid}` с одним `invalidate()`; проверку идентичности источника вынести
-      ИЗ-ПОД guard'а dirty. Чинит латентный баг застывшего блюра за mpv. Удаляет dead member.
-- [ ] **R2. Общий `overlay_gl.hpp`** — вынести `pxb/pxr/argb/outerRoundPx/clampRound` из двух TU,
-      слить эссе-комментарии в одну копию.
-- [ ] **R3. `LRect::contains()`** + замена 13 копипастных хит-тестов (+ drop-on-strip ×2, dragIdx ×8
-      → `draggedTile()`, capture oldBoxes ×7 → `captureCurrentBoxes()`, release persistent ws ×4).
-- [ ] **R4. main.cpp таблицами** — конфиг-регистрация таблицей `{name,type,default}`;
-      реестр действий `{name,fn}` → генерация диспетчеров/hyprctl/Lua-обёрток из одной таблицы.
-- [ ] **R5. Tween-утилита** (~20 строк): collapse `m_progress/m_reflowing/m_newCardAnim`,
-      убрать back-dating хаки. Оставить m_clickTimer (другой домен).
+- [x] **R1. Blur-кэш: фикс инвалидации + одна структура** — заменена четвёрка
+      `m_blurDirty/m_blurCacheFB/m_cachedBackdropWs/m_cachedBackdropMpv` на
+      `BlurCache{fb, srcId, valid}` с `invalidate()/drop()`; проверка идентичности
+      источника вынесена ИЗ-ПОД guard'а dirty — чинит латентный баг застывшего
+      блюра за mpv. `clearBlurCache()` удалён.
+- [x] **R2. Общий `overlay_gl.hpp`** — `pxb/pxr/argb/outerRoundPx/clampRound`
+      вынесены из двух TU, эссе-комментарии слиты в одну каноническую копию.
+- [x] **R3. Хит-тесты и хвостовые циклы** — `LRect::contains()` заменил 13
+      копипаст; `tileAt()/stripItemAt()/draggedTile()/dropOnStripCard()/
+      captureCurrentBoxes()/releaseNewWorkspaces()` дедуплицировали сканы,
+      dragIdx ×7, oldBoxes ×6, release-persistent-ws ×4.
+- [x] **R4. main.cpp таблицами** — 80 конфигов → три constexpr-таблицы;
+      утроенный реестр действий → один `kActions{name,hyprctl,lua,invoke}`
+      + три цикла регистрации (Lua — через stateless `luaInvoke<I>`).
+- [x] **R5. Tween-утилита** — `Tween{begin/seek/pinEnd/raw}` заменил три ручных
+      часа (`m_animStart/m_reflowStart/m_newCardStart`); back-dating хаки в
+      close()/replayReflow()/switchToWorkspace() стали явными seek/pinEnd;
+      `animDuration()/newCardDur()` централизовали полы длительности.
 
-### Фаза 2 — структурная (низкий/средний риск)
+### Фаза 2 — структурная (низкий/средний риск) ← ТЕКУЩАЯ
 
 - [ ] **R6. Курсор**: исследовать перенос оверлея ДО курсорного прохода Hyprland → удалить
       `cursor.*` целиком (~210 стр). Если нельзя — хотя бы фикс local/global координат в moveDamage.
@@ -94,9 +100,24 @@ cmake --build build -j$(nproc)   # цель: build/gloview.so, Hyprland 0.56.2, 
 
 *(заполняется по мере выполнения)*
 
-| Шаг | Дата | Коммит | Δ строк | Заметки |
+| Шаг | Дата | Коммит | Δ | Заметки |
 |---|---|---|---|---|
 | база | 2026-08-21 | `2914743` | +3001/−803 | snapshot до рефакторинга, сборка зелёная |
+| план | 2026-08-21 | `bcaa9cf` | — | этот файл |
+| R1 | 2026-08-21 | `a0f1dfe` | bugfix | инвалидация blur теперь достижима; 4 флага → `BlurCache` |
+| R2 | 2026-08-21 | `3a03e67` | −95 стр | twin-TU GL-хелперы → `overlay_gl.hpp` |
+| R3 | 2026-08-21 | `dd38879` | −60 стр | contains ×13, draggedTile ×7, oldBoxes ×6, persistent-ws ×4 |
+| R4 | 2026-08-21 | `bc48c9d` | −76 стр | main.cpp 382→306: конфиг-таблицы + единый kActions |
+| R5 | 2026-08-21 | `1eb0170` | ~−40 стр | Tween вместо 3 часов; back-dating хаки устранены |
+
+**Итог Фазы 1:** 7233 → 7119 строк (−114), при этом добавлены `overlay_gl.hpp`,
+`BlurCache`, `Tween`, 6 хелпер-методов и `LRect::contains()`; исправлен реальный
+баг blur-инвалидации. Поведение не менялось (кроме починенного бага).
+Важно для будущих сессий: в R5 close() семантически тонкое место — при закрытии
+`m_progress = 1 - timeline.raw()`, поэтому resume это `seek(1.0 - m_progress)`.
+Проверено сборкой на Hyprland 0.56.2; визуальная проверка в живом Hyprland
+(открыть/close во время открытия, drag-drop reflow, "+" pop-in, mpv-бекдроп)
+не проводилась — сделать при случае.
 
 ## Лог сессий
 
@@ -104,4 +125,5 @@ cmake --build build -j$(nproc)   # цель: build/gloview.so, Hyprland 0.56.2, 
 
 - Полный аудит кода (2 субагента + ручная верификация grep'ом ключевых находок).
 - Создан этот файл, зафиксирована база `2914743`.
-- Начата Фаза 1.
+- Выполнена вся Фаза 1 (R1–R5), по коммиту на шаг, сборка зелёная после каждого.
+- Следующий шаг: R6 (курсор / порядок проходов) или R7 (декомпозиция God Object'а).
