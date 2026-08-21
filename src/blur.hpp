@@ -77,11 +77,12 @@ class CBlurFilter {
     void prepare(int passes, float sizePx, int resolution, float strength);
 
     // Blur `src` (the full-res monitor texture) into `dst` (a full-res
-    // framebuffer, e.g. the persistent blur cache) and composite `dim` on top.
-    // `dst` is fully overwritten with an opaque result. Returns false if the
-    // GL program/FBOs aren't ready — the caller should then fall back to an
-    // unblurred backdrop.
-    bool render(const SP<Render::ITexture>& src, const SP<Render::IFramebuffer>& dst, int W, int H, const CHyprColor& dim);
+    // framebuffer, e.g. the persistent blur cache). `dst` is fully overwritten
+    // with an OPAQUE blurred result — no dim, no tint: anything colour-ish is
+    // drawn by the caller on top so the cache stays independent of animated or
+    // configurable colours. Returns false if the GL program/FBOs aren't ready —
+    // the caller should then fall back to an unblurred backdrop.
+    bool render(const SP<Render::ITexture>& src, const SP<Render::IFramebuffer>& dst, int W, int H);
 
   private:
     bool compileProgram();
@@ -113,8 +114,8 @@ class CBlurFilter {
     int                                                  m_levels = 0;
     std::array<SP<Render::IFramebuffer>, kMaxLevels - 1> m_downFBs;
 
-    unsigned int m_program = 0, m_blitProg = 0, m_colProg = 0, m_downProg = 0, m_upProg = 0; // GLuint
-    int m_uTex = -1, m_uTexSize = -1, m_uRadius = -1, m_uDir = -1, m_uBlitTex = -1, m_uCol = -1;
+    unsigned int m_program = 0, m_blitProg = 0, m_downProg = 0, m_upProg = 0; // GLuint
+    int m_uTex = -1, m_uTexSize = -1, m_uRadius = -1, m_uDir = -1, m_uBlitTex = -1;
     int m_uDownTex = -1, m_uDownHalf = -1, m_uUpTex = -1, m_uUpHalf = -1;
     unsigned int m_vao = 0, m_vbo = 0; // GLuint
 };
