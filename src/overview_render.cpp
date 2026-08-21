@@ -584,14 +584,14 @@ void Overview::renderStage(eRenderStage stage) {
       buildTiles();
       buildStrip();
       layoutTiles();
-      // Do NOT clearBlurCache() here — the blur cache depends only on the
-      // backdrop source (frozen wallpaper layers or a live mpv texture), not
+      // Do NOT invalidate the blur cache here — it depends only on the
+      // backdrop SOURCE (frozen wallpaper layers or a live mpv texture), not
       // on which workspace is displayed.  A workspace switch between two
       // non-mpv workspaces shares the same wallpaper source, so re-blurring
       // would introduce unnecessary per-frame variation into the cached result
-      // (visible as a ~20 % brightness shift on the backdrop).  The identity
-      // check inside renderBackdrop handles transitions to/from workspaces
-      // with a featured fullscreen mpv window.
+      // (visible as a ~20 % brightness shift on the backdrop).  The per-frame
+      // source-identity check in renderBackdrop() handles transitions to/from
+      // workspaces with a featured fullscreen mpv window.
       if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
         m_selected = m_tiles.empty() ? -1 : 0;
       damage();
@@ -825,69 +825,55 @@ void Overview::renderBackdrop() const {
   // ---- Cached-blur backdrop ----
   // The blurred backdrop depends only on the desktop behind it, which is
   // static while the overview is open (shouldRenderWindow hides every window),
-  // so the blur result is identical every frame — we blur ONCE into a private
-  // FBO and blit that FBO's texture on all subsequent frames (one cheap
-  // textured quad). The blur itself is our own tunable filter (blur_passes /
-  // blur_size / blur_resolution), NOT Hyprland's global-decoration pipeline:
-  // it downscales to 1/resolution, runs `passes` separable gaussians with
-  // LINEAR filtering throughout, and upscales — smooth, no "stepping".
-  if (m_blurDirty || !m_blurCacheFB || !m_blurCacheFB->isAllocated()) {
+  // so the blur result is identical every frame — blur ONCE into m_blur.fb
+  // and blit that texture on all subsequent frames (one cheap textured quad).
+  // The blur itself is our own tunable filter (blur_passes / blur_size /
+  // blur_resolution), NOT Hyprland's global-decoration pipeline.
+  //
+  // Source resolution happens EVERY frame, before the validity check: it is
+  // a fullscreen-mpv surface texture (fullscreen_background, live video), or
+  // the monitor's wallpaper texture, else nullptr ⇒ the frozen wallpaper-
+  // layers FBO. Comparing identities invalidates only on genuine source
+  // changes (mpv appears/disappears, wallpaper replaced) — transitions no
+  // other code path marks dirty — while plain workspace switches that share
+  // the same wallpaper keep the cached blur (no per-switch brightness shift).
+  bool liveSrc = false;
+  auto src = backdropSource(liveSrc);
+  const void *srcId = src ? src.get() : nullptr;
+  if (liveSrc || srcId != m_blur.srcId)
+    m_blur.invalidate(); // a playing video never trusts last frame's blur
+  m_blur.srcId = srcId;
+
+  if (!m_blur.valid || !m_blur.fb || !m_blur.fb->isAllocated() ||
+      m_blur.fb->m_size != Vector2D(W, H)) {
+    if (!src)
+      src = renderBackdropSource(W, H); // wallpaper layers → FBO texture
+
     // (Re)allocate the cache at the monitor's pixel size.
-    if (!m_blurCacheFB)
-      m_blurCacheFB = g_pHyprRenderer->createFB("gloview blur");
-    if (!m_blurCacheFB->isAllocated() ||
-        m_blurCacheFB->m_size != Vector2D(W, H))
-      m_blurCacheFB->alloc(W, H);
+    if (!m_blur.fb)
+      m_blur.fb = g_pHyprRenderer->createFB("gloview blur");
+    if (!m_blur.fb->isAllocated() || m_blur.fb->m_size != Vector2D(W, H))
+      m_blur.fb->alloc(W, H);
 
     // The blur filter manages projection/fbSize/viewport for its intermediate
     // FBOs; we hold the surrounding state so the rest of the frame is intact.
-    // RPT_EXPORT + fbSize=(W,H) is also what the backdrop source render
-    // (renderBackdropSource) and the mpv/wallpaper blur need for pixel coords.
+    // RPT_EXPORT + fbSize=(W,H) is also what the backdrop source render (just
+    // above) and the blur itself need for pixel coords.
     const auto oldProjType = g_pHyprRenderer->m_renderData.projectionType;
     const auto oldFbSize = g_pHyprRenderer->m_renderData.fbSize;
     g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
     g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
 
-    // Source: the wallpaper texture (static, reliable) or — with the
-    // fullscreen_background feature — the displayed workspace's fullscreen mpv
-    // surface (a live video). We deliberately do NOT read currentFB here, for
-    // two reasons: (1) a fullscreen window on the active workspace renders
-    // through Hyprland's "solitary client" fast path in renderMonitor, which
-    // calls renderWindow DIRECTLY — bypassing shouldRenderWindow entirely — so
-    // currentFB holds that window and the blur shows it as the backdrop
-    // ("the foot terminal instead of the wallpaper"); (2) a workspace that
-    // never re-renders leaves currentFB holding a stale pre-overview frame.
-    bool liveSrc = false;
-    auto src = backdropSource(liveSrc);
-    if (!src)
-      src = renderBackdropSource(W, H); // wallpaper layers → FBO texture
-    // Invalidate the cached blur only when the BLUR SOURCE TEXTURE changes.
-    // The source is either the live mpv texture (featured fullscreen mpv) or
-    // the frozen wallpaper FBO (static layers).  A workspace switch between
-    // two non-mpv workspaces shares the same wallpaper source — re-blurring
-    // would introduce unnecessary per-frame variation into the cached result,
-    // visible as a ~20 % brightness shift / texture difference on the backdrop.
-    const void *curMpv = liveSrc ? src.get() : nullptr;
-    if (curMpv != m_cachedBackdropMpv) {
-      m_cachedBackdropWs = static_cast<void *>(m_workspace.lock().get());
-      m_cachedBackdropMpv = const_cast<void *>(curMpv);
-      m_blurDirty = true;
-    }
-    if (!src) {
-      // Even the background render produced nothing — fall back to an opaque
-      // background-color rect + dim so the backdrop is never blank or leaking.
-      m_blurDirty = true; // retry in case a wallpaper appears later
-      static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
-      g_pHyprOpenGL->renderRect(fullPx, argb(*PBG, 1.0), {});
-      g_pHyprOpenGL->renderRect(fullPx, col, {});
-      g_pHyprRenderer->m_renderData.fbSize = oldFbSize;
-      g_pHyprRenderer->setProjectionType(oldProjType);
-      return;
-    }
-
+    // Deliberately do NOT read currentFB as the source, for two reasons:
+    // (1) a fullscreen window on the active workspace renders through
+    // Hyprland's "solitary client" fast path in renderMonitor, which calls
+    // renderWindow DIRECTLY — bypassing shouldRenderWindow entirely — so
+    // currentFB holds that window; (2) a workspace that never re-renders
+    // leaves currentFB holding a stale pre-overview frame.
     m_blurFilter.prepare(blurPasses(), static_cast<float>(blurSize()),
                          blurResolution(), blurA);
-    const bool ok = m_blurFilter.render(src, m_blurCacheFB, W, H, col);
+    const bool ok =
+        src && m_blurFilter.render(src, m_blur.fb, W, H, col);
 
     // Restore the renderer state we borrowed.
     g_pHyprRenderer->m_renderData.fbSize = oldFbSize;
@@ -897,27 +883,27 @@ void Overview::renderBackdrop() const {
                                PMON ? (int)PMON->m_pixelSize.y : H);
 
     if (!ok) {
-      // Blur unavailable — never leave currentFB exposed (it can hold a
-      // solitary fullscreen window that bypasses shouldRenderWindow, e.g.
-      // during a workspace-switch animation).  Cover it with an OPAQUE
-      // background rect + dim overlay, not a mere translucent dim.
-      m_blurDirty = true;
+      // No source at all, or blur unavailable — never leave currentFB exposed
+      // (it can hold a solitary fullscreen window that bypasses
+      // shouldRenderWindow, e.g. during a workspace-switch animation).  Cover
+      // it with an OPAQUE background rect + dim overlay, and retry next frame.
+      m_blur.valid = false;
       static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
       g_pHyprOpenGL->renderRect(fullPx, argb(*PBG, 1.0), {});
       g_pHyprOpenGL->renderRect(fullPx, col, {});
       return;
     }
-
-    m_blurDirty = liveSrc; // a playing video stays dirty → re-blur each frame
+    m_blur.valid = true;
   }
 
   // Cheap path: blit the cached blurred backdrop to the screen.
-  const auto tex = m_blurCacheFB ? m_blurCacheFB->getTexture() : nullptr;
+  const auto tex = m_blur.fb ? m_blur.fb->getTexture() : nullptr;
   if (tex && tex->ok())
     g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = 1.0F});
   else {
-    // Cache unavailable — never leave currentFB exposed (see blur-fail
-    // path above).  Draw an opaque background rect + dim overlay.
+    m_blur.valid = false;
+    // Cache unavailable — never leave currentFB exposed (see blur-fail path
+    // above).  Draw an opaque background rect + dim overlay.
     static auto PBG2 = CConfigValue<Config::INTEGER>("misc:background_color");
     g_pHyprOpenGL->renderRect(fullPx, argb(*PBG2, 1.0), {});
     g_pHyprOpenGL->renderRect(fullPx, col, {});

@@ -709,7 +709,7 @@ void Overview::open(bool viaAltTab) {
   hideLayers(); // fade bars out (no-op unless hide_top/overlay_layers set)
   m_cursor.onOpen(m, cursorMode());
   m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO
-  clearBlurCache();
+  m_blur.drop();           // re-blur from scratch on the next rendered frame
   damage();
 }
 
@@ -962,13 +962,6 @@ void Overview::deactivate() {
 void Overview::damage() const {
   if (const auto m = m_monitor.lock(); m && g_pHyprRenderer)
     g_pHyprRenderer->damageMonitor(m);
-}
-
-void Overview::clearBlurCache() {
-  m_blurDirty = true;
-  m_blurCacheFB.reset(); // free the cached FBO so the re-blur allocates a
-                         // fresh target with no leftover content from the
-                         // previous blur pass
 }
 
 // snapshot preview mode (plugin:gloview:preview_mode == "snapshot"): grab each
