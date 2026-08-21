@@ -165,27 +165,6 @@ GLuint linkProgram(const char* vsSrc, const char* fsSrc) {
     return prog;
 }
 
-// Binds a scratch framebuffer and returns a guard that rebinds the renderer's
-// current framebuffer and restores the viewport afterwards. Raw GL draws (not
-// renderTexture/renderRect) are used inside, because those write into
-// m_renderData.currentFB rather than the bound FBO in the pass pipeline.
-struct ScratchScope {
-    ScratchScope(SP<Render::IFramebuffer> fb) {
-        oldFB = g_pHyprRenderer->m_renderData.currentFB;
-        glGetIntegerv(GL_VIEWPORT, oldVp);
-        fb->bind();
-        g_pHyprOpenGL->setViewport(0, 0, (int)fb->m_size.x, (int)fb->m_size.y);
-    }
-    ~ScratchScope() {
-        if (oldFB) {
-            oldFB->bind();
-            g_pHyprOpenGL->setViewport(oldVp[0], oldVp[1], oldVp[2], oldVp[3]);
-        }
-    }
-    SP<Render::IFramebuffer> oldFB;
-    GLint                    oldVp[4];
-};
-
 } // namespace
 
 CBlurFilter::~CBlurFilter() {
@@ -358,13 +337,14 @@ void CBlurFilter::blitTex(const SP<Render::ITexture>& srcTex, GLuint prog, int l
     glUseProgram(0);
 }
 
+// The three pass helpers below are RAW: render() captures scissor/blend/FBO/
+// viewport state once for the whole chain and restores it at the end — a
+// save/restore scope per pass cost two viewport queries and two FBO rebinds
+// per pass (~20 extra GL calls per re-blur, which is EVERY frame for a live
+// video source).
 void CBlurFilter::gaussPass(const SP<Render::ITexture>& srcTex, const SP<Render::IFramebuffer>& dstFB, const Vector2D& texSize, const Vector2D& dir, float radius) {
-    ScratchScope scope(dstFB);
-
-    // A stray scissor from another draw would clip the fullscreen quad.
-    const bool scissorBefore = glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE;
-    glDisable(GL_SCISSOR_TEST);
-
+    dstFB->bind();
+    g_pHyprOpenGL->setViewport(0, 0, (int)dstFB->m_size.x, (int)dstFB->m_size.y);
     glDisable(GL_BLEND);
     glUseProgram(m_program);
     glActiveTexture(GL_TEXTURE0);
@@ -378,17 +358,11 @@ void CBlurFilter::gaussPass(const SP<Render::ITexture>& srcTex, const SP<Render:
     glBindVertexArray(0);
     srcTex->unbind();
     glUseProgram(0);
-
-    if (scissorBefore)
-        glEnable(GL_SCISSOR_TEST);
 }
 
 void CBlurFilter::downPass(const SP<Render::ITexture>& srcTex, const SP<Render::IFramebuffer>& dstFB, const Vector2D& dstSize) {
-    ScratchScope scope(dstFB);
-
-    const bool scissorBefore = glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE;
-    glDisable(GL_SCISSOR_TEST);
-
+    dstFB->bind();
+    g_pHyprOpenGL->setViewport(0, 0, (int)dstFB->m_size.x, (int)dstFB->m_size.y);
     glDisable(GL_BLEND);
     glUseProgram(m_downProg);
     glActiveTexture(GL_TEXTURE0);
@@ -401,16 +375,11 @@ void CBlurFilter::downPass(const SP<Render::ITexture>& srcTex, const SP<Render::
     srcTex->unbind();
     glUseProgram(0);
 
-    if (scissorBefore)
-        glEnable(GL_SCISSOR_TEST);
 }
 
 void CBlurFilter::upPass(const SP<Render::ITexture>& srcTex, const Vector2D& srcSize, const SP<Render::IFramebuffer>& dstFB) {
-    ScratchScope scope(dstFB);
-
-    const bool scissorBefore = glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE;
-    glDisable(GL_SCISSOR_TEST);
-
+    dstFB->bind();
+    g_pHyprOpenGL->setViewport(0, 0, (int)dstFB->m_size.x, (int)dstFB->m_size.y);
     glDisable(GL_BLEND);
     glUseProgram(m_upProg);
     glActiveTexture(GL_TEXTURE0);
@@ -423,8 +392,6 @@ void CBlurFilter::upPass(const SP<Render::ITexture>& srcTex, const Vector2D& src
     srcTex->unbind();
     glUseProgram(0);
 
-    if (scissorBefore)
-        glEnable(GL_SCISSOR_TEST);
 }
 
 bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFramebuffer>& dst, int W, int H) {
@@ -436,10 +403,9 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
     // Fully snapshot the caller's blend state up front — both whether it's enabled AND the
     // exact blend factors — so this call is a true no-op on it, regardless of which
     // convention (straight vs premultiplied alpha, or anything else) the surrounding
-    // renderer happens to be using at the call site. The down/gaussian/up passes below all
-    // unconditionally glDisable(GL_BLEND) for their own opaque draws, and the final step
-    // unconditionally glBlendFunc()s to a straight-alpha func for its own composite —
-    // restoring only the enable bit (an earlier version of this fix) put the right
+    // renderer happens to be using at the call site. The passes below all
+    // unconditionally glDisable(GL_BLEND) for their own opaque draws — restoring
+    // only the enable bit (an earlier version of this fix) put the right
     // enabled/disabled flag back but left OUR OWN blend func in place regardless of what the
     // caller actually had, which is wrong for anything relying on a different func.
     // Capturing the full state here and restoring all of it at the end removes that
@@ -452,6 +418,15 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
     glGetIntegerv(GL_BLEND_DST_RGB, &blendDstRGB);
     glGetIntegerv(GL_BLEND_SRC_ALPHA, &blendSrcAlpha);
     glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDstAlpha);
+    // Same one-shot treatment for the scissor test (a stray scissor from
+    // another draw would clip the fullscreen quads) and the caller's FBO +
+    // viewport (the raw passes below bind their own targets). currentFB can
+    // legitimately be null outside a pass — guard the restore.
+    const bool scissorBefore = glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE;
+    glDisable(GL_SCISSOR_TEST);
+    const auto callerFB = g_pHyprRenderer->m_renderData.currentFB;
+    GLint      callerVp[4];
+    glGetIntegerv(GL_VIEWPORT, callerVp);
 
     // Radius is relative to the bottom buffer's actual texel size, which is the ACHIEVED
     // downscale (1 << m_levels — the nearest power of two to the configured `resolution`,
@@ -465,7 +440,8 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
     // full rationale) — resolution=1 (m_levels==0) has no levels to walk at all, so fbA is
     // just a plain copy of the full-res source, matching the old single-scale behaviour.
     if (m_levels == 0) {
-        ScratchScope scope(m_fbA);
+        m_fbA->bind();
+        g_pHyprOpenGL->setViewport(0, 0, m_blurW, m_blurH);
         blitTex(src, m_blitProg, m_uBlitTex);
     } else {
         SP<Render::ITexture> stepSrc = src;
@@ -492,7 +468,8 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
     // by the time we write into a level here its down-chain content is no longer needed, so
     // this is the total extra scratch memory the pyramid costs over the old single buffer.
     if (m_levels == 0) {
-        ScratchScope scope(dst);
+        dst->bind();
+        g_pHyprOpenGL->setViewport(0, 0, W, H);
         blitTex(m_fbA->getTexture(), m_blitProg, m_uBlitTex);
     } else {
         SP<Render::ITexture> stepSrc  = m_fbA->getTexture();
@@ -513,11 +490,18 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
     // of the animation — renderBackdrop() draws the dim rect itself, faded by
     // the same curve as the blit alpha.
 
-    // Restore the caller's blend state captured above (the passes below ran
-    // with blending disabled for their own opaque draws).
+    // Restore everything captured above: blend func + enable bit (the passes
+    // ran with blending disabled for their own opaque draws), scissor test,
+    // caller's FBO binding and viewport.
     glBlendFuncSeparate(blendSrcRGB, blendDstRGB, blendSrcAlpha, blendDstAlpha);
     if (!blendBefore)
         glDisable(GL_BLEND);
+    if (scissorBefore)
+        glEnable(GL_SCISSOR_TEST);
+    if (callerFB) {
+        callerFB->bind();
+        g_pHyprOpenGL->setViewport(callerVp[0], callerVp[1], callerVp[2], callerVp[3]);
+    }
 
     return true;
 }
