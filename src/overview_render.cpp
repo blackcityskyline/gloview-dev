@@ -740,33 +740,108 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
   return m_backdropSrcFB->getTexture();
 }
 
+// Copy the CURRENT framebuffer into the private entry-snapshot FBO. Called
+// once, on the priming pass right after open() (see m_entryPrime): at that
+// point currentFB holds the fully-composited REAL desktop — every real window,
+// Hyprland's own decoration blur behind translucent ones, wallpaper — which
+// then serves as the opaque base layer the blurred backdrop crossfades in/out
+// of (renderBackdrop). State juggling mirrors renderBackdropSource().
+void Overview::captureOpenSnapshot(int W, int H) const {
+  const auto m = m_monitor.lock();
+  if (!m || !g_pHyprOpenGL || !g_pHyprRenderer)
+    return;
+  const auto curFB = g_pHyprRenderer->m_renderData.currentFB;
+  const auto curTex = curFB ? curFB->getTexture() : nullptr;
+  if (!curTex || !curTex->ok())
+    return;
+
+  if (!m_openSnapFB)
+    m_openSnapFB = g_pHyprRenderer->createFB("gloview entry");
+  if (!m_openSnapFB->isAllocated() ||
+      m_openSnapFB->m_size != Vector2D(W, H))
+    m_openSnapFB->alloc(W, H);
+
+  const auto oldProjType = g_pHyprRenderer->m_renderData.projectionType;
+  const auto oldFbSize = g_pHyprRenderer->m_renderData.fbSize;
+  const auto oldFB = g_pHyprRenderer->m_renderData.currentFB;
+  GLint oldVp[4];
+  glGetIntegerv(GL_VIEWPORT, oldVp);
+
+  m_openSnapFB->bind();
+  g_pHyprRenderer->m_renderData.currentFB = m_openSnapFB;
+  g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
+  g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
+  g_pHyprOpenGL->setViewport(0, 0, W, H);
+  g_pHyprOpenGL->renderTexture(curTex,
+                               CBox{0.0, 0.0, static_cast<double>(W),
+                                    static_cast<double>(H)},
+                               {.a = 1.0F});
+
+  // Restore everything we borrowed.
+  g_pHyprRenderer->m_renderData.fbSize = oldFbSize;
+  g_pHyprRenderer->setProjectionType(oldProjType);
+  g_pHyprRenderer->m_renderData.currentFB = oldFB;
+  if (oldFB)
+    oldFB->bind();
+  g_pHyprOpenGL->setViewport(oldVp[0], oldVp[1], oldVp[2], oldVp[3]);
+}
+
 void Overview::renderBackdrop() const {
   const auto m = m_monitor.lock();
   if (!m || !g_pHyprRenderer || !g_pHyprOpenGL)
-    return;
-  const double e = eased();
-  const auto col = argb(cfgColorScheme("backdrop_color", "0x73070a10"), e);
-  if (col.a <= 0.0)
     return;
   const double s = m->m_scale;
   const auto fullPx = pxb(CBox(0, 0, m->m_size.x, m->m_size.y), s);
   const int W = m->m_pixelSize.x;
   const int H = m->m_pixelSize.y;
-  const float blurA = static_cast<float>(e) * blurStrength();
+  const double e = eased();
+  const auto baseCol =
+      cfgColorScheme("backdrop_color", "0x73070a10"); // raw config literal
+
+  // Entry snapshot: on the priming frame (windows still visible, see
+  // m_entryPrime) currentFB holds the fully-composited real desktop — grab it
+  // once, before anything else, as the crossfade BASE.
+  if (m_entryPrime && blurEnabled()) {
+    captureOpenSnapshot(W, H);
+    m_entryPrime = false;
+  }
+
+  // Crossfade factor: the blurred backdrop dissolves IN over the frozen
+  // pre-open frame along the main animation curve, and back OUT on close.
+  // Deliberately just `e` — blur_strength keeps meaning "filter radius", it
+  // must not turn into a permanent sharp/blurred blend at settle.
+  const float k = static_cast<float>(e);
+  // The snapshot is usable as the fade base?
+  const bool haveBase = m_openSnapFB && m_openSnapFB->isAllocated();
+  const bool fading = haveBase && k < 0.999F;
 
   if (!blurEnabled()) {
     // ---- No-blur backdrop ----
+    const auto col = argb(baseCol, e);
+    if (col.a <= 0.0)
+      return;
     g_pHyprOpenGL->renderRect(fullPx, col, {});
     return;
   }
+  if (k <= 0.0F && !fading)
+    return; // nothing visible yet (no snapshot to keep the screen covered)
+
+  // While fading, draw the frozen pre-open frame (real windows + Hyprland's
+  // own decoration blur behind them) as the opaque base layer: what the user
+  // saw before opening never blinks out, it dissolves into the plugin blur.
+  if (fading)
+    g_pHyprOpenGL->renderTexture(m_openSnapFB->getTexture(), fullPx,
+                                 {.a = 1.0F});
 
   // ---- Cached-blur backdrop ----
   // The blurred backdrop depends only on the desktop behind it, which is
   // static while the overview is open (shouldRenderWindow hides every window),
   // so the blur result is identical every frame — blur ONCE into m_blur.fb
-  // and blit that texture on all subsequent frames (one cheap textured quad).
-  // The blur itself is our own tunable filter (blur_passes / blur_size /
-  // blur_resolution), NOT Hyprland's global-decoration pipeline.
+  // and blit that texture on all subsequent frames (one cheap textured quad),
+  // faded by k. The cached fb carries the FULL dim colour and FULL blur
+  // strength so its content is animation-independent; the fade is purely the
+  // blit alpha. The filter itself is our own tunable pipeline (blur_passes /
+  // blur_size / blur_resolution), NOT Hyprland's global-decoration system.
   //
   // Source resolution happens EVERY frame, before the validity check: it is
   // a fullscreen-mpv surface texture (fullscreen_background, live video), or
@@ -809,9 +884,9 @@ void Overview::renderBackdrop() const {
     // currentFB holds that window; (2) a workspace that never re-renders
     // leaves currentFB holding a stale pre-overview frame.
     m_blurFilter.prepare(blurPasses(), static_cast<float>(blurSize()),
-                         blurResolution(), blurA);
-    const bool ok =
-        src && m_blurFilter.render(src, m_blur.fb, W, H, col);
+                         blurResolution(), blurStrength());
+    const bool ok = src && m_blurFilter.render(src, m_blur.fb, W, H,
+                                               argb(baseCol, 1.0));
 
     // Restore the renderer state we borrowed.
     g_pHyprRenderer->m_renderData.fbSize = oldFbSize;
@@ -821,30 +896,32 @@ void Overview::renderBackdrop() const {
                                PMON ? (int)PMON->m_pixelSize.y : H);
 
     if (!ok) {
-      // No source at all, or blur unavailable — never leave currentFB exposed
-      // (it can hold a solitary fullscreen window that bypasses
-      // shouldRenderWindow, e.g. during a workspace-switch animation).  Cover
-      // it with an OPAQUE background rect + dim overlay, and retry next frame.
+      // No source at all, or blur unavailable — never leave the frozen base
+      // (or currentFB, which can hold a solitary fullscreen window that
+      // bypasses shouldRenderWindow, e.g. during a workspace-switch animation)
+      // exposed: cover everything with an OPAQUE background rect + dim
+      // overlay, and retry next frame.
       m_blur.valid = false;
       static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
       g_pHyprOpenGL->renderRect(fullPx, argb(*PBG, 1.0), {});
-      g_pHyprOpenGL->renderRect(fullPx, col, {});
+      g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, e), {});
       return;
     }
     m_blur.valid = true;
   }
 
-  // Cheap path: blit the cached blurred backdrop to the screen.
+  // Cheap path: blit the cached blurred+dim backdrop over the base, faded by
+  // the animation curve (k==1 ⇒ opaque ⇒ exactly the settled look).
   const auto tex = m_blur.fb ? m_blur.fb->getTexture() : nullptr;
   if (tex && tex->ok())
-    g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = 1.0F});
+    g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = fading ? k : 1.0F});
   else {
     m_blur.valid = false;
-    // Cache unavailable — never leave currentFB exposed (see blur-fail path
-    // above).  Draw an opaque background rect + dim overlay.
+    // Cache unavailable — never leave the base/currentFB exposed (see
+    // blur-fail path above).  Draw an opaque background rect + dim overlay.
     static auto PBG2 = CConfigValue<Config::INTEGER>("misc:background_color");
     g_pHyprOpenGL->renderRect(fullPx, argb(*PBG2, 1.0), {});
-    g_pHyprOpenGL->renderRect(fullPx, col, {});
+    g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, e), {});
   }
 }
 
