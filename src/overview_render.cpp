@@ -1,4 +1,5 @@
 #include "overview.hpp"
+#include "overlay_gl.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -59,55 +60,6 @@ double easeOutCubic(double t) {
 double lerp(double a, double b, double t) { return a + (b - a) * t; }
 
 CBox box(const LRect &r) { return CBox{r.x, r.y, r.w, r.h}; }
-
-// Hyprland's immediate-mode renderRect/renderTexture/renderRoundedShadow feed
-// the box STRAIGHT to projectBoxToTarget, which expects transformed
-// monitor-PIXEL coordinates and applies NO monitor scale itself (verified
-// against Renderer.cpp: clipBox/scaledWindowBox are pre-.scale(m_scale)'d
-// before applyToBox). All gloview chrome is authored in monitor-LOGICAL pixels,
-// so it MUST be pre-scaled by mon->m_scale before drawing — otherwise on any
-// monitor with scale != 1 (HiDPI / fractional like 1.2) the whole chrome
-// renders at 1/scale size and top-left-biased, while the live window surfaces
-// (renderWindowLive, which converts to pixels itself) land correctly → the
-// overview looks "distorted". Chrome-only; surfaces are already pixel-space.
-// Round radii / blur ranges scale too so corners/shadows keep their proportion.
-// .round() at the end is NOT optional — see overview_tiles_render.cpp's copy of
-// this same helper for the full, source-verified explanation. Short version:
-// CHyprOpenGLImpl:: renderBorder()'s scissor-culling CRegion is built from this
-// box via hyprutils' CRegion(const CBox&) ->
-// pixman_region32_init_rect(int,int,uint,uint), which silently TRUNCATES a
-// fractional box on the implicit double->int conversion, which can eat part or
-// all of a thin (1-3px) border ring depending on each edge's own leftover
-// fraction — every Hyprland decoration that scales a box to pixels
-// (border/shadow/glow/group-bar) ends with
-// `.scale(...).round()`, never a bare `.scale()`, for exactly this reason.
-CBox pxb(const CBox &b, double s) {
-  return CBox{b.x * s, b.y * s, b.w * s, b.h * s}.round();
-}
-CBox pxb(const LRect &r, double s) {
-  return CBox{r.x * s, r.y * s, r.w * s, r.h * s}.round();
-}
-int pxr(double round, double s) { return static_cast<int>(round * s); }
-
-// Same correction real window borders use for outerRound instead of
-// renderBorder's naive "-1 auto" — see overview_tiles_render.cpp's copy for the
-// rationale.
-int outerRoundPx(double round, double borderSize, double roundingPower,
-                 double scale) {
-  const double correction =
-      borderSize * (M_SQRT2 - 1.0) * std::max(2.0 - roundingPower, 0.0);
-  return static_cast<int>(
-      std::lround((round + borderSize - correction) * scale));
-}
-
-// The unified preview_round (task #6) is authored against full-size grid tiles;
-// strip card previews are much smaller, so a raw radius that's fine on a grid
-// tile can exceed a tiny card slot's half-size and look broken. Clamp per call
-// site to whatever the slot allows.
-int clampRound(int round, double w, double h) {
-  return static_cast<int>(
-      std::clamp(static_cast<double>(round), 0.0, std::min(w, h) * 0.5));
-}
 
 // Real, current per-window opacity — mirrors IHyprRenderer::renderWindow's
 // renderdata.alpha / renderdata.fadeAlpha (Renderer.cpp): the ACTIVE/INACTIVE
@@ -375,13 +327,6 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
 }
 
 namespace {
-CHyprColor argb(Hyprlang::INT raw, double alphaMul = 1.0) {
-  const auto a = static_cast<double>((raw >> 24) & 0xFF) / 255.0;
-  const auto r = static_cast<double>((raw >> 16) & 0xFF) / 255.0;
-  const auto g = static_cast<double>((raw >> 8) & 0xFF) / 255.0;
-  const auto b = static_cast<double>(raw & 0xFF) / 255.0;
-  return CHyprColor(r, g, b, a * std::clamp(alphaMul, 0.0, 1.0));
-}
 // Immediate-mode overlay chrome split into phases so the LIVE window surfaces
 // (queued CSurfacePassElements, not immediate GL) layer between the chrome:
 // backdrop+backings (Back) → main surfaces → strip chrome (Mid) → strip
