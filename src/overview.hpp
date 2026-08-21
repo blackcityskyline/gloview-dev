@@ -38,6 +38,39 @@ class CEventLoopTimer;
 
 namespace gloview {
 
+// Monotonic timeline anchor for the overview's hand-driven animation clocks.
+// Durations live at the call sites (the `duration` config must be picked up
+// live even mid-animation), the tween only owns WHEN the clock started plus
+// the raw 0..1 math — and the two historical idioms that were previously
+// spelled as timestamp arithmetic:
+//   seek(frac, dur)  — "continue from raw progress frac" (was: back-date the
+//                      start timestamp so now-start == frac*dur)
+//   pinEnd(dur)      — "chrome settled, ride at 1.0" (was: subtract a full
+//                      duration from the start timestamp)
+struct Tween {
+  std::chrono::steady_clock::time_point start{};
+
+  void begin() { start = clock::now(); }
+  void seek(double frac, double durMs) {
+    const auto ms = std::chrono::duration_cast<clock::duration>(
+        std::chrono::duration<double, std::milli>{std::clamp(frac, 0.0, 1.0) *
+                                                  std::max(1.0, durMs)});
+    start = clock::now() - ms;
+  }
+  void pinEnd(double durMs) { seek(1.0, durMs); }
+  // Linear 0..1, clamped.
+  [[nodiscard]] double raw(double durMs) const {
+    return std::clamp(
+        std::chrono::duration<double, std::milli>(clock::now() - start)
+                .count() /
+            std::max(1.0, durMs),
+        0.0, 1.0);
+  }
+
+private:
+  using clock = std::chrono::steady_clock;
+};
+
 // Plugin config values registered with `addConfigValueV2` (main.cpp), kept so
 // the cfg* helpers can read them through their V2 `value()` accessor. The
 // deprecated `HyprlandAPI::getConfigValue()` path does NOT observe values set
@@ -204,13 +237,13 @@ private:
   // decision sees m_active=false and renders the real windows cleanly.
   bool m_pendingDeactivate = false;
   double m_progress = 0.0;
-  std::chrono::steady_clock::time_point m_animStart;
+  Tween m_timeline; // master open/close clock (direction via m_opening)
   // A post-move reflow glides the tiles into their new slots WITHOUT re-running
   // the chrome (backdrop + strip) reveal. m_progress stays pinned at 1 (chrome
   // settled) while this separate timer drives the tile natural->target lerp, so
   // the strip no longer re-slides and the backdrop no longer flashes on a drop.
   bool m_reflowing = false;
-  std::chrono::steady_clock::time_point m_reflowStart;
+  Tween m_reflow; // post-move tile-glide clock (chrome stays settled at 1)
   PHLMONITORREF m_monitor;
   PHLWORKSPACEREF m_workspace;    // workspace shown in the main area
   PHLWORKSPACEREF m_liveWsAtOpen; // monitor's live active workspace when opened
@@ -264,7 +297,7 @@ private:
   // center.
   int m_newCardId = 0; // workspace id of the animating card (0 = none)
   bool m_newCardAnim = false;
-  std::chrono::steady_clock::time_point m_newCardStart;
+  Tween m_newCard; // "+" card pop-in clock (easeOutBack in newCardScale)
   // freshly created ("+" or the direct number-key jump) workspaces, held
   // persistent until close so none of them get reaped while empty. A single
   // slot here used to leak every workspace but the last one created in a
@@ -498,6 +531,11 @@ private:
   void updateAnimation();
   void deactivate();
   double eased() const; // opacity / backdrop progress
+  // plugin:gloview:duration with the shared floor (ms), read LIVE so config
+  // changes apply to in-flight animations.
+  double animDuration() const;
+  // "+" card pop-in duration: never shorter than the tile glide it overlaps.
+  double newCardDur() const { return std::max(120.0, animDuration()); }
   double tileBaseProgress()
       const; // 0..1 driver for tile glide (reflow timer or m_progress)
   double tileProgress(int i) const; // staggered raw progress for tile i
