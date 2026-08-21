@@ -384,14 +384,29 @@ private:
   // cursor that erases its previous position with an opaque backdrop rect.
   CCursorModule m_cursor;
 
-  // Blur cache: the first frame's backdrop blur result is captured into a
-  // persistent FBO. Every subsequent frame blits that FBO's texture instead
-  // of re-invoking the expensive blur shader. Since the desktop background
-  // doesn't change while the overview is open (all windows are hidden by
-  // shouldRenderWindow), the blur result is identical every frame.
-  // Marked dirty on open, workspace change, tile rebuild, and whenever the
-  // backdrop SOURCE identity changes (see m_cachedBackdropWs / ...Mpv).
-  mutable SP<Render::IFramebuffer> m_blurCacheFB;
+  // Blurred-backdrop cache: the first frame's backdrop blur result is
+  // rendered into a persistent FBO; every subsequent frame blits that texture
+  // instead of re-invoking the expensive blur shader (the desktop background
+  // doesn't change while the overview is up — all windows are hidden by
+  // shouldRenderWindow). valid=false forces a re-blur. srcId is the identity
+  // of the texture the fb was blurred from: a direct texture (fullscreen mpv
+  // surface or monitor wallpaper) or nullptr for the frozen wallpaper-layers
+  // FBO. renderBackdrop() resolves the source EVERY frame and invalidates on
+  // id change — that check is what carries the cache across plain workspace
+  // switches (same wallpaper ⇒ no re-blur, no brightness shift) while still
+  // catching genuine source changes nothing else marks dirty. A live video
+  // source skips the cache every frame by design.
+  struct BlurCache {
+    SP<Render::IFramebuffer> fb;
+    const void *srcId = nullptr;
+    bool valid = false;
+    void invalidate() { valid = false; }
+    void drop() { // full teardown: free the FBO too (open / unload)
+      valid = false;
+      fb.reset();
+    }
+  };
+  mutable BlurCache m_blur;
   // Full-res FBO holding the freshly-rendered desktop background (wallpaper
   // layers) when there's no direct texture source to blur.  Drawn once per
   // overview session (at open / on layer-surface commits only) so workspace
@@ -400,16 +415,6 @@ private:
   // content (e.g. foot text) into the re-drawn FBO on every re-blur.
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false; // false → redraw layers next time
-  mutable bool m_blurDirty = true;
-  void clearBlurCache(); // force re-blur next frame
-  // Cached backdrop-source identity, so the blur cache is invalidated the
-  // instant the workspace or the featured fullscreen mpv window changes —
-  // otherwise a stale cached frame (the previous workspace's live video, or a
-  // black frame captured before a wallpaper layer committed) lingers as the
-  // backdrop. m_cachedMpv == src.get() while the live-video source is active,
-  // else nullptr (wallpaper fallback path, whose source FB is itself stable).
-  mutable void *m_cachedBackdropWs = nullptr;
-  mutable void *m_cachedBackdropMpv = nullptr;
   // Self-contained blur (own GL program): plugin-tunable blur_passes /
   // blur_size / blur_resolution, independent of Hyprland's global
   // decoration:blur:* (which plugins can't override per-call).
