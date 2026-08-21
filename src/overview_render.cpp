@@ -45,12 +45,6 @@ namespace gloview {
 
 namespace {
 
-double nowMs(const std::chrono::steady_clock::time_point &from) {
-  return std::chrono::duration<double, std::milli>(
-             std::chrono::steady_clock::now() - from)
-      .count();
-}
-
 double easeOutCubic(double t) {
   t = std::clamp(t, 0.0, 1.0);
   const double inv = 1.0 - t;
@@ -420,13 +414,15 @@ private:
 
 double Overview::eased() const { return easeOutCubic(m_progress); }
 
+double Overview::animDuration() const {
+  return std::max(1.0, static_cast<double>(cfgInt("plugin:gloview:duration", 360)));
+}
+
 double Overview::tileBaseProgress() const {
   // During a drop reflow the tiles glide on their own timer while the chrome
   // (m_progress) stays pinned at 1; everywhere else they ride m_progress.
-  if (m_reflowing) {
-    const double dur = std::max(1, cfgInt("plugin:gloview:duration", 360));
-    return std::clamp(nowMs(m_reflowStart) / dur, 0.0, 1.0);
-  }
+  if (m_reflowing)
+    return m_reflow.raw(animDuration());
   return m_progress;
 }
 
@@ -461,14 +457,12 @@ LRect Overview::currentBox(const Tile &t, int i) const {
 }
 
 void Overview::updateAnimation() {
-  const double dur = std::max(1, cfgInt("plugin:gloview:duration", 360));
-  const double t = std::clamp(nowMs(m_animStart) / dur, 0.0, 1.0);
+  const double dur = animDuration();
+  const double t = m_timeline.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
-  if (m_reflowing && nowMs(m_reflowStart) >= dur)
+  if (m_reflowing && m_reflow.raw(dur) >= 1.0)
     m_reflowing = false;
-  if (m_newCardAnim &&
-      nowMs(m_newCardStart) >=
-          std::max(120, cfgInt("plugin:gloview:duration", 360))) {
+  if (m_newCardAnim && m_newCard.raw(newCardDur()) >= 1.0) {
     m_newCardAnim = false;
     m_newCardId = 0;
   }
@@ -1254,8 +1248,7 @@ void Overview::renderCursorOnTop() const {
 double Overview::newCardScale() const {
   if (!m_newCardAnim)
     return 1.0;
-  const double dur = std::max(120, cfgInt("plugin:gloview:duration", 360));
-  const double p = std::clamp(nowMs(m_newCardStart) / dur, 0.0, 1.0);
+  const double p = m_newCard.raw(newCardDur());
   // easeOutBack — a little overshoot so the card "pops" in
   const double c1 = 1.70158, c3 = c1 + 1.0;
   const double x = p - 1.0;

@@ -171,7 +171,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
         m_newWorkspaces.push_back(ws);
         m_newCardId =
             id; // pop-in animation for the freshly created card, like "+"
-        m_newCardStart = std::chrono::steady_clock::now();
+        m_newCard.begin();
         m_newCardAnim = true;
       }
       StripItem it;

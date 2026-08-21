@@ -67,7 +67,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
       ++id;
     target = State::workspaceState()->create(id, m->m_id);
     m_newCardId = id; // pop the new card in
-    m_newCardStart = std::chrono::steady_clock::now();
+    m_newCard.begin();
     m_newCardAnim = true;
   } else if (it.virtualWs) {
     // strip_empty_mode show/neighbors placeholder card (task #3): no real
@@ -82,7 +82,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
       target->setPersistent(true);
       m_newWorkspaces.push_back(target);
       m_newCardId = it.id;
-      m_newCardStart = std::chrono::steady_clock::now();
+      m_newCard.begin();
       m_newCardAnim = true;
     }
   } else
@@ -274,9 +274,7 @@ void Overview::switchToWorkspace(const StripItem &it) {
   m_progress = 1.0;
   m_opening = true;
   m_reflowing = false;
-  m_animStart = std::chrono::steady_clock::now() -
-                std::chrono::milliseconds(
-                    std::max(1, cfgInt("plugin:gloview:duration", 360)));
+  m_timeline.pinEnd(animDuration()); // keep the overview visually settled
   damage();
 }
 
@@ -335,7 +333,7 @@ void Overview::addWorkspace() {
   ws->setPersistent(true);
   m_newWorkspaces.push_back(ws);
   m_newCardId = id;
-  m_newCardStart = std::chrono::steady_clock::now();
+  m_newCard.begin();
   m_newCardAnim = true;
   dbg("added workspace " + std::to_string(id));
   if (cfgInt("plugin:gloview:switch_on_new_workspace", 1) != 0) {

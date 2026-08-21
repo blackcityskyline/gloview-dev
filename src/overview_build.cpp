@@ -505,13 +505,12 @@ void Overview::replayReflow(
   }
   if (m_selected >= static_cast<int>(m_tiles.size()))
     m_selected = m_tiles.empty() ? -1 : static_cast<int>(m_tiles.size()) - 1;
-  const auto now = std::chrono::steady_clock::now();
   m_progress = 1.0;
   m_opening = true;
-  m_animStart = now - std::chrono::milliseconds(
-                          std::max(1, cfgInt("plugin:gloview:duration", 360)));
+  m_timeline.pinEnd(animDuration()); // chrome settled; the reflow clock below
+                                     // drives only the tile glide
   m_reflowing = true;
-  m_reflowStart = now;
+  m_reflow.begin();
   damage();
 }
 

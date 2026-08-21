@@ -689,7 +689,7 @@ void Overview::open(bool viaAltTab) {
   m_reflowing = false;
   m_pendingDeactivate = false;
   m_progress = 0.0;
-  m_animStart = std::chrono::steady_clock::now();
+  m_timeline.begin();
   hideLayers(); // fade bars out (no-op unless hide_top/overlay_layers set)
   m_cursor.onOpen(m, cursorMode());
   m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO
@@ -729,10 +729,11 @@ void Overview::close() {
   restoreLayers(); // bars fade back in over the close animation, not in a pop
                    // at the end
   m_cursor.onClose();
-  m_animStart = std::chrono::steady_clock::now() -
-                std::chrono::milliseconds(static_cast<long>(
-                    (1.0 - m_progress) *
-                    std::max(1, cfgInt("plugin:gloview:duration", 360))));
+  // Continue the close glide from the CURRENT progress (not from 1): a close
+  // during the open animation (or mid-reflow) must not jump. While closing,
+  // updateAnimation reads m_progress as 1 - timeline.raw(), so resuming from
+  // progress p means seeking the timeline to (1 - p).
+  m_timeline.seek(1.0 - m_progress, animDuration());
   damage();
 }
 
