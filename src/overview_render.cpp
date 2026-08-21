@@ -856,9 +856,21 @@ void Overview::renderBackdrop() const {
   bool liveSrc = false;
   auto src = backdropSource(liveSrc);
   const void *srcId = src ? src.get() : nullptr;
-  if (liveSrc || srcId != m_blur.srcId)
-    m_blur.invalidate(); // a playing video never trusts last frame's blur
+  // Full cache key: source identity + live filter recipe (config changes must
+  // apply without reopening the overview). liveSrc bypasses the key entirely:
+  // a playing video must re-blur EVERY frame even if the driver hands us the
+  // same buffer texture twice in a row.
+  const int cPasses = blurPasses();
+  const int cSize = blurSize();
+  const int cRes = blurResolution();
+  const float cStrength = blurStrength();
+  if (liveSrc || !m_blur.matches(srcId, cPasses, cSize, cRes, cStrength))
+    m_blur.invalidate();
   m_blur.srcId = srcId;
+  m_blur.passes = cPasses;
+  m_blur.sizePx = cSize;
+  m_blur.resolution = cRes;
+  m_blur.strength = cStrength;
 
   if (!m_blur.valid || !m_blur.fb || !m_blur.fb->isAllocated() ||
       m_blur.fb->m_size != Vector2D(W, H)) {
@@ -886,8 +898,7 @@ void Overview::renderBackdrop() const {
     // renderWindow DIRECTLY — bypassing shouldRenderWindow entirely — so
     // currentFB holds that window; (2) a workspace that never re-renders
     // leaves currentFB holding a stale pre-overview frame.
-    m_blurFilter.prepare(blurPasses(), static_cast<float>(blurSize()),
-                         blurResolution(), blurStrength());
+    m_blurFilter.prepare(cPasses, static_cast<float>(cSize), cRes, cStrength);
     const bool ok = src && m_blurFilter.render(src, m_blur.fb, W, H,
                                                argb(baseCol, 1.0));
 
