@@ -245,7 +245,7 @@ LRect Overview::tileContentBox(size_t i, const LRect& slot) const {
 }
 
 LRect Overview::dragBox() const {
-    const int dragIdx = (m_dragging && m_pressTile >= 0 && m_pressTile < static_cast<int>(m_tiles.size())) ? m_pressTile : -1;
+    const int dragIdx = draggedTile();
     if (dragIdx < 0)
         return LRect{0, 0, 0, 0};
     // Grid mode shrinks to half AND sits offset down-right of the actual cursor position —
@@ -265,7 +265,7 @@ LRect Overview::dragBox() const {
 }
 
 void Overview::renderPreviews() const {
-    const int dragIdx = (m_dragging && m_pressTile >= 0 && m_pressTile < static_cast<int>(m_tiles.size())) ? m_pressTile : -1;
+    const int dragIdx = draggedTile();
     for (size_t i = 0; i < m_tiles.size(); ++i) {
         if (static_cast<int>(i) == dragIdx)
             continue; // the dragged tile floats over the strip; drawn later in renderDragTile()
@@ -310,7 +310,7 @@ void Overview::renderTileButtons() const {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     const double s      = m->m_scale;
     const double e      = eased();
-    const int    dragIdx = (m_dragging && m_pressTile >= 0 && m_pressTile < static_cast<int>(m_tiles.size())) ? m_pressTile : -1;
+    const int    dragIdx = draggedTile();
     for (size_t i = 0; i < m_tiles.size(); ++i) {
         if (static_cast<int>(i) == dragIdx)
             continue;
@@ -342,7 +342,7 @@ void Overview::renderMainWindows() const {
     // At progress 0, currentBox == t.natural == the real window's settled geometry, so the
     // opaque preview overlays it pixel-perfect. Fading with `e` would flicker the close tail:
     // preview alpha hits 0 while the real window is still hidden → desktop shows through.
-    const int    dragIdx = (m_dragging && m_pressTile >= 0 && m_pressTile < static_cast<int>(m_tiles.size())) ? m_pressTile : -1;
+    const int    dragIdx = draggedTile();
     const double scale   = m->m_scale;
     const auto   when    = Time::steadyNow();
     const int    round   = pxr(cfgInt("plugin:gloview:preview_round", 12), scale);
@@ -377,7 +377,7 @@ LRect Overview::dragStripBox() const {
 }
 
 void Overview::renderDragTile() const {
-    const int dragIdx = (m_dragging && m_pressTile >= 0 && m_pressTile < static_cast<int>(m_tiles.size())) ? m_pressTile : -1;
+    const int dragIdx = draggedTile();
     if (dragIdx >= 0) {
         drawPreviewTile(static_cast<size_t>(dragIdx), dragBox(), true); // chrome; surface queued in renderDragWindow
         return;
@@ -420,7 +420,7 @@ void Overview::drawDragStripChrome() const {
 }
 
 void Overview::renderDragWindow() const {
-    const int dragIdx = (m_dragging && m_pressTile >= 0 && m_pressTile < static_cast<int>(m_tiles.size())) ? m_pressTile : -1;
+    const int dragIdx = draggedTile();
     const auto m = m_monitor.lock();
     if (!m)
         return;

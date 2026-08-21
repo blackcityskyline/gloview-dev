@@ -561,8 +561,7 @@ void Overview::renderStage(eRenderStage stage) {
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::Mid));
   renderStripWindows();
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::StripButtons));
-  const bool draggingTile = m_dragging && m_pressTile >= 0 &&
-                            m_pressTile < static_cast<int>(m_tiles.size());
+  const bool draggingTile = draggedTile() >= 0;
   const bool draggingStripWin =
       m_dragging && m_pressStripItem >= 0 && !m_dragStripWin.expired();
   const bool dragging = draggingTile || draggingStripWin;

@@ -125,11 +125,7 @@ Overview::~Overview() {
                    // mid-hide
   restoreFill();   // never leave a window's surface stuck stretching its small
                    // buffer
-  for (const auto &wref :
-       m_newWorkspaces) // don't leak any persistent workspace held this session
-    if (const auto ws = wref.lock())
-      ws->setPersistent(false);
-  m_newWorkspaces.clear();
+  releaseNewWorkspaces();
   m_tiles.clear();
   m_strip.clear();
   cancelPendingClick(); // never let a click-timer callback run against a
@@ -544,11 +540,7 @@ void Overview::toggleAllWorkspaces() {
   m_allOverride = showAllWorkspaces() ? 0 : 1;
   // rebuild from the new membership and glide tiles into place (chrome settled
   // at progress 1).
-  std::vector<std::pair<PHLWINDOW, LRect>> oldBoxes;
-  oldBoxes.reserve(m_tiles.size());
-  for (size_t i = 0; i < m_tiles.size(); ++i)
-    if (const auto win = m_tiles[i].win.lock())
-      oldBoxes.emplace_back(win, currentBox(m_tiles[i], static_cast<int>(i)));
+  auto oldBoxes = captureCurrentBoxes();
   replayReflow(oldBoxes);
 }
 
@@ -611,11 +603,7 @@ void Overview::setDesktopMode(bool on) {
   m_canvasPos
       .clear(); // each entry into the canvas starts from the real positions
 
-  std::vector<std::pair<PHLWINDOW, LRect>> oldBoxes;
-  oldBoxes.reserve(m_tiles.size());
-  for (size_t i = 0; i < m_tiles.size(); ++i)
-    if (const auto win = m_tiles[i].win.lock())
-      oldBoxes.emplace_back(win, currentBox(m_tiles[i], static_cast<int>(i)));
+  auto oldBoxes = captureCurrentBoxes();
   m_hovered = m_hoveredStrip = -1;
   m_selected = -1;
   // Canvas is PURELY VISUAL — never floats/moves/resizes a real window.
@@ -673,12 +661,8 @@ void Overview::open(bool viaAltTab) {
                          // flips to the canvas
   m_newCardAnim = false;
   m_newCardId = 0;
-  for (const auto &wref :
-       m_newWorkspaces) // defensive: shouldn't still hold anything here, but
-                        // don't leak if it does
-    if (const auto ws = wref.lock())
-      ws->setPersistent(false);
-  m_newWorkspaces.clear();
+  releaseNewWorkspaces(); // defensive: shouldn't still hold anything here, but
+                          // don't leak if it does
 
   buildTiles();
   buildStrip();
@@ -771,11 +755,7 @@ void Overview::hardClose() {
                    // mid-hide
   restoreFill();   // never leave a window's surface stuck stretching its small
                    // buffer
-  for (const auto &wref :
-       m_newWorkspaces) // don't leak any held-persistent "+"-created workspace
-    if (const auto ws = wref.lock())
-      ws->setPersistent(false);
-  m_newWorkspaces.clear();
+  releaseNewWorkspaces();
 
   m_active = false;
   m_opening = false;
@@ -934,10 +914,7 @@ void Overview::deactivate() {
   // one. (Used to be a single slot that only released the LAST one created —
   // creating several in one session silently leaked the rest as permanent
   // phantom persistent workspaces — task/bug #4.)
-  for (const auto &wref : m_newWorkspaces)
-    if (const auto ws = wref.lock())
-      ws->setPersistent(false);
-  m_newWorkspaces.clear();
+  releaseNewWorkspaces();
 
   m_active = false;
   m_opening = false;
@@ -957,6 +934,15 @@ void Overview::deactivate() {
   m_hovered = m_hoveredStrip = -1;
   m_selected = -1;
   damage();
+}
+
+void Overview::releaseNewWorkspaces() {
+  // "+"-created workspaces are held (persistent) until session end so none of
+  // them get reaped while empty; this releases every one of them.
+  for (const auto &wref : m_newWorkspaces)
+    if (const auto ws = wref.lock())
+      ws->setPersistent(false);
+  m_newWorkspaces.clear();
 }
 
 void Overview::damage() const {

@@ -56,8 +56,7 @@ bool Overview::onMouseAxis(const IPointer::SAxisEvent &e) {
     const LRect band = stripBand();
     const double lx = mc.x - m->m_position.x;
     const double ly = mc.y - m->m_position.y;
-    overStrip = (lx >= band.x && ly >= band.y && lx <= band.x + band.w &&
-                 ly <= band.y + band.h);
+    overStrip = band.contains(lx, ly);
   }
 
   if (!overStrip &&
@@ -105,6 +104,27 @@ void Overview::onMouseMove() {
     g_pHyprRenderer->damageBox(unionBox);
 }
 
+int Overview::tileAt(double lx, double ly) const {
+  for (size_t i = 0; i < m_tiles.size(); ++i)
+    if (currentBox(m_tiles[i], static_cast<int>(i)).contains(lx, ly))
+      return static_cast<int>(i);
+  return -1;
+}
+
+int Overview::stripItemAt(double lx, double ly) const {
+  for (size_t i = 0; i < m_strip.size(); ++i)
+    if (stripCardAt(i).contains(lx, ly))
+      return static_cast<int>(i);
+  return -1;
+}
+
+int Overview::draggedTile() const {
+  return (m_dragging && m_pressTile >= 0 &&
+          m_pressTile < static_cast<int>(m_tiles.size()))
+             ? m_pressTile
+             : -1;
+}
+
 void Overview::updateHover() {
   if (!m_active)
     return;
@@ -125,13 +145,7 @@ void Overview::updateHover() {
     if (m_dragging) {
       m_dragX = lx;
       m_dragY = ly;
-      int newStrip = -1; // highlight the workspace card under the cursor
-      for (size_t i = 0; i < m_strip.size(); ++i) {
-        const LRect c = stripCardAt(i);
-        if (lx >= c.x && ly >= c.y && lx <= c.x + c.w && ly <= c.y + c.h)
-          newStrip = static_cast<int>(i);
-      }
-      m_hoveredStrip = newStrip;
+      m_hoveredStrip = stripItemAt(lx, ly); // card under the cursor, if any
       m_hovered =
           m_pressTile; // -1 while dragging a strip window, which is correct
       damage();
@@ -139,18 +153,8 @@ void Overview::updateHover() {
     }
   }
 
-  int newTile = -1;
-  for (size_t i = 0; i < m_tiles.size(); ++i) {
-    const LRect b = currentBox(m_tiles[i], static_cast<int>(i));
-    if (lx >= b.x && ly >= b.y && lx <= b.x + b.w && ly <= b.y + b.h)
-      newTile = static_cast<int>(i);
-  }
-  int newStrip = -1;
-  for (size_t i = 0; i < m_strip.size(); ++i) {
-    const LRect c = stripCardAt(i);
-    if (lx >= c.x && ly >= c.y && lx <= c.x + c.w && ly <= c.y + c.h)
-      newStrip = static_cast<int>(i);
-  }
+  const int newTile = tileAt(lx, ly);
+  const int newStrip = stripItemAt(lx, ly);
   if (newTile != m_hovered || newStrip != m_hoveredStrip) {
     m_hovered = newTile;
     m_hoveredStrip = newStrip;
@@ -207,14 +211,9 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // on press). Per-window close is keyboard-only now (key_close_window, see
     // onKey).
     if (e.button == BTN_MIDDLE) {
-      for (size_t i = 0; i < m_strip.size(); ++i) {
-        const LRect c = stripCardAt(i);
-        if (!m_strip[i].isPlus && !m_strip[i].isAll && lx >= c.x && ly >= c.y &&
-            lx <= c.x + c.w && ly <= c.y + c.h) {
-          closeWorkspaceWindows(m_strip[i]);
-          break;
-        }
-      }
+      const int idx = stripItemAt(lx, ly);
+      if (idx >= 0 && !m_strip[idx].isPlus && !m_strip[idx].isAll)
+        closeWorkspaceWindows(m_strip[idx]);
       return true; // swallow; middle is never a switch/drag/dismiss
     }
 
@@ -227,8 +226,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         const LRect lb =
             tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
         const LRect br = closeButtonRect(lb);
-        if (lx >= br.x && ly >= br.y && lx <= br.x + br.w &&
-            ly <= br.y + br.h) {
+        if (br.contains(lx, ly)) {
           m_pressTile = PRESS_CONSUMED; // so the release doesn't treat it as an
                                         // empty-space click
           closeTileWindow(static_cast<int>(i));
@@ -246,8 +244,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           continue;
         const LRect c = stripCardAt(i);
         const LRect br = stripCloseButtonRect(c);
-        if (lx >= br.x && ly >= br.y && lx <= br.x + br.w &&
-            ly <= br.y + br.h) {
+        if (br.contains(lx, ly)) {
           m_pressTile = PRESS_CONSUMED;
           closeWorkspaceWindows(m_strip[i]);
           return true;
@@ -262,7 +259,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // on +/All) switches immediately, as before.
     for (size_t i = 0; i < m_strip.size(); ++i) {
       const LRect c = stripCardAt(i);
-      if (!(lx >= c.x && ly >= c.y && lx <= c.x + c.w && ly <= c.y + c.h))
+      if (!c.contains(lx, ly))
         continue;
       auto &it = m_strip[i];
       if (!it.isPlus && !it.isAll) {
@@ -271,8 +268,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           if (!w || !w->m_isMapped || w->isHidden())
             continue;
           const LRect wb = stripWinSlotRect(it, c, j);
-          if (lx >= wb.x && ly >= wb.y && lx <= wb.x + wb.w &&
-              ly <= wb.y + wb.h) {
+          if (wb.contains(lx, ly)) {
             m_pressStripItem = static_cast<int>(i);
             m_pressStripWin = static_cast<int>(j);
             m_dragStripWin = w;
@@ -294,16 +290,14 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       return true;
     }
     // window tile → arm a drag candidate; click vs drag decided on release
-    for (size_t i = 0; i < m_tiles.size(); ++i) {
-      const LRect b = currentBox(m_tiles[i], static_cast<int>(i));
-      if (lx >= b.x && ly >= b.y && lx <= b.x + b.w && ly <= b.y + b.h) {
-        m_pressTile = static_cast<int>(i);
-        m_pressX = m_dragX = lx;
-        m_pressY = m_dragY = ly;
-        m_grabDX = lx - b.x;
-        m_grabDY = ly - b.y;
-        return true;
-      }
+    if (const int hit = tileAt(lx, ly); hit >= 0) {
+      m_pressTile = hit;
+      const LRect b = currentBox(m_tiles[hit], hit);
+      m_pressX = m_dragX = lx;
+      m_pressY = m_dragY = ly;
+      m_grabDX = lx - b.x;
+      m_grabDY = ly - b.y;
+      return true;
     }
     // empty space
     m_pressTile = PRESS_EMPTY;
@@ -327,16 +321,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       m_dragging = false;
       // dropped onto a workspace card → move the window there (RMB: swap
       // instead — task #8, mirrors the strip-window-drag drop branch below)
-      for (size_t i = 0; i < m_strip.size(); ++i) {
-        const LRect c = stripCardAt(i);
-        if (lx >= c.x && ly >= c.y && lx <= c.x + c.w && ly <= c.y + c.h) {
-          if (m_pressButton == BTN_RIGHT)
-            swapOnWorkspace(w, m_strip[i]);
-          else
-            dropOnWorkspace(w, m_strip[i]);
-          return true;
-        }
-      }
+      if (dropOnStripCard(w, lx, ly, -1))
+        return true;
       // grid mode: dropped onto (or near) another preview → swap the two
       // windows' places. Nearest-tile-within-tolerance rather than exact
       // containment: the natural drop point often lands in the gap between
@@ -441,22 +427,12 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       if (w) {
         // dropped onto a DIFFERENT card → move it there, same as a grid-tile
         // drop (RMB: swap with that workspace's window instead — task #8)
-        for (size_t i = 0; i < m_strip.size(); ++i) {
-          if (static_cast<int>(i) == stripItem)
-            continue;
-          const LRect c = stripCardAt(i);
-          if (lx >= c.x && ly >= c.y && lx <= c.x + c.w && ly <= c.y + c.h) {
-            if (m_pressButton == BTN_RIGHT)
-              swapOnWorkspace(w, m_strip[i]);
-            else
-              dropOnWorkspace(w, m_strip[i]);
-            return true;
-          }
-        }
+        if (dropOnStripCard(w, lx, ly, stripItem))
+          return true;
         // dropped in the main preview area → send it to whichever workspace is
         // currently displayed there (equivalent to dropping it on that card).
         if (const auto m = m_monitor.lock();
-            m && lx >= 0 && ly >= 0 && lx <= m->m_size.x && ly <= m->m_size.y) {
+            m && LRect{0, 0, m->m_size.x, m->m_size.y}.contains(lx, ly)) {
           for (const auto &it : m_strip) {
             if (!it.isPlus && !it.isAll && it.active) {
               if (m_pressButton == BTN_RIGHT)

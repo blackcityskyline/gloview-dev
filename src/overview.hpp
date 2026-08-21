@@ -481,6 +481,10 @@ private:
   Vector2D stripScroll() const; // current scroll offset of the card group
   LRect stripCardAt(size_t i)
       const; // m_strip[i].card shifted by the current scroll (for hit-testing)
+  int stripItemAt(double lx,
+                  double ly) const; // card index under the point, else -1
+  int tileAt(double lx,
+             double ly) const; // tile whose currentBox holds the point, else -1
   bool showAllWorkspaces()
       const; // effective expo state: runtime override (m_allOverride) else
              // plugin:gloview:show_all_workspaces
@@ -504,11 +508,17 @@ private:
   tileContentBox(size_t i,
                  const LRect &slot) const; // slot fitted to the window's aspect
   LRect dragBox() const; // the picked-up tile's box at the cursor
+  int draggedTile()
+      const; // m_pressTile while a grid drag is live (bounds-checked), else -1
   void
   drawPreviewTile(size_t i, const LRect &slot,
                   bool lift) const; // tile chrome (shadow/border/backing/title)
   void switchToWorkspace(const StripItem &it);
   void dropOnWorkspace(const PHLWINDOW &w, const StripItem &it);
+  // Shared tail of both drag-release paths (grid tile / strip window): if the
+  // point sits on a workspace card other than skipItem, move w there — or swap
+  // it with that card's last-focused window on an RMB drop. True if consumed.
+  bool dropOnStripCard(const PHLWINDOW &w, double lx, double ly, int skipItem);
   void swapOnWorkspace(
       const PHLWINDOW &w,
       const StripItem &it); // RMB-drop-on-card counterpart to dropOnWorkspace:
@@ -582,8 +592,13 @@ private:
                           // (passthrough keybinds)
   void
   closeTileWindow(int i); // send-close a tile's window, then reflow the rest
+  std::vector<std::pair<PHLWINDOW, LRect>> captureCurrentBoxes(
+      PHLWINDOW exclude =
+          {}) const; // every tile's window+currentBox snapshot (reflow tails)
   void replayReflow(std::vector<std::pair<PHLWINDOW, LRect>> &
                         oldBoxes); // glide tiles into new slots after a removal
+  void releaseNewWorkspaces(); // clear persistent flags on every "+"-created
+                               // workspace held this session
   void syncTiles(); // add/drop tiles when the displayed workspace's window set
                     // changes, then reflow
   void stepWorkspace(int dir); // scroll-wheel over the main area: show
