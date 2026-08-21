@@ -694,6 +694,7 @@ void Overview::open(bool viaAltTab) {
   m_cursor.onOpen(m, cursorMode());
   m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO
   m_blur.drop();           // re-blur from scratch on the next rendered frame
+  dbg("open");
   damage();
 }
 
@@ -734,6 +735,7 @@ void Overview::close() {
   // updateAnimation reads m_progress as 1 - timeline.raw(), so resuming from
   // progress p means seeking the timeline to (1 - p).
   m_timeline.seek(1.0 - m_progress, animDuration());
+  dbg("close from progress " + std::to_string(m_progress).substr(0, 5));
   damage();
 }
 
@@ -915,6 +917,7 @@ void Overview::deactivate() {
   // one. (Used to be a single slot that only released the LAST one created —
   // creating several in one session silently leaked the rest as permanent
   // phantom persistent workspaces — task/bug #4.)
+  dbg("deactivate (natural close end)");
   releaseNewWorkspaces();
 
   m_active = false;
