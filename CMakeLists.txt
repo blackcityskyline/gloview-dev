@@ -15,6 +15,8 @@ include(GNUInstallDirs)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(HYPR_DEPS REQUIRED hyprland)
+# Raw GL (glCreateShader/glDrawArrays…) for the plugin's own blur shader.
+pkg_check_modules(GLES REQUIRED glesv2)
 # Lua's pkg-config module name varies by distro: `lua` (Arch), `lua5.4`/`lua-5.4`
 # (Debian/Nix), or `luajit` (what Hyprland itself links). Take the first that exists.
 pkg_search_module(LUA REQUIRED lua lua5.4 lua-5.4 lua54 luajit)
@@ -29,18 +31,20 @@ add_library(gloview SHARED
   src/overview_keys.cpp
   src/overview_actions.cpp
   src/layout.cpp
+  src/cursor.cpp
+  src/blur.cpp
 )
 set_target_properties(gloview PROPERTIES PREFIX "")  # produce gloview.so, not libgloview.so
 
-target_include_directories(gloview PRIVATE ${HYPR_DEPS_INCLUDE_DIRS} ${LUA_INCLUDE_DIRS})
+target_include_directories(gloview PRIVATE ${HYPR_DEPS_INCLUDE_DIRS} ${LUA_INCLUDE_DIRS} ${GLES_INCLUDE_DIRS})
 foreach(inc ${HYPR_DEPS_INCLUDE_DIRS})
   if(EXISTS "${inc}/hyprland/src")
     target_include_directories(gloview PRIVATE "${inc}/hyprland/src")
   endif()
 endforeach()
 
-target_link_directories(gloview PRIVATE ${HYPR_DEPS_LIBRARY_DIRS} ${LUA_LIBRARY_DIRS})
-target_link_libraries(gloview PRIVATE ${HYPR_DEPS_LIBRARIES} ${LUA_LIBRARIES})
+target_link_directories(gloview PRIVATE ${HYPR_DEPS_LIBRARY_DIRS} ${LUA_LIBRARY_DIRS} ${GLES_LIBRARY_DIRS})
+target_link_libraries(gloview PRIVATE ${HYPR_DEPS_LIBRARIES} ${LUA_LIBRARIES} ${GLES_LIBRARIES})
 
 install(TARGETS gloview LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 

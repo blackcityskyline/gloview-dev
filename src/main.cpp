@@ -1,9 +1,10 @@
+#include <initializer_list>
 #include <memory>
 #include <stdexcept>
+#include <string>
 
 #include <hyprland/src/config/ConfigManager.hpp>
 #include <hyprland/src/debug/log/Logger.hpp>
-#include <hyprland/src/config/values/types/ColorValue.hpp>
 #include <hyprland/src/config/values/types/IntValue.hpp>
 #include <hyprland/src/config/values/types/FloatValue.hpp>
 #include <hyprland/src/config/values/types/StringValue.hpp>
@@ -26,11 +27,6 @@ void addInt(const char* name, Config::INTEGER fallback) {
     HyprlandAPI::addConfigValueV2(g_handle, v);
     gloview::g_config.ints[name] = v;
 }
-void addColor(const char* name, Config::INTEGER fallback) {
-    auto v = makeShared<Config::Values::CColorValue>(name, "", fallback);
-    HyprlandAPI::addConfigValueV2(g_handle, v);
-    gloview::g_config.colors[name] = v;
-}
 void addFloat(const char* name, Config::FLOAT fallback) {
     auto v = makeShared<Config::Values::CFloatValue>(name, "", fallback);
     HyprlandAPI::addConfigValueV2(g_handle, v);
@@ -40,6 +36,13 @@ void addStr(const char* name, Config::STRING fallback) {
     auto v = makeShared<Config::Values::CStringValue>(name, "", fallback);
     HyprlandAPI::addConfigValueV2(g_handle, v);
     gloview::g_config.strings[name] = v;
+}
+// Color options (a manual "0xAARRGGBB" literal OR a scheme-role keyword like
+// "primary"/"secondary"/"error", see cfgColorScheme() in overview_core.cpp)
+// are plain strings too — this alias just documents intent at each call site
+// below instead of every color option reading like a generic addStr().
+inline void addColor(const char* name, const char* fallbackHex) {
+    addStr(name, fallbackHex);
 }
 
 SDispatchResult dispToggle(std::string) {
@@ -134,6 +137,20 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     addFloat("plugin:gloview:preview_round_power", Config::FLOAT{2.0F}); // corner curve exponent for preview rounding (2 = circular; higher = squarer "squircle"); applied to the LIVE window surface too, so it now matches the chrome ring instead of showing square corners under a round border
     addInt("plugin:gloview:strip_preview_round", Config::INTEGER{4});   // deprecated, no longer read: strip window previews now share preview_round/preview_round_power (clamped to the card slot) — kept registered so existing configs setting it don't error
     addFloat("plugin:gloview:blur", Config::FLOAT{1.0F});         // backdrop/strip blur strength 0..1 (0 = off; floats allowed)
+    addInt("plugin:gloview:blur_passes", Config::INTEGER{3});     // custom gaussian iterations for the backdrop blur (1..16)
+    addInt("plugin:gloview:blur_size", Config::INTEGER{8});       // backdrop blur radius in screen px (1..200)
+    addInt("plugin:gloview:blur_resolution", Config::INTEGER{4}); // backdrop blur buffer = 1/N monitor res (1..32; lower = sharper/cleaner)
+    addInt("plugin:gloview:fullscreen_background", Config::INTEGER{0}); // 1: a fullscreen mpv window on the displayed workspace becomes the (blurred) backdrop instead of wallpaper (live video); 0 (default): the wallpaper shows and fullscreen windows stay hidden
+    // "live" (default) draws each preview from the window's LIVE surface tree
+    // every frame — a playing video/animating page keeps the overview
+    // recompositing at full refresh. "snapshot" captures each window's main
+    // surface texture ONCE (at build) and renders that static texture instead:
+    // zero per-frame live-surface work (measured ~20%→0% GPU idle on a Haswell
+    // iGPU with a video tile), at the cost of a stale preview while content
+    // changes under the overview.
+    addStr("plugin:gloview:preview_mode", "live");
+
+    addStr("plugin:gloview:cursor_mode", "auto");         // auto (default): prefer Hyprland's hardware cursor plane when the driver exposes one (zero framebuffer writes, zero trails, zero GPU cost per move) — software: force a software cursor drawn by gloview with an opaque erase (use if you see stale cursor artifacts)
 
     // --- workspace strip ---
     addStr("plugin:gloview:anchor", "");                          // top | bottom | left | right — which edge the strip attaches to (default top)
@@ -144,16 +161,27 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     addInt("plugin:gloview:strip_gap", Config::INTEGER{18});
     addInt("plugin:gloview:strip_card_round", Config::INTEGER{10});
 
-    // --- colors (0xAARRGGBB) ---
-    addColor("plugin:gloview:backdrop_color", Config::INTEGER{0x73070a10LL});       // dim + blur
-    addColor("plugin:gloview:strip_band_color", Config::INTEGER{0x24ffffffLL});     // faint top band
-    addColor("plugin:gloview:strip_card_color", Config::INTEGER{0x3a0e131cLL});
-    addColor("plugin:gloview:strip_active_color", Config::INTEGER{0x4d1c2c44LL});
-    addColor("plugin:gloview:strip_active_border", Config::INTEGER{0xf0ffffffLL});
-    addColor("plugin:gloview:strip_hover_border", Config::INTEGER{0x80ffffffLL});
-    addColor("plugin:gloview:strip_plus_color", Config::INTEGER{0xd0eef4ffLL});
-    addColor("plugin:gloview:shadow_color", Config::INTEGER{0x70000000LL});
-    addColor("plugin:gloview:hover_border", Config::INTEGER{0xf0ffffffLL});
+    // --- colors ---
+    // ONE field per color: either a manual "0xAARRGGBB" (also accepts "0xRRGGBB" /
+    // "#AARRGGBB" / "#RRGGBB" / bare hex), or a scheme-role keyword — "primary" |
+    // "secondary" | "error"/"danger" | "group_active" | "group_inactive" — which pulls RGB
+    // from Hyprland's OWN live general:col.*/group:col.* (whatever a theming tool — a
+    // Noctalia/matugen palette, pywal, wallust, or a hand-edited hyprland.conf/lua — has
+    // actually set those to, since gloview reads them back through Hyprland's own config
+    // system after all variable substitution has already happened) while keeping the alpha
+    // written here (or an explicit "role:AA" override). See cfgColorScheme()/schemeGradient()
+    // in overview_core.cpp for the full grammar and the reasoning behind the whitelist.
+    addColor("plugin:gloview:backdrop_color", "0x73070a10");       // dim + blur
+    addColor("plugin:gloview:strip_band_color", "0x24ffffff");     // faint top band
+    addColor("plugin:gloview:strip_card_color", "0x3a0e131c");
+    addColor("plugin:gloview:strip_active_color", "0x4d1c2c44");
+    addColor("plugin:gloview:strip_active_border", "0xf0ffffff");
+    addColor("plugin:gloview:strip_hover_border", "0x80ffffff");
+    addColor("plugin:gloview:strip_plus_color", "0xd0eef4ff");     // the "+" glyph only
+    addColor("plugin:gloview:strip_all_color", "0xd0eef4ff");      // the all-workspaces 2x2 glyph — own key, no longer tied to strip_plus_color
+    addColor("plugin:gloview:shadow_color", "0x70000000");
+    addColor("plugin:gloview:hover_border", "0xf0ffffff");
+    addColor("plugin:gloview:border_color", "0x50ffffff");         // the always-on base ring (show_border)
 
     // --- input / keyboard navigation ---
     addInt("plugin:gloview:focus_follows_mouse", Config::INTEGER{1});      // keyboard selection tracks the hovered tile
@@ -161,9 +189,19 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     addInt("plugin:gloview:passthrough_keys", Config::INTEGER{1});         // unhandled keys reach Hyprland (keybinds keep working)
     addInt("plugin:gloview:exit_on_click", Config::INTEGER{1});           // click on empty space dismisses the overview
     addInt("plugin:gloview:debug_logs", Config::INTEGER{0});              // verbose [gloview] logging
-    addInt("plugin:gloview:select_border_size", Config::INTEGER{3});      // keyboard-selected tile ring thickness (px)
-    addColor("plugin:gloview:select_border", Config::INTEGER{0xf066ccffLL}); // keyboard-selected tile ring (distinct from hover)
-    addInt("plugin:gloview:hover_border_size", Config::INTEGER{3});        // hovered/focused tile ring thickness (px)
+    addInt("plugin:gloview:select_border_size", Config::INTEGER{3});      // keyboard-selected tile ring thickness (px); 0 disables the ring entirely
+    addColor("plugin:gloview:select_border", "0xf066ccff"); // keyboard-selected tile ring (distinct from hover)
+    addInt("plugin:gloview:hover_border_size", Config::INTEGER{3});        // hovered/focused tile ring thickness (px); 0 disables the ring entirely
+    // Two independent, modular layers instead of one fixed look — combine freely:
+    //   show_border:       an always-on base ring on EVERY tile (border_color/border_size)
+    //   show_focus_border: the hover_border/select_border ring drawn on top on the
+    //                      hovered/keyboard-selected tile (hover_border_size/select_border_size)
+    // off+off = no borders; off+on = focus-only (the original look); on+off = a constant
+    // ring; on+on = a constant ring that visibly changes on focus, since the focus ring
+    // draws right over it.
+    addInt("plugin:gloview:show_border", Config::INTEGER{0});
+    addInt("plugin:gloview:show_focus_border", Config::INTEGER{1});
+    addInt("plugin:gloview:border_size", Config::INTEGER{2});             // show_border ring thickness (px); 0 disables it
 
     // --- keybinds (key names: esc/tab/enter/left/right/up/down/shift/hjkl/f1…/super/ctrl/alt/grave;
     //     a bare digit = that number-row key; comma/space separated; modifier combos as
@@ -200,11 +238,12 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     addInt("plugin:gloview:exit_on_switch", Config::INTEGER{0});      // dismiss the overview when the live workspace changes underneath
     addInt("plugin:gloview:switch_on_new_workspace", Config::INTEGER{1}); // clicking "+" follows the display to the new workspace
     addStr("plugin:gloview:new_workspace_mode", "fill"); // fill (default): "+" takes the lowest free workspace id (backfills a gap) — linear: always appends past the highest existing id
-    addColor("plugin:gloview:close_button_color", Config::INTEGER{0xe6e23b3bLL}); // "✕" close button fill (both per-window and per-workspace)
+    addColor("plugin:gloview:close_button_color", "0xe6e23b3b"); // "✕" close button fill (both per-window and per-workspace); try "error" if group:col.border_locked_active is themed
     addStr("plugin:gloview:close_button_visibility", "shift");  // shift (default, "standard"): close buttons only show in desktop/canvas mode (key_desktop) — always: show them on every tile and strip card all the time
     addStr("plugin:gloview:close_button_icon", "✕");            // glyph drawn in the close buttons
     addFloat("plugin:gloview:close_button_size", Config::FLOAT{1.0F}); // scale multiplier over the computed base button size
     addStr("plugin:gloview:close_button_position", "top-right"); // top-right | top-left | bottom-right | bottom-left
+    addStr("plugin:gloview:close_trigger", "button"); // button (default): the "✕" close button (close_button_visibility) — doubleclick: double-click/double-tap directly on a tile closes it instead (the "✕" is hidden); keyboard key_close_window and the strip card's whole-workspace "✕"/middle-click are unaffected either way
 
     // --- bar / layer-shell hiding (waybar, quickshell-based bars, …) ---
     addInt("plugin:gloview:hide_top_layers", Config::INTEGER{0});     // fade out Top layer surfaces (bars) while the overview is up

@@ -12,6 +12,7 @@
 #include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/desktop/history/WindowHistoryTracker.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
+#include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
 #include <hyprland/src/desktop/view/WLSurface.hpp>
 #include <hyprland/src/desktop/view/Window.hpp>
@@ -21,7 +22,7 @@
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/layout/space/Space.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
-#include <hyprland/src/managers/PointerManager.hpp>
+#include <hyprland/src/pointer/PointerManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopTimer.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
@@ -32,17 +33,12 @@
 #include <hyprland/src/render/pass/PassElement.hpp>
 #include <hyprland/src/render/pass/RendererHintsPassElement.hpp>
 #include <hyprland/src/render/pass/SurfacePassElement.hpp>
+#include <hyprland/src/state/WorkspaceState.hpp>
 #include <hyprutils/utils/ScopeGuard.hpp>
 
 using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
-
-namespace {
-bool roughly(double a, double b, double tol = 3.0) {
-  return std::abs(a - b) <= tol;
-}
-} // namespace
 
 void Overview::buildTiles() {
   m_tiles.clear();
@@ -54,7 +50,7 @@ void Overview::buildTiles() {
   // Off-workspace windows (expo) render live from their last-committed texture,
   // same as the strip cards. Membership shared with syncTiles via
   // tileBelongs().
-  for (const auto &w : g_pCompositor->m_windows) {
+  for (const auto &w : Desktop::windowState()->windows()) {
     if (!tileBelongs(w, m, ws))
       continue;
 
@@ -62,19 +58,17 @@ void Overview::buildTiles() {
     t.win = w;
     // settled goal(), not value(): a mid-desktop-jump value() carries the
     // workspace-slide offset and would warp every preview.
-    const auto p = w->m_realPosition->goal();
-    const auto s = w->m_realSize->goal();
+    const auto p = w->positionAnimation()->goal();
+    const auto s = w->sizeAnimation()->goal();
     t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
                       std::max(1.0, s.x), std::max(1.0, s.y)};
-    t.snapSource =
-        t.natural; // refined to the live frozen rect in captureSnapshots()
     m_tiles.push_back(t);
   }
 
   // Alt-Tab session: reorder the tiles THEMSELVES into MRU order (rank 0 = the
   // PREVIOUSLY focused window, rank 1 = the one before that, … —
   // buildAltTabRank() rotates the raw ranking so the CURRENTLY focused window
-  // lands last, not first) instead of leaving them in g_pCompositor->m_windows'
+  // lands last, not first) instead of leaving them in Desktop::windowState()'s
   // build order. layoutTiles() is told to preserve this order
   // (LayoutCfg::preserveOrder) instead of its usual spatial reading-order sort,
   // so the grid visually reflects recency — cycling then reads as a real MRU
@@ -154,7 +148,7 @@ void Overview::buildStrip() {
       cfgStr("plugin:gloview:strip_empty_mode", "show");
   const bool showSpecial = cfgInt("plugin:gloview:show_special", 0) != 0;
   const auto wsHasWindows = [](const PHLWORKSPACE &w) {
-    for (const auto &win : g_pCompositor->m_windows)
+    for (const auto &win : Desktop::windowState()->windows())
       if (win && win->m_isMapped && !win->isHidden() && win->m_workspace == w)
         return true;
     return false;
@@ -164,7 +158,7 @@ void Overview::buildStrip() {
       real; // numeric id -> existing workspace object, this monitor
   const int curId = (cur && !cur->m_isSpecialWorkspace) ? cur->m_id : -1;
   int highestId = 0;
-  for (const auto &wref : g_pCompositor->getWorkspaces()) {
+  for (const auto &wref : State::workspaceState()->workspaces()) {
     const auto ws = wref.lock();
     if (!ws || ws->m_monitor.lock() != m)
       continue;
@@ -247,11 +241,11 @@ void Overview::buildStrip() {
     const auto &ws = found->second;
     it.ws = ws;
     it.active = (ws == cur);
-    for (const auto &w : g_pCompositor->m_windows) {
+    for (const auto &w : Desktop::windowState()->windows()) {
       if (!w || !w->m_isMapped || w->isHidden() || w->m_workspace != ws)
         continue;
-      const auto p = w->m_realPosition->goal();
-      const auto s = w->m_realSize->goal();
+      const auto p = w->positionAnimation()->goal();
+      const auto s = w->sizeAnimation()->goal();
       StripWin sw;
       sw.win = w;
       sw.rel = LRect{(p.x - m->m_position.x) / m->m_size.x,
@@ -479,169 +473,6 @@ void Overview::layoutTiles() {
     m_tiles[i].target = out[i];
 }
 
-void Overview::captureSnapshots() {
-  if (!g_pHyprOpenGL || !g_pHyprRenderer)
-    return;
-  const auto m = m_monitor.lock();
-  if (!m)
-    return;
-
-  // Only snapshot presentable windows: a window mid-move/resize can be
-  // transiently unmapped/workspace-less, and makeSnapshot then null-derefs the
-  // surface → crash.
-  const auto snap = [this](const PHLWINDOW &w) -> bool {
-    if (w && w->m_isMapped && w->m_workspace && !w->isHidden()) {
-      const auto ws = w->m_workspace;
-      const bool wsVis = ws->m_visible;
-      const bool wsForce = ws->m_forceRendering;
-      // Save BOTH value AND goal: setValueAndWarp(x) also sets goal:=x, so
-      // restoring only value() pins a mid-animation workspace at a stale goal.
-      // That corruption lives on the workspace, survives a close, and breaks
-      // every later open.
-      const Vector2D wsOffVal = ws->m_renderOffset->value();
-      const Vector2D wsOffGoal = ws->m_renderOffset->goal();
-      const float wsAlphaVal = ws->m_alpha->value();
-      const float wsAlphaGoal = ws->m_alpha->goal();
-
-      // m_forceRendering is THE flag makeSnapshot honours to paint a window on
-      // a non-active workspace; without it the window renders empty →
-      // black/blank thumb. Only WARP (never assign the goal), else the goal
-      // thrash corrupts the workspace.
-      ws->m_visible = true;
-      ws->m_forceRendering = true;
-      ws->m_renderOffset->setValueAndWarp(Vector2D{});
-      ws->m_alpha->setValueAndWarp(1.0F);
-
-      // No window-geometry warp: snap() runs only for SETTLED windows
-      // (value≈goal), whose buffer already matches the box → 1:1 paint; warping
-      // would stretch a stale-size buffer into the new box.
-
-      // force-render this exact window through the hook for makeSnapshot's
-      // duration, so an inactive-workspace window still paints into its FB.
-      m_captureWin = w;
-      g_pHyprRenderer->makeSnapshot(w);
-      m_captureWin.reset();
-
-      ws->m_visible = wsVis;
-      ws->m_forceRendering = wsForce;
-      // Warp back to the captured value, then re-aim at the original goal so an
-      // in-flight slide resumes to its true destination (operator= no-ops if
-      // settled).
-      ws->m_renderOffset->setValueAndWarp(wsOffVal);
-      *ws->m_renderOffset = wsOffGoal;
-      ws->m_alpha->setValueAndWarp(wsAlphaVal);
-      *ws->m_alpha = wsAlphaGoal;
-      return true;
-    }
-    return false;
-  };
-
-  // Snapshot only when SETTLED (value≈goal), else the buffer/box mismatch
-  // stretches or blacks the tile and a hidden workspace never repaints to heal.
-  // When unsettled, KEEP the last good snapshot (FB persists) and reuse its
-  // recorded geometry. Returns the monitor-local FB-content rect, w<=0 if none.
-  const auto captureOrKeep = [&](const PHLWINDOW &w) -> LRect {
-    if (!w)
-      return LRect{0, 0, 0, 0};
-    void *const key = w.get();
-    const Vector2D gp = w->m_realPosition->goal();
-    const Vector2D gs = w->m_realSize->goal();
-    const Vector2D vp = w->m_realPosition->value();
-    const Vector2D vs = w->m_realSize->value();
-    const bool settled = roughly(vp.x, gp.x, 2) && roughly(vp.y, gp.y, 2) &&
-                         roughly(vs.x, gs.x, 2) && roughly(vs.y, gs.y, 2);
-    const bool haveFB = w->m_snapshotFB && w->m_snapshotFB->isAllocated();
-    // renderWindow scales the surface DOWN to fit the box but never UP, so
-    // content spans min(box, buffer): when the buffer lags the box
-    // (retiled/grown, or any window on a HIDDEN workspace — no frame callbacks)
-    // the margin stays transparent. Crop to the CONTENT rect, not the box, else
-    // the crop samples empty margin → dark card backing.
-    Vector2D content = vs;
-    if (const auto s = w->wlSurface()) {
-      const auto bs = s->getViewporterCorrectedSize();
-      if (bs.x > 0 && bs.y > 0)
-        content = Vector2D{std::min(vs.x, bs.x), std::min(vs.y, bs.y)};
-    }
-    const auto record = [&]() -> LRect {
-      const LRect r{vp.x - m->m_position.x, vp.y - m->m_position.y,
-                    std::max(1.0, content.x), std::max(1.0, content.y)};
-      m_snapGeom[key] = r;
-      return r;
-    };
-
-    // Always RE-snapshot a settled window, never trust a kept FB: m_snapshotFB
-    // is SHARED with Hyprland, whose own switch/fade animations re-render the
-    // window into it at a different geometry, desyncing a reused crop rect →
-    // blank/dark thumbs. A fresh snap re-renders and re-records the rect
-    // together, so they can't disagree.
-    if (settled && snap(w))
-      return record();
-    // Unsettled (mid open/close/reflow): a snap would freeze a half-resized
-    // buffer. Reuse the last good FB+rect; the recapture timer re-snaps once
-    // settled.
-    const auto prev = m_snapGeom.find(key);
-    if (prev != m_snapGeom.end() && haveFB)
-      return prev->second;
-    // First sighting and not yet settled: best-effort snap so it isn't blank.
-    if (snap(w))
-      return record();
-    return LRect{0, 0, 0, 0};
-  };
-
-  m_capturing = true; // let hidden tile windows render into their snapshots
-  g_pHyprOpenGL->makeEGLCurrent();
-  for (auto &t : m_tiles) {
-    const LRect src = captureOrKeep(t.win.lock());
-    if (src.w > 0) {
-      t.captured = true;
-      t.snapSource = src; // monitor-local logical, matches the FB content
-    }
-  }
-  // Strip cards render LIVE surfaces (no snapshots) — just the current tiled
-  // slot from the window's goal position, refreshed each pass to track reflows.
-  for (auto &it : m_strip)
-    for (auto &sw : it.wins) {
-      const auto w = sw.win.lock();
-      if (!w)
-        continue;
-      const auto gp = w->m_realPosition->goal();
-      const auto gs = w->m_realSize->goal();
-      sw.rel = LRect{(gp.x - m->m_position.x) / m->m_size.x,
-                     (gp.y - m->m_position.y) / m->m_size.y,
-                     std::max(0.001, gs.x / m->m_size.x),
-                     std::max(0.001, gs.y / m->m_size.y)};
-    }
-  m_capturing = false;
-}
-
-void Overview::scheduleRecapture() {
-  if (!g_pEventLoopManager)
-    return;
-
-  // captureSnapshots drives a render pass; calling it inside a render stage
-  // reenters the renderer and crashes. A timer fires BETWEEN frames (safe), and
-  // the delay lets reflowed client buffers commit before we snapshot.
-  m_recaptureLeft =
-      10; // ~600ms, enough to outlast the window move/resize animation
-  const auto fire = [this](SP<CEventLoopTimer> self, void *) {
-    if (!m_active) {
-      m_recaptureLeft = 0;
-      return;
-    }
-    captureSnapshots();
-    damage();
-    if (--m_recaptureLeft > 0)
-      self->updateTimeout(std::chrono::milliseconds(60));
-  };
-
-  if (!m_recaptureTimer) {
-    m_recaptureTimer = makeShared<CEventLoopTimer>(
-        std::chrono::milliseconds(60), fire, nullptr);
-    g_pEventLoopManager->addTimer(m_recaptureTimer);
-  } else
-    m_recaptureTimer->updateTimeout(std::chrono::milliseconds(60));
-}
-
 // Rebuild tiles/strip, then glide each survivor from its captured box into its
 // new slot without re-running the chrome reveal (m_progress pinned at 1).
 // Shared by drop-to-workspace and close-window.
@@ -674,8 +505,7 @@ void Overview::replayReflow(
 }
 
 void Overview::syncTiles() {
-  if (!m_active || !m_opening || m_capturing || m_pendingDeactivate ||
-      m_reflowing)
+  if (!m_active || !m_opening || m_pendingDeactivate || m_reflowing)
     return;
   const auto ws = m_workspace.lock();
   if (!ws)
@@ -691,7 +521,7 @@ void Overview::syncTiles() {
     return tileBelongs(w, m, ws);
   };
   size_t expected = 0;
-  for (const auto &w : g_pCompositor->m_windows)
+  for (const auto &w : Desktop::windowState()->windows())
     if (belongs(w))
       ++expected;
 
@@ -727,7 +557,7 @@ void Overview::syncTiles() {
 }
 
 void Overview::restoreFill() {
-  for (const auto &w : g_pCompositor->m_windows)
+  for (const auto &w : Desktop::windowState()->windows())
     if (w && w->wlSurface())
       w->wlSurface()->m_fillIgnoreSmall = false;
 }
@@ -747,12 +577,15 @@ void Overview::hideLayers() {
   const auto fade = [this](const std::vector<PHLLSREF> &layer) {
     for (const auto &ref : layer) {
       const auto ls = ref.lock();
-      if (!ls || !ls->m_alpha)
+      if (!ls)
+        continue;
+      auto &a = ls->alpha()[Desktop::View::LS_ALPHA_FADE];
+      if (!a)
         continue;
       if (isAboveLayer(ls->m_namespace))
         continue; // keep above-overview surfaces fully visible
-      m_hiddenLayers.emplace_back(ref, ls->m_alpha->goal());
-      *ls->m_alpha = 0.F;
+      m_hiddenLayers.emplace_back(ref, a->goal());
+      *a = 0.F;
     }
   };
   if (top)
@@ -767,8 +600,11 @@ void Overview::hideLayers() {
 
 void Overview::restoreLayers() {
   for (auto &[ref, alpha] : m_hiddenLayers)
-    if (const auto ls = ref.lock(); ls && ls->m_alpha)
-      *ls->m_alpha = alpha;
+    if (const auto ls = ref.lock(); ls) {
+      auto &a = ls->alpha()[Desktop::View::LS_ALPHA_FADE];
+      if (a)
+        *a = alpha;
+    }
   m_hiddenLayers.clear();
 }
 

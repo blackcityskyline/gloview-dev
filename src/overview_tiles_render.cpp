@@ -7,6 +7,7 @@
 #include <utility>
 
 #include <hyprland/src/Compositor.hpp>
+#include <hyprland/src/config/shared/complex/ComplexDataTypes.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/layout/space/Space.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
@@ -19,7 +20,7 @@
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/helpers/Color.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
-#include <hyprland/src/managers/PointerManager.hpp>
+#include <hyprland/src/pointer/PointerManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopTimer.hpp>
 #include <hyprland/src/helpers/time/Time.hpp>
@@ -43,10 +44,6 @@ void renderWindowLive(const PHLWINDOW& w, const PHLMONITOR& mon, const CBox& des
 
 namespace {
 
-CBox box(const LRect& r) {
-    return CBox{r.x, r.y, r.w, r.h};
-}
-
 // Hyprland's immediate-mode renderRect/renderTexture/renderRoundedShadow feed the box
 // STRAIGHT to projectBoxToTarget, which expects transformed monitor-PIXEL coordinates and
 // applies NO monitor scale itself (verified against Renderer.cpp: clipBox/scaledWindowBox are
@@ -56,14 +53,42 @@ CBox box(const LRect& r) {
 // top-left-biased, while the live window surfaces (renderWindowLive, which converts to pixels
 // itself) land correctly → the overview looks "distorted". Chrome-only; surfaces are already
 // pixel-space. Round radii / blur ranges scale too so corners/shadows keep their proportion.
+// .round() at the end is NOT optional — verified against every decoration in the pinned
+// source that scales a box to pixels before drawing (CHyprBorderDecoration::draw(),
+// CHyprDropShadowDecoration::draw(), CHyprInnerGlowDecoration::draw(),
+// CHyprGroupBarDecoration::draw(): every one of them ends with `.scale(pMonitor->m_scale
+// ).round()`), never a bare `.scale()`. Root cause of thin/gappy borders (task #11): inside
+// CHyprOpenGLImpl::renderBorder() the scissor-culling optimization builds a CRegion from the
+// UN-rounded box — `CRegion(const CBox&)` (hyprutils) forwards straight into
+// `pixman_region32_init_rect(..., box.x, box.y, box.w, box.h)`, whose params are ints, so a
+// fractional box silently TRUNCATES (not rounds) on that implicit double->int conversion. The
+// actual ring shape comes from float shader math and stays precise regardless, but the region
+// that decides WHICH pixels the shader even runs on can end up off by up to ~1px on any given
+// edge — invisible on a thick ring (5px+, where the shader still draws the surviving 4px+), but
+// at border_size 1-3px that stray pixel is most or all of the ring, and each edge/corner can be
+// off by a different amount since box.x/y/w/h each carry their own fractional remainder — which
+// is exactly why the missing side/corner isn't consistent between 1px and 3px. `.round()` (which
+// snaps x/y AND recomputes w/h from the rounded RIGHT/BOTTOM edge, not just floor+size) makes the
+// box exactly representable in the same integer pixel grid the CRegion math already assumes,
+// closing the gap at any thickness — same fix Hyprland's own border decoration relies on.
 CBox pxb(const CBox& b, double s) {
-    return CBox{b.x * s, b.y * s, b.w * s, b.h * s};
+    return CBox{b.x * s, b.y * s, b.w * s, b.h * s}.round();
 }
 CBox pxb(const LRect& r, double s) {
-    return CBox{r.x * s, r.y * s, r.w * s, r.h * s};
+    return CBox{r.x * s, r.y * s, r.w * s, r.h * s}.round();
 }
 int pxr(double round, double s) {
     return static_cast<int>(round * s);
+}
+
+// renderBorder's own outerRound == -1 fallback (round + scaledBorderSize, no correction) is
+// what caused thin borders to show gaps near corners: real Hyprland window borders NEVER rely
+// on that fallback, they always compute this explicitly (CHyprBorderDecoration::draw()) with a
+// squircle-power correction term. round/borderSize are LOGICAL (unscaled) px, matching that
+// source; the whole expression is scaled once at the end, same as there.
+int outerRoundPx(double round, double borderSize, double roundingPower, double scale) {
+    const double correction = borderSize * (M_SQRT2 - 1.0) * std::max(2.0 - roundingPower, 0.0);
+    return static_cast<int>(std::lround((round + borderSize - correction) * scale));
 }
 
 LRect fitInside(const LRect& outer, double aspect) {
@@ -131,6 +156,14 @@ bool Overview::closeButtonsAlwaysOn() const {
     return cfgStr("plugin:gloview:close_button_visibility", "shift") == "always";
 }
 
+// plugin:gloview:close_trigger == "doubleclick" (default "button"): swaps the per-window "✕"
+// entirely for a double-click/double-tap directly on the tile — see the deferred single-click
+// handling in onMouseButton. Only affects the PER-WINDOW close mechanism; the strip card's
+// whole-workspace "✕"/middle-click and the keyboard key_close_window are unrelated and unaffected.
+bool Overview::closeOnDoubleClick() const {
+    return cfgStr("plugin:gloview:close_trigger", "button") == "doubleclick";
+}
+
 void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     const auto m = m_monitor.lock();
     if (!m || i >= m_tiles.size())
@@ -139,8 +172,8 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     const double e         = eased();
     const int    round     = cfgInt("plugin:gloview:preview_round", 12);
     const float  roundPow  = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
-    const auto   shadowCol = argb(cfgColor("plugin:gloview:shadow_color", 0x70000000), 1.0);
-    const auto   hoverCol  = argb(cfgColor("plugin:gloview:hover_border", 0xf0ffffff), e);
+    const auto   shadowCol = argb(cfgColorScheme("shadow_color", "0x70000000"), 1.0);
+    const auto   hoverCol  = argb(cfgColorScheme("hover_border", "0xf0ffffff"), e);
 
     const auto& t = m_tiles[i];
     const auto  w = t.win.lock();
@@ -156,33 +189,87 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // (renderMainWindows) instead of being hardcoded to a circle — otherwise the shadow's
     // corner curve visibly disagreed with the window content's at any non-default
     // preview_round_power, most noticeable right where the close button sits (task #4).
+    //
+    // This box is the SAME size as the tile itself (lb.w × lb.h), just shifted down by dy —
+    // meaning its solid, unblurred CORE sits almost entirely within the tile's own footprint,
+    // not just in the outward-extending halo a real drop shadow would occupy. That was
+    // invisible for as long as an opaque backing sat between it and the live surface (it
+    // fully hid the core, leaving only the halo peeking past the tile's edges, the intended
+    // look) — now that the backing is nearly transparent (see its own comment above) so real
+    // window transparency can show through, this shadow's core shows through right along
+    // with it: a distinct darker rectangle, offset down, floating "inside" the window — not a
+    // rendering bug, just this shape becoming visible for the first time. Cut hard here
+    // (0.9 → 0.18) rather than reshaping the box/range geometry blind (no way to verify the
+    // result visually from here) — still gives opaque windows a faint depth cue in the halo,
+    // without being strong enough to read as a second layer through a transparent one.
     const double range = lift ? 30.0 : 16.0;
     const double dy    = lift ? 14.0 : 6.0;
-    g_pHyprOpenGL->renderRoundedShadow(pxb(LRect{lb.x, lb.y + dy, lb.w, lb.h}, s), pxr(round, s), roundPow, static_cast<int>(range * s), shadowCol, e * 0.9);
+    g_pHyprOpenGL->renderRoundedShadow(pxb(LRect{lb.x, lb.y + dy, lb.w, lb.h}, s), pxr(round, s), roundPow, static_cast<int>(range * s), Config::CGradientValueData(shadowCol), e * 0.18);
 
-    const bool   framed   = (static_cast<int>(i) == m_hovered || lift);
-    const bool   selected = (static_cast<int>(i) == m_selected) && !lift; // keyboard-nav cursor
-    const double th       = std::max(1, cfgInt("plugin:gloview:hover_border_size", 3));
+    const bool framed   = (static_cast<int>(i) == m_hovered || lift);
+    const bool selected = (static_cast<int>(i) == m_selected) && !lift; // keyboard-nav cursor
 
-    // border underlay grown by the line width; the live surface on top (exactly lb) leaves a
-    // clean ring. Hover ring takes precedence over the coincident keyboard selection ring.
-    // roundingPower matches the content for the same reason as the shadow above.
-    if (framed) {
-        const CBox c = box(lb);
-        g_pHyprOpenGL->renderRect(pxb(CBox(c.x - th, c.y - th, c.w + 2 * th, c.h + 2 * th), s), hoverCol, {.round = pxr(round + th, s), .roundingPower = roundPow});
-    } else if (selected) {
-        const auto   selCol = argb(cfgColor("plugin:gloview:select_border", 0xf066ccff), e);
-        const double st     = std::max(1, cfgInt("plugin:gloview:select_border_size", 3));
-        const CBox   c      = box(lb);
-        g_pHyprOpenGL->renderRect(pxb(CBox(c.x - st, c.y - st, c.w + 2 * st, c.h + 2 * st), s), selCol, {.round = pxr(round + st, s), .roundingPower = roundPow});
+    // Real border STROKE (Hyprland's own renderBorder — the same call the compositor uses to
+    // draw a window's own border decoration), not a filled rect grown by the line width. A
+    // filled underlay relied on the live surface drawn on top being fully OPAQUE to hide
+    // everything but its own outward-peeking edge; against a transparent window that
+    // assumption breaks and the "ring" reads as a solid white/blue wash covering the whole
+    // preview instead of a frame around it. renderBorder shades only the ring's own pixels
+    // (it explicitly subtracts the inner box from the paint region), so it can never fill
+    // behind the content no matter how transparent the window is. `lb` is passed UN-grown —
+    // renderBorder expands it outward by borderSize itself, same as it does for a real window
+    // border.
+    //
+    // Two independent, modular layers, each with its own on/off, color (manual or
+    // scheme-sourced), and thickness — combine freely instead of one fixed look:
+    //   show_border        — a base ring on EVERY tile, all the time
+    //   show_focus_border   — the hover/keyboard-selection ring on TOP of it (hover wins over
+    //                        the coincident keyboard-selection ring)
+    // off+off = no borders at all; off+on = focus-only (the original look); on+off = a
+    // constant ring that never changes; on+on = a constant ring whose color/thickness
+    // effectively changes on focus, since the focus ring draws right over it.
+    if (cfgInt("plugin:gloview:show_border", 0) != 0) {
+        const auto                       baseCol = argb(cfgColorScheme("border_color", "0x50ffffff"), e);
+        const int                        bsz     = cfgInt("plugin:gloview:border_size", 2); // 0 = no ring
+        const Config::CGradientValueData grad(baseCol);
+        g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = bsz, .a = 1.0F, .outerRound = outerRoundPx(round, bsz, roundPow, s)});
+    }
+    if (cfgInt("plugin:gloview:show_focus_border", 1) != 0) {
+        if (framed) {
+            const int                        th = cfgInt("plugin:gloview:hover_border_size", 3); // 0 = no ring (renderBorder no-ops on borderSize < 1)
+            const Config::CGradientValueData grad(hoverCol);
+            g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = th, .a = 1.0F, .outerRound = outerRoundPx(round, th, roundPow, s)});
+        } else if (selected) {
+            const auto                       selCol = argb(cfgColorScheme("select_border", "0xf066ccff"), e);
+            const int                        st     = cfgInt("plugin:gloview:select_border_size", 3); // 0 = no ring
+            const Config::CGradientValueData grad(selCol);
+            g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = st, .a = 1.0F, .outerRound = outerRoundPx(round, st, roundPow, s)});
+        }
     }
 
-    // opaque backing under the live surface (transparent clients would leak the blurred
-    // backdrop). INSET 1px: backing is a logical rect (rounded OUTWARD), surface is clipped in
-    // pixel space, so on a fractional edge the backing is ~1px wider and peeks as a dark seam;
-    // the inset keeps it under the over-covered surface.
+    // Thin near-invisible backing — kept ONLY as a safety margin for the 1-3px edge-seam
+    // case renderWindowLive's over-cover comment describes, not to hide the window's own
+    // transparency. At 1.0 (original) or even 0.7 (previous attempt) this is exactly what
+    // made windows read as more opaque than the real desktop: whatever alpha the window
+    // itself doesn't cover was blending against a flat dark color WE invented instead of
+    // whatever's actually behind it. The window's real, config-driven transparency
+    // (windowRealAlpha() below, computing active/inactive/fullscreen opacity + fade exactly
+    // like the real compositor does — already correct, this was never the problem) now
+    // blends almost entirely against our own backdrop, which is ALREADY correctly blurred
+    // and already drawn (renderBackdrop() runs before renderPreviews() calls into this
+    // function) — so a window shows up with the same transparency Hyprland itself would give
+    // it, not an approximation. INSET 1px: backing is a logical rect (rounded OUTWARD),
+    // surface is clipped in pixel space, so on a fractional edge the backing is ~1px wider
+    // and peeks out; the inset keeps it under the over-covered surface.
+    // Deliberately NOT a themable config color (there is no plugin:gloview:preview_bg — an
+    // earlier version read one via cfgColor() here, but it was never registered in main.cpp,
+    // so that lookup always silently fell through to this same literal anyway; removed to stop
+    // pretending it's user-configurable). At alpha 0.08 the hue is essentially imperceptible —
+    // this exists purely as the safety-margin backing described above, not a decorative tint,
+    // so a fixed literal is the honest representation. Same literal as renderStrip()'s window
+    // backing (overview_render.cpp) for consistency between the two.
     const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0), std::max(0.0, lb.h - 2.0)};
-    g_pHyprOpenGL->renderRect(pxb(bb, s), argb(cfgColor("plugin:gloview:preview_bg", 0xff14181f), 1.0), {.round = pxr(round, s), .roundingPower = roundPow});
+    g_pHyprOpenGL->renderRect(pxb(bb, s), argb(0xff14181f, 0.08), {.round = pxr(round, s), .roundingPower = roundPow});
 
     // window title in a dark pill below the tile (on hover or keyboard selection)
     if ((framed || selected) && !lift && t.label && t.label->m_size.x > 0) {
@@ -209,7 +296,7 @@ LRect Overview::tileContentBox(size_t i, const LRect& slot) const {
     double aspect = slot.w / std::max(1.0, slot.h);
     if (i < m_tiles.size()) {
         if (const auto w = m_tiles[i].win.lock()) {
-            const auto s = w->m_realSize->goal();
+            const auto s = w->sizeAnimation()->goal();
             if (s.x > 0 && s.y > 0)
                 aspect = s.x / s.y;
         }
@@ -253,11 +340,34 @@ void Overview::renderPreviews() const {
 // paint straight over it — it only showed through on windows with a transparent corner,
 // which looked like "it works for some apps but not others" (task #3).
 void Overview::renderTileButtons() const {
+    if (closeOnDoubleClick())
+        return; // doubleclick mode replaces the per-window "✕" entirely
     if (!m_desktopMode && !closeButtonsAlwaysOn())
         return;
     const auto m = m_monitor.lock();
     if (!m)
         return;
+    // Defensive reset before drawing the ✕ glyph, fully restored below. The actual "black
+    // square inside the circle" cause was GL_BLEND being left disabled by CBlurFilter::render()
+    // (see its fix in blur.cpp) — with blend off, the glyph texture's transparent padding
+    // around the ✕ wrote straight through as opaque black instead of blending against the red
+    // circle beneath it. A GL_TEXTURE_2D-only unbind (the old fix here) never touched blend and
+    // so never helped; kept below as a harmless, cheap safety net against any similar
+    // leftover-texture-binding issue, known or not. Blend state (both the enable flag and the
+    // exact func) is saved and put back before returning — this phase runs right before
+    // renderStrip() (Phase::Mid), and leaving OUR OWN straight-alpha func in place unconditionally
+    // would have been exactly the same class of leak this comment describes fixing, just handed
+    // to the strip band/cards instead of the glyph.
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    const bool blendBefore = glIsEnabled(GL_BLEND) == GL_TRUE;
+    GLint      blendSrcRGB = GL_ONE, blendDstRGB = GL_ZERO, blendSrcAlpha = GL_ONE, blendDstAlpha = GL_ZERO;
+    glGetIntegerv(GL_BLEND_SRC_RGB, &blendSrcRGB);
+    glGetIntegerv(GL_BLEND_DST_RGB, &blendDstRGB);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &blendSrcAlpha);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDstAlpha);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     const double s      = m->m_scale;
     const double e      = eased();
     const int    dragIdx = (m_dragging && m_pressTile >= 0 && m_pressTile < static_cast<int>(m_tiles.size())) ? m_pressTile : -1;
@@ -269,7 +379,7 @@ void Overview::renderTileButtons() const {
             continue;
         const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
         const LRect br = closeButtonRect(lb);
-        g_pHyprOpenGL->renderRect(pxb(br, s), argb(cfgColor("plugin:gloview:close_button_color", 0xe6e23b3b), e), {.round = pxr(br.h / 2.0, s)});
+        g_pHyprOpenGL->renderRect(pxb(br, s), argb(cfgColorScheme("close_button_color", "0xe6e23b3b"), e), {.round = pxr(br.h / 2.0, s)});
         if (m_closeGlyph && m_closeGlyph->m_size.x > 0) {
             const double gw = m_closeGlyph->m_size.x, gh = m_closeGlyph->m_size.y;
             const double gs = std::min((br.w * 0.62) / std::max(1.0, gw), (br.h * 0.62) / std::max(1.0, gh));
@@ -277,6 +387,9 @@ void Overview::renderTileButtons() const {
             g_pHyprOpenGL->renderTexture(m_closeGlyph, pxb(CBox(br.x + (br.w - dw) / 2.0, br.y + (br.h - dh) / 2.0, dw, dh), s), {.a = static_cast<float>(e)});
         }
     }
+    glBlendFuncSeparate(blendSrcRGB, blendDstRGB, blendSrcAlpha, blendDstAlpha);
+    if (!blendBefore)
+        glDisable(GL_BLEND);
 }
 
 // Queues the LIVE surfaces for the main-area tiles (except the dragged one), above their
@@ -315,7 +428,7 @@ LRect Overview::dragStripBox() const {
     const auto w = m_dragStripWin.lock();
     if (!w)
         return LRect{0, 0, 0, 0};
-    const auto   size   = w->m_realSize->goal();
+    const auto   size   = w->sizeAnimation()->goal();
     const double aspect = (size.x > 0 && size.y > 0) ? size.x / size.y : 16.0 / 9.0;
     const double w_     = 150.0; // fixed on-screen preview width while dragging off the strip
     const double h_     = w_ / std::max(0.1, aspect);
@@ -345,17 +458,25 @@ void Overview::drawDragStripChrome() const {
     const LRect  lb        = dragStripBox();
     const int    round     = clampRound(cfgInt("plugin:gloview:preview_round", 12), lb.w, lb.h);
     const float  roundPow  = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
-    const auto   shadowCol = argb(cfgColor("plugin:gloview:shadow_color", 0x70000000), 1.0);
-    const auto   hoverCol  = argb(cfgColor("plugin:gloview:hover_border", 0xf0ffffff), e);
+    const auto   shadowCol = argb(cfgColorScheme("shadow_color", "0x70000000"), 1.0);
+    const auto   hoverCol  = argb(cfgColorScheme("hover_border", "0xf0ffffff"), e);
 
-    g_pHyprOpenGL->renderRoundedShadow(pxb(LRect{lb.x, lb.y + 14.0, lb.w, lb.h}, s), pxr(round, s), roundPow, static_cast<int>(30.0 * s), shadowCol, e * 0.9);
+    // Same reasoning as drawPreviewTile's shadow above — its box is tile-sized (just offset),
+    // so its solid core sits inside the tile's own footprint and now shows through real
+    // transparency; cut hard rather than reshape the geometry blind.
+    g_pHyprOpenGL->renderRoundedShadow(pxb(LRect{lb.x, lb.y + 14.0, lb.w, lb.h}, s), pxr(round, s), roundPow, static_cast<int>(30.0 * s), Config::CGradientValueData(shadowCol), e * 0.18);
 
-    const double th = std::max(1, cfgInt("plugin:gloview:hover_border_size", 3));
-    const CBox   c  = box(lb);
-    g_pHyprOpenGL->renderRect(pxb(CBox(c.x - th, c.y - th, c.w + 2 * th, c.h + 2 * th), s), hoverCol, {.round = pxr(round + th, s), .roundingPower = roundPow});
+    // Real border stroke, not a filled underlay — same reasoning as drawPreviewTile's hover
+    // ring above: a filled rect would show through this window's own transparency as a solid
+    // wash instead of a frame.
+    const int                        th = cfgInt("plugin:gloview:hover_border_size", 3); // 0 = no ring
+    const Config::CGradientValueData grad(hoverCol);
+    g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = th, .a = 1.0F, .outerRound = outerRoundPx(round, th, roundPow, s)});
 
+    // Same as drawPreviewTile's backing above — thin near-invisible safety margin only, not
+    // a deliberate/configurable tint. See its comment for the full reasoning.
     const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0), std::max(0.0, lb.h - 2.0)};
-    g_pHyprOpenGL->renderRect(pxb(bb, s), argb(cfgColor("plugin:gloview:preview_bg", 0xff14181f), 1.0), {.round = pxr(round, s), .roundingPower = roundPow});
+    g_pHyprOpenGL->renderRect(pxb(bb, s), argb(0xff14181f, 0.08), {.round = pxr(round, s), .roundingPower = roundPow});
 }
 
 void Overview::renderDragWindow() const {

@@ -20,7 +20,7 @@
 #include <hyprland/src/layout/LayoutManager.hpp>
 #include <hyprland/src/layout/space/Space.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
-#include <hyprland/src/managers/PointerManager.hpp>
+#include <hyprland/src/pointer/PointerManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopTimer.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
@@ -30,6 +30,7 @@
 #include <hyprland/src/render/Texture.hpp>
 #include <hyprland/src/render/pass/PassElement.hpp>
 #include <hyprland/src/render/pass/RendererHintsPassElement.hpp>
+#include <hyprland/src/state/WorkspaceState.hpp>
 #include <hyprland/src/render/pass/SurfacePassElement.hpp>
 #include <hyprutils/utils/ScopeGuard.hpp>
 
@@ -157,10 +158,10 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
     // for a never-opened workspace 10.
     const int id = idx + 1;
     const auto m = m_monitor.lock();
-    auto ws = g_pCompositor->getWorkspaceByID(id);
+    auto ws = State::workspaceState()->query().id(id).run();
     const bool justCreated = !ws && m;
     if (justCreated)
-      ws = g_pCompositor->createNewWorkspace(id, m->m_id, "", false);
+      ws = State::workspaceState()->create(id, m->m_id, "", false);
     if (ws) {
       if (justCreated) {
         // A brand-new empty workspace is reaped within a frame or two unless
@@ -179,7 +180,47 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
       if (m) {
         if (const auto target = m_workspace.lock();
             target && target != m->m_activeWorkspace) {
+          // Tried internal=true here first to stop Hyprland's animated slide
+          // transition from leaking a fullscreen window's content into our
+          // backdrop for the duration of the switch (repro: fullscreen
+          // client on the target ws, switch to it via THIS digit-key path
+          // only — never via an external `hyprctl dispatch workspace` /
+          // native keybind switch while the overview is up). That stopped
+          // the leak but broke something else: a fullscreen window on the
+          // target workspace stopped rendering at all afterward — bare
+          // desktop/wallpaper, window still alive, only recovering after
+          // toggling the real desktop workspace back and forth via a native
+          // keybind. So `internal` gates more than just the visual
+          // transition.
+          //
+          // Also: per the comment on deactivate()'s own changeWorkspace()
+          // call below, `internal` isn't even the right lever regardless —
+          // changeWorkspace() ALWAYS starts Hyprland's native slide (its
+          // calls into the animation manager hardcode instant=false, not
+          // exposed through changeWorkspace()'s own signature), so
+          // internal=true was never going to stop the transition itself
+          // either.
+          //
+          // Fix, mirroring deactivate()'s own changeWorkspace() call
+          // (same rationale, see its comment): keep internal=false so every
+          // bit of real-switch bookkeeping runs (this is what brought the
+          // fullscreen window back), let the transition start normally, then
+          // instantly finish it by warping both workspaces' m_alpha /
+          // m_renderOffset straight to their already-assigned goals. The
+          // switch still fully happens — nothing here skips it — it just
+          // doesn't visibly slide over the following frames, so there's no
+          // window of time where Hyprland's own transition-render can put
+          // the target workspace's content on screen outside our own render
+          // pass (and outside shouldRenderWindow's reach) while the overview
+          // is still up.
+          const auto oldWs = m->m_activeWorkspace; // capture BEFORE the switch
           m->changeWorkspace(target, false, true, false);
+          if (oldWs && oldWs != target) {
+            oldWs->m_alpha->setValueAndWarp(oldWs->m_alpha->goal());
+            oldWs->m_renderOffset->setValueAndWarp(oldWs->m_renderOffset->goal());
+          }
+          target->m_alpha->setValueAndWarp(target->m_alpha->goal());
+          target->m_renderOffset->setValueAndWarp(target->m_renderOffset->goal());
           m_liveWsAtOpen = m->m_activeWorkspace;
         }
       }
@@ -426,13 +467,14 @@ void Overview::moveSelection(int dx, int dy) {
 
 // MRU rank snapshot used by buildTiles() to physically sort m_tiles for an
 // Alt-Tab session. "linear" mode returns an empty map (buildTiles() then leaves
-// the natural build order alone). "smart" ranks by Hyprland's OWN system-wide
-// focus history (Desktop::History::windowTracker(), tracked from every real
-// window.active event — clicks, keybinds, other plugins' alt-tabs, anything —
-// not just windows gloview itself happened to focus): walking the history from
-// the back, the FIRST hit is the CURRENTLY focused window (that's what "most
-// recent" means for a live history), the second hit is the previously focused
-// window, and so on.
+// the natural build order alone). "smart" ranks by gloview's OWN focus history
+// (m_focusHistory — every real window.active event EXCEPT the ones our own
+// syncFocus() generates while the overview is up; see its comment in
+// overview.hpp) — genuine clicks, keybinds, other plugins' alt-tabs, anything
+// that isn't just us syncing the cursor: walking the history from the back,
+// the FIRST hit is the CURRENTLY focused window (that's what "most recent"
+// means for a live history), the second hit is the previously focused window,
+// and so on.
 //
 // A plain "rank 0 = most recent" numbering would put the CURRENT window in tile
 // slot 0 — a bad first landing spot for a switcher, since the whole point of
@@ -447,8 +489,13 @@ std::unordered_map<void *, int> Overview::buildAltTabRank() const {
   std::unordered_map<void *, int> rank;
   if (cfgStr("plugin:gloview:alt_tab_mode", "smart") != "smart")
     return rank;
-  const auto &hist =
-      Desktop::History::windowTracker()->fullHistory(); // old -> new
+  // m_focusHistory, NOT Desktop::History::windowTracker() — see its comment in
+  // overview.hpp for why: the real tracker gets rewritten by our OWN
+  // syncFocus() calls (hover/cursor hover WHILE browsing a previous session,
+  // not genuine commits), which used to make a session's very first landing
+  // spot unreliable — sometimes the window the session started on, sometimes
+  // whatever an earlier session's cursor last swept over.
+  const auto &hist = m_focusHistory; // old -> new
   int r = 0;
   for (auto it = hist.rbegin(); it != hist.rend(); ++it) {
     const auto w = it->lock();
@@ -513,7 +560,14 @@ void Overview::syncFocus() const {
   if (w->m_workspace !=
       m->m_activeWorkspace) // displaying a non-live workspace — don't desync
     return;
+  // Suppressed around this specific call only — see m_suppressHistoryTrack's
+  // comment in overview.hpp. This is UI cursor-follow, not a genuine user
+  // commit, and must not be recorded into m_focusHistory (the SAME real
+  // events.window.active signal fires either way; only the LISTENER's
+  // decision to record differs).
+  m_suppressHistoryTrack = true;
   Desktop::focusState()->fullWindowFocus(w, Desktop::FOCUS_REASON_KEYBIND);
+  m_suppressHistoryTrack = false;
 }
 
 } // namespace gloview
