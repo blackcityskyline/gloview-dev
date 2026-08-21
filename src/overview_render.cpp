@@ -899,8 +899,7 @@ void Overview::renderBackdrop() const {
     // currentFB holds that window; (2) a workspace that never re-renders
     // leaves currentFB holding a stale pre-overview frame.
     m_blurFilter.prepare(cPasses, static_cast<float>(cSize), cRes, cStrength);
-    const bool ok = src && m_blurFilter.render(src, m_blur.fb, W, H,
-                                               argb(baseCol, 1.0));
+    const bool ok = src && m_blurFilter.render(src, m_blur.fb, W, H);
 
     // Restore the renderer state we borrowed.
     g_pHyprRenderer->m_renderData.fbSize = oldFbSize;
@@ -924,22 +923,28 @@ void Overview::renderBackdrop() const {
     m_blur.valid = true;
   }
 
-  // Cheap path: blit the cached blurred+dim backdrop over the base, faded by
-  // the animation curve (k==1 ⇒ opaque ⇒ exactly the settled look).
+  // Cheap path: blit the cached blurred backdrop over the base, faded by the
+  // animation curve (k==1 ⇒ opaque ⇒ exactly the settled look), then the dim
+  // rect on top.
   const auto tex = m_blur.fb ? m_blur.fb->getTexture() : nullptr;
-  if (tex && tex->ok())
+  if (tex && tex->ok()) {
     // Fade BOTH ways with k: entry dissolves in over the frozen base, exit
     // dissolves out over live currentFB (plain wallpaper — windows are still
     // suppressed until deactivate, so nothing ghosts through). k==1 ⇒ opaque.
     g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = k});
-  else {
+  } else {
     m_blur.valid = false;
     // Cache unavailable — never leave the base/currentFB exposed (see
-    // blur-fail path above).  Draw an opaque background rect + dim overlay.
+    // blur-fail path above).  Draw an opaque background rect instead.
     static auto PBG2 = CConfigValue<Config::INTEGER>("misc:background_color");
     g_pHyprOpenGL->renderRect(fullPx, argb(*PBG2, 1.0), {});
-    g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, e), {});
   }
+  // Dim rides ON TOP of the blur (not baked into the cache): its alpha
+  // follows the same curve, and backdrop_color changes apply live without
+  // invalidating the cached blur.
+  const auto dimCol = argb(baseCol, e);
+  if (dimCol.a > 0.0)
+    g_pHyprOpenGL->renderRect(fullPx, dimCol, {});
 }
 
 void Overview::renderStrip() const {

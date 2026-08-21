@@ -77,19 +77,6 @@ void main() {
 }
 )#";
 
-// Flat colour (the backdrop dim), composited over the blurred backdrop with
-// src-over blending when called from the cache fill.
-const char* const FRAG_COLOR = R"#(
-#version 300 es
-precision highp float;
-uniform vec4 uColor;
-in vec2 vUv;
-out vec4 fragColor;
-void main() {
-    fragColor = uColor;
-}
-)#";
-
 // Dual-Kawase downsample: a 5-tap diamond (center weight 4, four diagonal
 // taps weight 1 each; sum 8) — the standard companion filter for an exact 2x
 // reduction, which is the only ratio a single non-mipmapped bilinear sample
@@ -225,10 +212,9 @@ bool CBlurFilter::compileProgram() {
 
     m_program  = linkProgram(VERT_SRC, FRAG_SRC);
     m_blitProg = linkProgram(VERT_SRC, FRAG_BLIT);
-    m_colProg  = linkProgram(VERT_SRC, FRAG_COLOR);
     m_downProg = linkProgram(VERT_SRC, FRAG_KAWASE_DOWN);
     m_upProg   = linkProgram(VERT_SRC, FRAG_KAWASE_UP);
-    if (!m_program || !m_blitProg || !m_colProg || !m_downProg || !m_upProg)
+    if (!m_program || !m_blitProg || !m_downProg || !m_upProg)
         return false;
 
     m_uTex      = glGetUniformLocation(m_program, "uTex");
@@ -236,7 +222,6 @@ bool CBlurFilter::compileProgram() {
     m_uRadius   = glGetUniformLocation(m_program, "uRadius");
     m_uDir      = glGetUniformLocation(m_program, "uDir");
     m_uBlitTex  = glGetUniformLocation(m_blitProg, "uTex");
-    m_uCol      = glGetUniformLocation(m_colProg, "uColor");
     m_uDownTex  = glGetUniformLocation(m_downProg, "uTex");
     m_uDownHalf = glGetUniformLocation(m_downProg, "uHalfpixel");
     m_uUpTex    = glGetUniformLocation(m_upProg, "uTex");
@@ -276,10 +261,6 @@ void CBlurFilter::destroyProgram() {
     if (m_blitProg) {
         glDeleteProgram(m_blitProg);
         m_blitProg = 0;
-    }
-    if (m_colProg) {
-        glDeleteProgram(m_colProg);
-        m_colProg = 0;
     }
     if (m_downProg) {
         glDeleteProgram(m_downProg);
@@ -446,8 +427,8 @@ void CBlurFilter::upPass(const SP<Render::ITexture>& srcTex, const Vector2D& src
         glEnable(GL_SCISSOR_TEST);
 }
 
-bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFramebuffer>& dst, int W, int H, const CHyprColor& dim) {
-    if (!src || !src->ok() || !dst || !dst->isAllocated() || !m_program || !m_blitProg || !m_colProg || !m_downProg || !m_upProg)
+bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFramebuffer>& dst, int W, int H) {
+    if (!src || !src->ok() || !dst || !dst->isAllocated() || !m_program || !m_blitProg || !m_downProg || !m_upProg)
         return false;
 
     ensureScratch(W, H);
@@ -527,23 +508,16 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
         }
     }
 
-    // 4) composite the dim colour over the blurred backdrop (src-over blend)
-    {
-        ScratchScope scope(dst);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUseProgram(m_colProg);
-        glUniform4f(m_uCol, dim.r, dim.g, dim.b, dim.a);
-        glBindVertexArray(m_vao);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        glBindVertexArray(0);
-        glUseProgram(0);
-        // Fully restore the caller's blend state (see the capture above), not just its
-        // enabled/disabled bit.
-        glBlendFuncSeparate(blendSrcRGB, blendDstRGB, blendSrcAlpha, blendDstAlpha);
-        if (!blendBefore)
-            glDisable(GL_BLEND);
-    }
+    // The dim colour is NOT composited here: the cache this writes must stay
+    // independent of backdrop_color (it is part of the per-frame key now) and
+    // of the animation — renderBackdrop() draws the dim rect itself, faded by
+    // the same curve as the blit alpha.
+
+    // Restore the caller's blend state captured above (the passes below ran
+    // with blending disabled for their own opaque draws).
+    glBlendFuncSeparate(blendSrcRGB, blendDstRGB, blendSrcAlpha, blendDstAlpha);
+    if (!blendBefore)
+        glDisable(GL_BLEND);
 
     return true;
 }
