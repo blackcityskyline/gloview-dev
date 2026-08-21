@@ -459,21 +459,6 @@ private:
   // content (e.g. foot text) into the re-drawn FBO on every re-blur.
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false; // false → redraw layers next time
-  // Entry/exit crossfade base: the LAST fully-real frame (real windows +
-  // Hyprland's own decoration blur behind them + wallpaper), captured into a
-  // private FBO on the priming frame right after open(). The blurred backdrop
-  // fades IN over this frozen frame along the main animation curve and fades
-  // back OUT to it on close — so the compositor's window blur never pops off,
-  // it dissolves into gloview's backdrop blur (and an empty desktop fades
-  // sharp→blurred along the curve instead of snapping). Released with the
-  // session; recaptured on every open.
-  mutable SP<Render::IFramebuffer> m_openSnapFB;
-  // Priming gate: true between open() and the first captured frame.
-  // shouldHideWindow keeps every window visible for that one extra frame so
-  // the snapshot actually contains the real desktop; renderBackdrop clears it
-  // from the const render path once the snapshot is taken.
-  mutable bool m_entryPrime = false;
-  void captureOpenSnapshot(int W, int H) const;
   // Self-contained blur (own GL program): plugin-tunable blur_passes /
   // blur_size / blur_resolution, independent of Hyprland's global
   // decoration:blur:* (which plugins can't override per-call).

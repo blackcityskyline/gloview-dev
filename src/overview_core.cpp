@@ -126,8 +126,6 @@ Overview::~Overview() {
   restoreFill();   // never leave a window's surface stuck stretching its small
                    // buffer
   releaseNewWorkspaces();
-  m_openSnapFB.reset();  // entry crossfade base is session-scoped
-  m_entryPrime = false;
   m_tiles.clear();
   m_strip.clear();
   cancelPendingClick(); // never let a click-timer callback run against a
@@ -696,11 +694,6 @@ void Overview::open(bool viaAltTab) {
   m_cursor.onOpen(m, cursorMode());
   m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO
   m_blur.drop();           // re-blur from scratch on the next rendered frame
-  m_openSnapFB.reset();    // fresh entry-snapshot for this session
-  // Prime the entry crossfade: keep the real desktop visible one extra frame
-  // (shouldHideWindow honours this) so captureOpenSnapshot can freeze it —
-  // Hyprland's window blur included — as the fade-out base.
-  m_entryPrime = blurEnabled();
   damage();
 }
 
@@ -764,8 +757,6 @@ void Overview::hardClose() {
   restoreFill();   // never leave a window's surface stuck stretching its small
                    // buffer
   releaseNewWorkspaces();
-  m_openSnapFB.reset(); // entry crossfade base is session-scoped
-  m_entryPrime = false;
 
   m_active = false;
   m_opening = false;
@@ -824,10 +815,6 @@ bool Overview::shouldHideWindow(const PHLWINDOW &w,
                                 const PHLMONITOR &mon) const {
   const auto m = m_monitor.lock();
   if (!m_active || !w || mon != m)
-    return false;
-  // Priming frame (see open()): render everything normally so currentFB still
-  // holds the real desktop when renderBackdrop grabs the entry snapshot.
-  if (m_entryPrime)
     return false;
   // Fullscreen windows are hidden wholesale while the overview is up. Without
   // this, a workspace-transition force-render of an off-display fullscreen
@@ -929,8 +916,6 @@ void Overview::deactivate() {
   // creating several in one session silently leaked the rest as permanent
   // phantom persistent workspaces — task/bug #4.)
   releaseNewWorkspaces();
-  m_openSnapFB.reset(); // entry crossfade base is session-scoped
-  m_entryPrime = false;
 
   m_active = false;
   m_opening = false;
