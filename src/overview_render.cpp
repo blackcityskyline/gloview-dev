@@ -125,10 +125,21 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
   return std::clamp(active * fade, 0.0F, 1.0F);
 }
 
-// NOTE: a windowShouldBlur() helper used to live here (mirroring
-// IHyprRenderer::shouldBlur), feeding data.blur below. Removed — see
-// renderWindowLive()'s data.blur comment for why Hyprland's own per-surface
-// blur-behind isn't used at all anymore.
+// Exact replica of IHyprRenderer::shouldBlur(PHLWINDOW) (Renderer.cpp:3310,
+// pinned 0.56.2) — that method is protected, plugins can't call it. Keep in
+// sync if Hyprland changes its eligibility rules.
+static bool windowBlurEligible(const PHLWINDOW &w) {
+  static auto PBLUR = CConfigValue<Config::INTEGER>("decoration:blur:enabled");
+  if (!*PBLUR)
+    return false;
+  if (w->m_ruleApplicator->noBlur().valueOrDefault() ||
+      w->m_ruleApplicator->RGBX().valueOrDefault() || w->opaque())
+    return false;
+  const auto surface = w->wlSurface();
+  if (surface && surface->m_hasBackgroundEffect)
+    return !surface->m_blurRegion.empty();
+  return true;
+}
 
 } // namespace
 
@@ -246,7 +257,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
       sdata.decorate = false;
       sdata.rounding = roundPx;
       sdata.roundingPower = roundingPower;
-      sdata.blur = false;
+      sdata.blur = windowBlurEligible(w);
       sdata.pWindow = w;
       sdata.clipBox = clipPx;
       sdata.squishOversized = true;
@@ -283,25 +294,20 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   data.decorate = false;
   data.rounding = roundPx;
   data.roundingPower = roundingPower;
-  // Real blur-behind eligibility (decoration:blur:enabled + the window's own
-  // noblur/RGBX/ opaque state) instead of a hardcoded `false` — a transparent
-  // preview otherwise showed hard edges instead of the frosted look the window
-  // actually has on the real desktop.
-  // Hyprland's own per-surface blur-behind is unreliable for us: verified
-  // against the pinned source, its internal optimization path is decided by a
-  // GLOBAL renderer field (m_renderData.currentWindow) that Hyprland's own
-  // per-window render loop sets — a loop we never go through, since these
-  // surfaces are queued out-of-band via our own render-modif translate+scale
-  // trick. That field ends up holding whichever window Hyprland's real desktop
-  // last rendered normally, not the tile actually being drawn, which is why
-  // windows came out fully opaque specifically once there were 2+ of them
-  // sharing a workspace. Two earlier attempts to compensate for this (forcing
-  // blockBlurOptimization=true, and drawing our own live-blurred backing rect)
-  // both introduced their own new visual bugs, so this stays simple and
-  // low-risk instead: blur is just off, and drawPreviewTile's backing rect
-  // alpha (< 1.0) is what lets transparent windows read as translucent instead
-  // of solid — see its comment.
-  data.blur = false;
+  // Real blur-behind eligibility (IHyprRenderer::shouldBlur: global enabled +
+  // noblur / RGBX / opaque rules + surface background-effect state). This is
+  // what makes the CLOSE transition continuous: with new_optimizations on
+  // (the default) the element takes the PRECOMPUTE path and samples the
+  // monitor's m_blurFB — the live blur of whatever is REALLY behind it this
+  // frame — instead of our static wallpaper-only frost. Each tile's backdrop
+  // then matches its post-landing state during the whole glide, so the old
+  // blur -> sharp -> blur handoff cannot occur. The stale-currentWindow hazard
+  // that forced blur off historically only affects the LIVE path (floating
+  // windows or decoration:blur:new_optimizations=0), where the cutout box is
+  // read from that global at draw time; CPreBlur runs before any surface each
+  // frame and end() resets the field, so the precompute path never sees one.
+  const bool wantBlur = windowBlurEligible(w);
+  data.blur = wantBlur;
   data.pWindow = w;
   data.clipBox = clipPx;
   data.squishOversized = true;
