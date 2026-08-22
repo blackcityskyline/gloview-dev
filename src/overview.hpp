@@ -558,35 +558,13 @@ private:
   void layoutTiles();
   void updateAnimation();
   void deactivate();
-  // ---- entry/exit window fade -------------------------------------------
-  // The backdrop crossfade alone cannot bridge the boundary frames: real
-  // windows used to vanish in ONE frame on open (their Hyprland blur behind
-  // translucent parts popping off instantly) and reappear one frame after the
-  // backdrop hit zero on close ("blur gap"). Instead, tile windows are kept
-  // RENDERED throughout the transition with their FADE alpha slot warped to
-  // follow the same curve: on open they dissolve out under the departing
-  // previews (scene at frame 0 is pixel-identical to the pre-open desktop),
-  // on close they dissolve back in before the previews land. Hyprland's own
-  // decoration blur belongs to the window surface, so it fades WITH it — no
-  // dip is possible by construction. Empty workspaces simply have nothing to
-  // fade and fall back to the pure wallpaper<->blur curve.
-  bool m_winFade = false;
-  std::vector<std::pair<PHLWINDOWREF, float>> m_fadeBase; // original FADE goals
-  void startWinFade();                 // capture FADE bases, let hook render
-  void applyWinFade(double visible);   // warp every tile window's FADE slot
-  void endWinFade();                   // restore bases, re-enable hiding
-  // Current real-scene visibility (1 = fully real desktop). Shared by the
-  // per-frame warp AND by startWinFade's immediate init — warping only from
-  // RENDER_LAST_MOMENT left one stale frame where just-re-shown windows drew
-  // at full alpha under the semi-transparent backdrop (the boundary blink).
-  double winFadeVisNow() const;
-  // Multiplier for PREVIEW surface alphas while fading: previews materialize
-  // out of the real scene on entry and dissolve back into it on exit. Without
-  // this, an unblurred CSurfacePassElement copy instantly replaced the blurred
-  // real window at its natural box (the "blur vanishes in one frame" artifact).
-  [[nodiscard]] double previewAlphaMul() const {
-    return m_winFade ? (m_opening ? eased() : std::pow(eased(), 0.45)) : 1.0;
-  }
+  // Boundary policy (deliberate, user-specified): real windows hard-switch at
+  // BOTH transition edges — hidden on the first open frame, restored only
+  // after the close animation completes. NO per-window fades: during the glide
+  // the window changes size and position, so a fading original under the
+  // moving preview reads as double vision. Seamlessness comes from the previews
+  // being pixel-identical to the real windows at natural boxes on both ends.
+  // The fade belongs to the BLUR (backdrop crossfade), never to the windows.
   double eased() const; // opacity / backdrop progress
   // plugin:gloview:duration with the shared floor (ms), read LIVE so config
   // changes apply to in-flight animations.

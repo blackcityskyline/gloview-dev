@@ -116,14 +116,10 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
     if (w->m_ruleApplicator->opaque().valueOrDefault())
       active = 1.0F;
   }
-  // NOTE: WINDOW_ALPHA_FADE is deliberately EXCLUDED here. That is the slot
-  // Overview::winFade warps on the REAL windows during the entry/exit
-  // transition, and CSurfacePassElement multiplies data.alpha * data.fadeAlpha
-  // — inheriting it made every preview's effective alpha equal
-  // previewCurve * (1 - previewCurve): content visibly dimmed to an empty
-  // frame by the end of each cycle and snapped back when the fade ended.
-  // The preview fade axis belongs solely to the caller's alpha parameter
-  // (Overview::previewAlphaMul).
+  // NOTE: WINDOW_ALPHA_FADE is deliberately EXCLUDED here. Previews must not
+  // inherit it: CSurfacePassElement multiplies data.alpha * data.fadeAlpha,
+  // and any FADE contribution compounds with this function's own callers.
+  // The preview fade axis belongs solely to the caller's alpha parameter.
   const float fade = w->alphaValue(Desktop::View::WINDOW_ALPHA_FULLSCREEN) *
                      w->alphaValue(Desktop::View::WINDOW_ALPHA_LAYOUT);
   return std::clamp(active * fade, 0.0F, 1.0F);
@@ -508,15 +504,6 @@ void Overview::updateAnimation() {
     m_progress = 0.0;
     m_pendingDeactivate = true;
   }
-  // Window fade (see m_winFade): entry dissolves the real scene OUT under the
-  // rising backdrop, exit dissolves it back IN ahead of the handoff — with
-  // the same slower exit tail as the blur so windows are fully opaque exactly
-  // when the previews land.
-  if (m_winFade) {
-    applyWinFade(winFadeVisNow());
-    if (m_opening && eased() >= 0.999)
-      endWinFade(); // settled open: let shouldHideWindow hide them again
-  }
 }
 
 // ---- render -----------------------------------------------------------------
@@ -539,7 +526,7 @@ void Overview::renderStage(eRenderStage stage) {
     return;
   dbg(std::string("stage prog=") + std::to_string(m_progress).substr(0, 5) +
       " opening=" + std::to_string(m_opening) +
-      " winFade=" + std::to_string(m_winFade));
+      "");
 
   updateHover(); // keep hover fresh even when the pointer is warped, not moved
   syncTiles(); // window opened/closed/moved on this workspace → reflow the grid
@@ -860,8 +847,7 @@ void Overview::renderBackdrop() const {
     g_pHyprRenderer->setProjectionType(oldProj);
   }
 
-  // Nothing to draw at zero; the real scene (windows fading per m_winFade)
-  // shows through currentFB untouched.
+  // Nothing to draw at zero; the real desktop in currentFB shows through.
   if (k <= 0.0F)
     return;
 
@@ -1247,7 +1233,7 @@ void Overview::renderStripWindows() const {
       const CBox cardPx(card.x * scale, card.y * scale, card.w * scale,
                         card.h * scale);
       renderWindowLive(w, m, slotPx, cardPx,
-                       static_cast<float>(e * previewAlphaMul()), when, round,
+                       static_cast<float>(e), when, round,
                        roundPow);
     }
   }
