@@ -126,6 +126,7 @@ Overview::~Overview() {
   restoreFill();   // never leave a window's surface stuck stretching its small
                    // buffer
   releaseNewWorkspaces();
+  if (m_animPump) { m_animPump->cancel(); m_animPump.reset(); }
   m_tiles.clear();
   m_strip.clear();
   cancelPendingClick(); // never let a click-timer callback run against a
@@ -761,6 +762,10 @@ void Overview::hardClose() {
   // (a fire lambda capturing `this` in this .so, still pending at unload):
   // the click timer is the only one of those left now.
   cancelPendingClick();
+  if (m_animPump) {
+    m_animPump->cancel();
+    m_animPump.reset();
+  }
 
   restoreLayers(); // never leave a bar stuck at alpha 0 if we tear down
                    // mid-hide
@@ -926,6 +931,10 @@ void Overview::deactivate() {
   // creating several in one session silently leaked the rest as permanent
   // phantom persistent workspaces — task/bug #4.)
   dbg("deactivate (natural close end)");
+  if (m_animPump) {
+    m_animPump->cancel();
+    m_animPump.reset();
+  }
   releaseNewWorkspaces();
 
   m_active = false;
@@ -970,9 +979,47 @@ void Overview::rearmanim() const {
                          (!m_opening && m_progress > 0.0);
   if (!animating)
     return;
-  damage(); // full-monitor region for the NEXT frame's snapshot
-  if (const auto m = m_monitor.lock())
-    m->scheduleFrame(); // and make sure that frame actually happens
+  if (g_pEventLoopManager)
+    const_cast<Overview *>(this)->ensureAnimPump();
+}
+
+void Overview::ensureAnimPump() {
+  const bool stillAnimating =
+      m_active && (m_reflowing || m_newCardAnim || m_dragging ||
+                   (m_opening && m_progress < 1.0) ||
+                   (!m_opening && m_progress > 0.0));
+  if (!stillAnimating) {
+    if (m_animPump) {
+      m_animPump->cancel();
+      m_animPump.reset();
+    }
+    return;
+  }
+  if (m_animPump && m_animPump->armed())
+    return;
+
+  // Ticks strictly BETWEEN frames on the event loop, so the full-monitor
+  // damage it issues can never be consumed by an in-flight commit — the race
+  // that let 2-3 partial-damage frames present unrendered buffers.
+  m_animPump = makeShared<CEventLoopTimer>(
+      std::chrono::milliseconds(8),
+      [this](SP<CEventLoopTimer> self, void *) {
+        const bool go = m_active && g_pHyprRenderer &&
+                        (m_reflowing || m_newCardAnim || m_dragging ||
+                         (m_opening && m_progress < 1.0) ||
+                         (!m_opening && m_progress > 0.0));
+        if (!go) {
+          self->cancel();
+          return;
+        }
+        damage();
+        if (const auto m = m_monitor.lock())
+          m->scheduleFrame();
+        self->updateTimeout(std::chrono::milliseconds(8));
+      },
+      nullptr);
+  if (g_pEventLoopManager)
+    g_pEventLoopManager->addTimer(m_animPump);
 }
 
 // snapshot preview mode (plugin:gloview:preview_mode == "snapshot"): grab each
