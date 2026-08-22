@@ -123,11 +123,8 @@ public:
   bool initialize();
 
   void toggle();
-  // viaAltTab=true (only ever passed by altTabInvoke, right after priming
-  // m_altTabbing + m_altTabRank) skips the normal alt-tab-session reset so
-  // buildTiles() sorts the fresh tiles by the just-snapshotted MRU rank instead
-  // of starting a plain session.
-  void open(bool viaAltTab = false);
+
+  void open();
   void close();
   void hardClose(); // immediate, animation-free teardown for the UNLOAD path
                     // (hyprctl gloviewunload)
@@ -374,73 +371,19 @@ private:
   int m_pressStripWin = -1;    // index into m_strip[m_pressStripItem].wins
   PHLWINDOWREF m_dragStripWin; // resolved window being dragged from the strip
 
-  // Alt-Tab cycling of the keyboard selection (m_selected) across every visible
-  // tile. "modifier held" is tracked implicitly: a session starts on the first
-  // altTabInvoke() call and stays active until the configured modifier's
-  // release is seen in onKey (or alt_tab_commit_on_release is off, in which
-  // case it just stays armed for the next tap).
-  //
-  // Unlike a plain keyboard cursor, Alt-Tab reorders the GRID ITSELF into MRU
-  // order — rank 0 = the PREVIOUSLY focused window, rank 1 = the one before
-  // that, … — so cycling reads like a real switcher instead of hopping around a
-  // spatially-sorted layout. buildAltTabRank() rotates Hyprland's raw MRU
-  // ranking (whose 0 would be the CURRENTLY focused window — a bad first
-  // landing spot) so the current window sits at the very end instead, only
-  // revisited after a full wraparound. buildTiles() sorts m_tiles by this map
-  // whenever m_altTabbing is set, and layoutTiles() tells the Rows engine to
-  // keep that order (LayoutCfg::preserveOrder) instead of re-sorting by
-  // position, so the grid's first slot and the keyboard cursor's first landing
-  // spot always agree. The rank is snapshotted ONCE when the session starts
-  // (before altTabInvoke's own syncFocus() calls can perturb Hyprland's real
-  // focus history) so the order stays stable for the whole session, including
-  // across any mid-session rebuild (window closed, etc).
+  // Alt-Tab session: armed by altTabInvoke() on open, released when the
+  // configured modifier goes up (commit-on-release) or the overview closes.
+  // The grid itself is NOT reordered — tiles keep their spatial layout and
+  // stepAltTab just walks m_selected in tile order. (MRU/smart arrangement was
+  // removed; a replacement ranking may be designed later.)
   bool m_altTabbing = false;
-  std::unordered_map<void *, int>
-      m_altTabRank; // PHLWINDOW* -> MRU rank, ROTATED so 0 = previously focused
-                    // (see buildAltTabRank()); empty = "linear" mode
 
-  // Own, gloview-maintained focus history — buildAltTabRank() reads THIS, not
-  // Desktop::History::windowTracker(). Root-caused bug: syncFocus() (called on
-  // every hover/selection-cursor move WHILE THE OVERVIEW IS OPEN, so
-  // passthrough keybinds like killactive hit the right window — see its own
-  // comment) calls the SAME Desktop::focusState()->fullWindowFocus() a genuine
-  // user action does, which unconditionally emits the real
-  // events.window.active signal — the exact one Hyprland's OWN
-  // WindowHistoryTracker listens to. That means merely BROWSING the Alt-Tab
-  // grid (moving the cursor over candidates, even ones never committed to,
-  // even a session that's cancelled with Escape) permanently rewrites
-  // Hyprland's real, persistent focus history — which a LATER session then
-  // trusted as "what the user genuinely used most recently". That's what made
-  // a single tab often land back on the window the session started on (some
-  // earlier session's incidental cursor sweep had bumped it to the front) and
-  // get worse with more windows (more candidates the cursor sweeps past while
-  // stepping, each one a chance to overwrite real history with UI noise).
-  // buildAltTabRank() previously ONLY guarded against IN-SESSION
-  // contamination (snapshotting before its OWN syncFocus() calls); it never
-  // had a way to undo contamination from a PRIOR session.
-  //
-  // Fix: track focus changes ourselves, listening to the same
-  // events.window.active signal Hyprland's tracker uses, but skip recording
-  // whenever m_suppressHistoryTrack is set — syncFocus() sets it around its
-  // own fullWindowFocus() call and nothing else does, so only genuine commits
-  // (focusAndClose's direct call, deactivate()'s pending-focus reassertion —
-  // see grep for the other two fullWindowFocus() call sites) ever get
-  // recorded. Persists across sessions (never cleared on open/close), same as
-  // Hyprland's own tracker; seeded once from it in initialize() as a one-time,
-  // still-clean bootstrap.
-  std::vector<PHLWINDOWREF> m_focusHistory; // old -> new, mirrors
-                                            // CWindowHistoryTracker's own
-                                            // ordering convention
-  mutable bool m_suppressHistoryTrack =
-      false; // true only for the duration of syncFocus()'s own
-             // fullWindowFocus() call
 
   CHyprSignalListener m_renderStageL;
   CHyprSignalListener m_mouseButtonL;
   CHyprSignalListener m_mouseAxisL;
   CHyprSignalListener m_mouseMoveL;
   CHyprSignalListener m_keyL;
-  CHyprSignalListener m_windowActiveL;
   CFunctionHook *m_shouldRenderHook = nullptr;
   CFunctionHook *m_damageSurfaceHook = nullptr;
 
@@ -696,10 +639,7 @@ private:
   void restoreFill();   // reset m_fillIgnoreSmall on every window (see
                         // renderWindowLive)
   void stepAltTab(int dir); // advance the Alt-Tab selection cursor by dir
-                            // (+1/-1) within the already MRU-ordered m_tiles
-  std::unordered_map<void *, int> buildAltTabRank()
-      const; // PHLWINDOW* -> MRU rank snapshot, rotated so 0 = previously
-             // focused, not current (empty in "linear" mode)
+                            // (+1/-1) in tile order (circular)
   void
   dbg(const std::string &msg) const; // plugin:gloview:debug_logs gated logging
   void damage() const;

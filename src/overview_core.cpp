@@ -169,30 +169,6 @@ bool Overview::initialize() {
           info.cancelled = true;
       });
 
-  // Own clean focus-history tracker for Alt-Tab's MRU ordering — see
-  // m_focusHistory's comment in overview.hpp for why we don't just read
-  // Desktop::History::windowTracker() directly (it gets polluted by our own
-  // syncFocus() calls). Seed it once, right now, from Hyprland's own
-  // tracker — at plugin load nothing has run yet, so it's still trustworthy,
-  // and this avoids Alt-Tab falling back to "linear" ordering for a while
-  // after every reload just because nothing had happened yet to populate our
-  // own vector from scratch.
-  for (const auto &wref : Desktop::History::windowTracker()->fullHistory())
-    if (const auto w = wref.lock())
-      m_focusHistory.emplace_back(w);
-  m_windowActiveL = events.window.active.listen(
-      [this](PHLWINDOW w, Desktop::eFocusReason) {
-        if (m_suppressHistoryTrack || !w)
-          return;
-        const PHLWINDOWREF ref = w;
-        std::erase(m_focusHistory, ref);
-        m_focusHistory.emplace_back(ref);
-        if (m_focusHistory.size() > 128) // periodic prune, mirrors
-                                         // CWindowHistoryTracker::gc()
-          std::erase_if(m_focusHistory,
-                        [](const auto &r) { return r.expired(); });
-      });
-
   const auto matches =
       HyprlandAPI::findFunctionsByName(m_handle, "shouldRenderWindow");
   void *addr = nullptr;
@@ -548,43 +524,21 @@ void Overview::toggleAllWorkspaces() {
 // gloview:alttab / gloview:alttabback — bind these to the SAME modifier+key
 // you'd otherwise bind gloview:allworkspaces to (e.g. "SUPER, TAB,
 // gloview:alttab"). Closed → opens straight into the all-workspaces view with
-// the tiles reordered into MRU (most-recently-used) order instead of their
-// usual spatial layout, and the cursor already on the PREVIOUSLY focused window
-// (rank 0 after buildAltTabRank()'s rotation — see its comment) — the very act
-// of opening already counts as "one tab", exactly like a real alt-tab's first
-// press, and this initial landing spot is ALWAYS the previously focused window
-// regardless of whether it was gloview:alttab or gloview:alttabback that opened
-// it; only SUBSEQUENT taps step by direction. Already open → advances the cycle
-// one step (repeated physical taps of the bound key while the modifier stays
-// held — Hyprland re-invokes the dispatcher on every press, exactly like
-// holding Alt and tapping Tab). Whether releasing the modifier commits (focuses
-// the selection & closes, like a normal alt-tab) is separate — see
-// alt_tab_commit_on_release and the modifier-release handling in onKey.
+// the selection on the first tile; already open → advances the cycle one step
+// (repeated physical taps while the modifier stays held — Hyprland re-invokes
+// the dispatcher on every press). Whether releasing the modifier commits
+// (focuses the selection & closes) is separate — see alt_tab_commit_on_release
+// and the modifier-release handling in onKey.
 void Overview::altTabInvoke(bool reverse) {
   if (!(m_active && m_opening)) {
-    // Snapshot the MRU rank BEFORE anything else — including open()'s own
-    // focus-seeking — can perturb Hyprland's real focus history, and prime
-    // m_altTabbing so buildTiles() (called from inside open()) sorts the fresh
-    // tiles by it instead of starting plain.
-    m_altTabbing = true;
-    m_altTabRank = buildAltTabRank();
-    m_allOverride = 1; // open directly into expo, same as gloview:allworkspaces
-    open(/*viaAltTab=*/true);
-    if (!m_active) {
+    m_allOverride = 1; // open directly into expo
+    open();
+    if (!m_active) { // open declined (no monitor / nothing to show)
       m_allOverride = -1;
-      m_altTabbing = false;
-      m_altTabRank.clear();
       return;
     }
-    // buildAltTabRank() rotates the raw ranking so rank 0 is the PREVIOUSLY
-    // focused window, not the current one — m_tiles is sorted by that rank
-    // (buildTiles()), so index 0 is already both the right tile AND the right
-    // grid slot (layoutTiles() preserves the order). Land there directly,
-    // regardless of `reverse`, same as a real alt-tab's first press. "linear"
-    // mode has no rank map (m_altTabRank stays empty, buildTiles() left the
-    // natural build order alone), so there's no rotated "previous" slot to rely
-    // on — keep the old fallback of stepping straight to index 1.
-    m_selected = (m_altTabRank.empty() && m_tiles.size() > 1) ? 1 : 0;
+    m_altTabbing = true; // armed AFTER open(): a plain open resets it
+    m_selected = m_tiles.empty() ? -1 : 0;
     syncFocus();
     damage();
     return;
@@ -615,7 +569,7 @@ void Overview::setDesktopMode(bool on) {
       oldBoxes); // rebuild + glide previews grid<->canvas, chrome pinned at 1
 }
 
-void Overview::open(bool viaAltTab) {
+void Overview::open() {
   if (m_active && m_opening)
     return;
 
@@ -650,13 +604,7 @@ void Overview::open(bool viaAltTab) {
   m_dragStripWin.reset();
   m_pendingFocus.reset(); // no stale carry-over from a previous session
   cancelPendingClick();   // ditto for any close_trigger=doubleclick timer
-  // altTabInvoke primes m_altTabbing + m_altTabRank BEFORE calling us
-  // (viaAltTab=true) so buildTiles() below sorts the fresh tiles by that
-  // snapshot — a normal open starts clean.
-  if (!viaAltTab) {
-    m_altTabbing = false;
-    m_altTabRank.clear();
-  }
+  m_altTabbing = false;   // altTabInvoke re-arms it after we return
   m_canvasPos.clear();
   m_desktopMode = false; // open into the tidy grid; Shift / gloview:desktop
                          // flips to the canvas
@@ -673,9 +621,7 @@ void Overview::open(bool viaAltTab) {
   layoutTiles();
 
   // seed keyboard selection on the focused window (else first tile) for
-  // arrow-nav/Enter. For an alt-tab open this also lands on rank 0 (m_tiles was
-  // just MRU-sorted by buildTiles(), and the focused window IS rank 0), which
-  // altTabInvoke then steps once more onto rank 1 (the previous window).
+  // arrow-nav/Enter.
   m_selected = m_tiles.empty() ? -1 : 0;
   if (const auto fw = Desktop::focusState()->window()) {
     for (size_t i = 0; i < m_tiles.size(); ++i)
@@ -782,7 +728,6 @@ void Overview::hardClose() {
   m_newCardId = 0;
   m_progress = 0.0;
   m_altTabbing = false;
-  m_altTabRank.clear();
   m_pressStripItem = -1;
   m_pressStripWin = -1;
   m_dragStripWin.reset();
@@ -945,7 +890,6 @@ void Overview::deactivate() {
   m_allOverride =
       -1; // next open follows plugin:gloview:show_all_workspaces again
   m_altTabbing = false;
-  m_altTabRank.clear();
   m_newCardAnim = false;
   m_newCardId = 0;
   m_progress = 0.0;

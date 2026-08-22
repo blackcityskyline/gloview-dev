@@ -636,16 +636,9 @@ void Overview::renderStage(eRenderStage stage) {
   // that partial redraw could in principle show a blur edge seam at its border
   // instead of always being masked by our own full-frame repaint; in practice
   // this is far rarer than the constant-redraw cost it replaces.
-  //
-  // m_altTabbing is deliberately NOT part of this: it stays true for the ENTIRE
-  // alt-tab session (from the moment it opens until it's committed or
-  // cancelled), not just while a step animation is in flight, so including it
-  // here forced the exact same continuous full-monitor redraw + live-blur
-  // recompute this comment describes fixing — just scoped to alt-tab instead of
-  // every session, which is exactly the "GPU pegged at ~50% for as long as
-  // alt-tab/expo stays open, single-workspace mode only spikes briefly" bug.
-  // Every actual change during a session (a tab step, a hover/selection change,
-  // a click) already calls damage() itself (stepAltTab, moveSelection,
+  // m_altTabbing is deliberately NOT part of this: it lasts the whole alt-tab
+  // session, and every actual change (a tab step, hover/selection change,
+  // click) already calls damage() itself (stepAltTab, moveSelection,
   // updateHover, …), so nothing needs a per-frame poke on top of that.
 }
 
