@@ -42,6 +42,13 @@ using Render::GL::g_pHyprOpenGL;
 namespace gloview {
 
 void Overview::buildTiles() {
+  // Canvas-parked boxes must survive this rebuild: carry each old tile's
+  // target/parked onto its window's fresh Tile.
+  std::unordered_map<PHLWINDOWREF, std::pair<LRect, bool>> priorTargets;
+  for (const auto &t : m_tiles)
+    if (t.parked)
+      if (const auto w = t.win.lock())
+        priorTargets.emplace(w, std::pair{t.target, true});
   m_tiles.clear();
   const auto m = m_monitor.lock();
   const auto ws = m_workspace.lock();
@@ -57,6 +64,10 @@ void Overview::buildTiles() {
 
     Tile t;
     t.win = w;
+    if (const auto it = priorTargets.find(w); it != priorTargets.end()) {
+      t.target = it->second.first;
+      t.parked = true;
+    }
     // settled goal(), not value(): a mid-desktop-jump value() carries the
     // workspace-slide offset and would warp every preview.
     const auto p = w->positionAnimation()->goal();
@@ -402,7 +413,7 @@ void Overview::layoutTiles() {
 
   // Desktop (canvas) mode: fit the WHOLE monitor into the usable area and place
   // each preview at its real scaled position — a shrunk live desktop. A dragged
-  // preview keeps its parked spot (m_canvasPos), sticky across rebuilds. Never
+  // preview keeps its parked spot (t.parked), sticky across rebuilds. Never
   // touches real windows.
   if (m_desktopMode) {
     const double usableX = cfg.padLeft;
@@ -417,14 +428,12 @@ void Overview::layoutTiles() {
     m_desktopOx = usableX + (usableW - m->m_size.x * s) / 2.0;
     m_desktopOy = usableY + (usableH - m->m_size.y * s) / 2.0;
     for (auto &t : m_tiles) {
-      LRect box{m_desktopOx + t.natural.x * s, m_desktopOy + t.natural.y * s,
-                std::max(1.0, t.natural.w * s), std::max(1.0, t.natural.h * s)};
-      if (const auto w = t.win.lock()) {
-        const auto it = m_canvasPos.find(w.get());
-        if (it != m_canvasPos.end())
-          box = it->second; // user-parked position wins
-      }
-      t.target = box;
+      if (t.parked) // user-placed: nothing to compute
+        continue;
+      t.target = LRect{m_desktopOx + t.natural.x * s,
+                       m_desktopOy + t.natural.y * s,
+                       std::max(1.0, t.natural.w * s),
+                       std::max(1.0, t.natural.h * s)};
     }
     return;
   }
@@ -523,14 +532,11 @@ void Overview::syncTiles() {
   auto oldBoxes = captureCurrentBoxes();
 
   // Desktop mode: adding/removing a window must NOT shuffle the others.
-  // Non-dragged previews track their REAL window position, which Hyprland
-  // re-tiles on add/remove → every survivor jumps. Park each survivor at its
-  // settled box in m_canvasPos so the rebuild treats them as user-placed; only
-  // the newcomer flows to its real scaled spot.
+  // buildTiles() carries every parked target across the rebuild, so survivors
+  // stay put automatically; only the newcomer flows to its real scaled spot.
   if (m_desktopMode)
     for (auto &t : m_tiles)
-      if (const auto win = t.win.lock())
-        m_canvasPos[win.get()] = t.target;
+      t.parked = true;
 
   replayReflow(oldBoxes);
 }

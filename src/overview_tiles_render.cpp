@@ -255,7 +255,7 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
 // Fit `slot` to the window's real aspect so the live surface fills it exactly (uniform scale).
 // Used by both tile chrome and the queued surface so they coincide.
 LRect Overview::tileContentBox(size_t i, const LRect& slot) const {
-    // Desktop (canvas) mode: slot already carries the window's aspect (m_canvasPos froze
+    // Desktop (canvas) mode: slot already carries the window's aspect (the parked
     // survivors). Use it AS-IS, not the live aspect, so a survivor Hyprland re-tiled to a new
     // shape keeps its frozen preview shape instead of reshaping inside the frozen slot.
     if (m_desktopMode)

@@ -347,16 +347,15 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         }
       }
       // desktop (canvas) mode: a drop just PARKS the preview where released.
-      // Real window never floated/moved; m_canvasPos survives per-frame
-      // rebuilds.
+      // Real window never floated/moved; the parked box lives on the Tile and
+      // survives rebuilds via buildTiles()'s target carry.
       if (m_desktopMode && w) {
         const LRect cur =
             m_tiles[press].target; // keep the canvas size, move the corner
         const LRect parked{lx - grabDX, ly - grabDY, cur.w, cur.h};
-        m_canvasPos[w.get()] = parked;
-        m_tiles[press].target = parked;
-        m_tiles[press].natural =
-            parked; // settled — currentBox returns it directly
+        auto &t = m_tiles[press];
+        t.target = t.natural = parked; // settled — currentBox returns it
+        t.parked = true;
         m_hovered = -1;
         damage();
         return true;
