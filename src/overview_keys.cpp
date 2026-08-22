@@ -172,6 +172,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
         m_newCardId =
             id; // pop-in animation for the freshly created card, like "+"
         m_newCard.begin();
+        m_newCardRaw = 0.0;
         m_newCardAnim = true;
       }
       StripItem it;

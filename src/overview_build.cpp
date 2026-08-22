@@ -511,6 +511,7 @@ void Overview::replayReflow(
                                      // drives only the tile glide
   m_reflowing = true;
   m_reflow.begin();
+  m_reflowRaw = 0.0;
   damage();
 }
 

@@ -468,25 +468,36 @@ void Overview::updateAnimation() {
   // Stall guard FIRST: measure the gap since the previous animated frame and
   // re-anchor every active clock so wall-time holes don't fast-forward them.
   const auto nowTick = std::chrono::steady_clock::now();
-  const double gapMs =
-      m_lastAnimTick.time_since_epoch().count() == 0
-          ? 0.0
-          : std::chrono::duration<double, std::milli>(nowTick - m_lastAnimTick)
-                .count();
+  if (m_lastAnimTick.time_since_epoch().count() != 0) {
+    const double gapMs =
+        std::chrono::duration<double, std::milli>(nowTick - m_lastAnimTick)
+            .count();
+    if (gapMs > 100.0) {
+      // Render hole: rewind every active clock to its last-known position so
+      // the wall-time inside the hole never counts.
+      m_timeline.seek(m_timelineRaw, dur);
+      if (m_reflowing)
+        m_reflow.seek(m_reflowRaw, dur);
+      if (m_newCardAnim)
+        m_newCard.seek(m_newCardRaw, newCardDur());
+    }
+  }
   m_lastAnimTick = nowTick;
-  m_timeline.compensateStall(gapMs, dur);
-  if (m_reflowing)
-    m_reflow.compensateStall(gapMs, dur);
-  if (m_newCardAnim)
-    m_newCard.compensateStall(gapMs, newCardDur());
 
   const double t = m_timeline.raw(dur);
+  m_timelineRaw = t;
   m_progress = m_opening ? t : 1.0 - t;
-  if (m_reflowing && m_reflow.raw(dur) >= 1.0)
-    m_reflowing = false;
-  if (m_newCardAnim && m_newCard.raw(newCardDur()) >= 1.0) {
-    m_newCardAnim = false;
-    m_newCardId = 0;
+  if (m_reflowing) {
+    m_reflowRaw = m_reflow.raw(dur);
+    if (m_reflowRaw >= 1.0)
+      m_reflowing = false;
+  }
+  if (m_newCardAnim) {
+    m_newCardRaw = m_newCard.raw(newCardDur());
+    if (m_newCardRaw >= 1.0) {
+      m_newCardAnim = false;
+      m_newCardId = 0;
+    }
   }
   // Close complete: DON'T deactivate here — flipping m_active off mid-frame
   // would make renderStage skip this frame's overlay → one transparent frame
@@ -644,8 +655,16 @@ void Overview::renderStage(eRenderStage stage) {
   const bool animating = m_reflowing || m_newCardAnim || m_dragging ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0);
-  if (animating)
+  if (animating) {
     damage();
+    // damage() alone proved unreliable as a next-frame scheduler here (the
+    // open-transition render chain died mid-animation until an external
+    // stimulus — the >1s hole in /tmp/gloview.log). A direct scheduleFrame
+    // while this frame is still rendering sets m_pendingFrame, which the
+    // output commits unconditionally after the current frame.
+    if (const auto mm = m_monitor.lock())
+      mm->scheduleFrame();
+  }
 }
 
 SP<Render::ITexture> Overview::backdropSource(bool &live) const {
