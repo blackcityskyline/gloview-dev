@@ -46,7 +46,7 @@ bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
   const int idx = stripItemAt(lx, ly);
   if (idx < 0 || idx == skipItem)
     return false;
-  if (m_pressButton == BTN_RIGHT)
+  if (m_drag.button == BTN_RIGHT)
     swapOnWorkspace(w, m_strip[idx]);
   else
     dropOnWorkspace(w, m_strip[idx]);

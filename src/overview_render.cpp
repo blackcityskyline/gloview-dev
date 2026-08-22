@@ -597,7 +597,7 @@ void Overview::renderStage(eRenderStage stage) {
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::StripButtons));
   const bool draggingTile = draggedTile() >= 0;
   const bool draggingStripWin =
-      m_dragging && m_pressStripItem >= 0 && !m_dragStripWin.expired();
+      m_drag.press == Drag::Press::StripWin && !m_drag.win.expired();
   const bool dragging = draggingTile || draggingStripWin;
   if (dragging) {
     pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::DragBack));
@@ -1063,9 +1063,9 @@ void Overview::renderStrip() const {
         // static highlight rather than a blink/pulse so it doesn't need to
         // force continuous repainting while the mouse just sits still holding
         // the button down.
-        const bool grabbed = static_cast<int>(i) == m_pressStripItem &&
-                             static_cast<int>(j) == m_pressStripWin &&
-                             !(m_dragging && m_pressStripItem >= 0);
+        const bool grabbed = static_cast<int>(i) == m_drag.idx &&
+                             static_cast<int>(j) == m_drag.winIdx &&
+                             !(m_drag.press == Drag::Press::StripWin);
         if (grabbed) {
           const Config::CGradientValueData grad(
               argb(cfgColor("hover_border", "0xf0ffffff"), e));
@@ -1131,7 +1131,7 @@ void Overview::renderStripButtons() const {
   const float roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
   const bool showClose = m_desktopMode || closeButtonsAlwaysOn();
   const bool dropping =
-      m_dragging && (m_pressTile >= 0 || m_pressStripItem >= 0);
+      m_drag.armed() && m_drag.lifted;
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
@@ -1152,10 +1152,10 @@ void Overview::renderStripButtons() const {
       if (!it.wins.empty()) {
         const auto &r = it.wins.front().rel;
         if (r.w * card.w >= r.h * card.h) // wide → left/right halves
-          zone = (m_dragX < card.cx()) ? LRect{card.x, card.y, card.w / 2.0, card.h}
+          zone = (m_drag.x < card.cx()) ? LRect{card.x, card.y, card.w / 2.0, card.h}
                                        : LRect{card.cx(), card.y, card.w / 2.0, card.h};
         else                              // tall → top/bottom halves
-          zone = (m_dragY < card.cy()) ? LRect{card.x, card.y, card.w, card.h / 2.0}
+          zone = (m_drag.y < card.cy()) ? LRect{card.x, card.y, card.w, card.h / 2.0}
                                        : LRect{card.x, card.cy(), card.w, card.h / 2.0};
       }
       g_pHyprOpenGL->renderRect(
@@ -1215,8 +1215,9 @@ void Overview::renderStripWindows() const {
     for (size_t j = 0; j < it.wins.size(); ++j) {
       // being dragged as a floating preview right now → drawn separately, skip
       // here
-      if (m_dragging && static_cast<int>(i) == m_pressStripItem &&
-          static_cast<int>(j) == m_pressStripWin)
+      if (m_drag.press == Drag::Press::StripWin &&
+          static_cast<int>(i) == m_drag.idx &&
+          static_cast<int>(j) == m_drag.winIdx)
         continue;
       const auto w = it.wins[j].win.lock();
       if (!w || !w->m_isMapped || w->isHidden())
