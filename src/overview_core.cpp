@@ -744,6 +744,10 @@ void Overview::close() {
   damage();
 }
 
+double Overview::winFadeVisNow() const {
+  return m_opening ? 1.0 - eased() : 1.0 - std::pow(eased(), 0.45);
+}
+
 void Overview::startWinFade() {
   if (m_winFade)
     return; // already fading — keep the ORIGINAL bases, not warped values
@@ -753,6 +757,11 @@ void Overview::startWinFade() {
     if (const auto w = t.win.lock())
       m_fadeBase.emplace_back(w, w->alpha()[slot]->goal());
   m_winFade = true;
+  // Warp to the CURRENT curve point immediately: the per-frame apply lives in
+  // updateAnimation (RENDER_LAST_MOMENT), whose result lands one frame later —
+  // without this init the first fade frame drew full-alpha windows under a
+  // half-faded backdrop (the speed-independent boundary blink).
+  applyWinFade(winFadeVisNow());
 }
 
 void Overview::applyWinFade(double visible) {

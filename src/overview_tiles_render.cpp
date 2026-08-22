@@ -355,7 +355,8 @@ void Overview::renderMainWindows() const {
             continue;
         const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
         const CBox  px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
-        renderWindowLive(w, m, px, px, 1.0F, when, round, roundPow);
+        renderWindowLive(w, m, px, px, static_cast<float>(previewAlphaMul()),
+                         when, round, roundPow);
     }
 }
 
@@ -433,7 +434,7 @@ void Overview::renderDragWindow() const {
         const LRect  lb    = tileContentBox(static_cast<size_t>(dragIdx), dragBox());
         const CBox   px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
         const int    round = pxr(cfgInt("plugin:gloview:preview_round", 12), scale);
-        renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(), round, cfgFloat("plugin:gloview:preview_round_power", 2.0F));
+        renderWindowLive(w, m, px, px, static_cast<float>(e * previewAlphaMul()), Time::steadyNow(), round, cfgFloat("plugin:gloview:preview_round_power", 2.0F));
         return;
     }
     if (m_dragging && m_pressStripItem >= 0) {
@@ -445,7 +446,7 @@ void Overview::renderDragWindow() const {
         const LRect  lb    = dragStripBox();
         const CBox   px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
         const int    round = pxr(clampRound(cfgInt("plugin:gloview:preview_round", 12), lb.w, lb.h), scale);
-        renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(), round, cfgFloat("plugin:gloview:preview_round_power", 2.0F));
+        renderWindowLive(w, m, px, px, static_cast<float>(e * previewAlphaMul()), Time::steadyNow(), round, cfgFloat("plugin:gloview:preview_round_power", 2.0F));
     }
 }
 
