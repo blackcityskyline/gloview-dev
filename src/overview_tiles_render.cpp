@@ -207,6 +207,25 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // pretending it's user-configurable). At alpha 0.08 the hue is essentially imperceptible —
     // this exists purely as the safety-margin backing described above, not a decorative tint,
     // so a fixed literal is the honest representation. Same literal as renderStrip()'s window
+
+    // Frosted backing during the transition: until the fullscreen blurred
+    // backdrop is opaque (e < 1), a translucent tile's see-through pixels
+    // would blend against SHARP wallpaper from currentFB, while the pre-open
+    // desktop showed them through Hyprland's per-window decoration blur —
+    // switching between those in one frame is the entry "blink" (visible
+    // exactly on windows that have blur-behind: translucent terminals,
+    // Nautilus; invisible on opaque ones and full-opaque-hint surfaces).
+    // Sample OUR cached fullscreen blur into the tile box instead — the same
+    // source the settled backdrop blits — so the tile reads identically from
+    // frame 1 and the global backdrop then dissolves over it seamlessly.
+    if (e < 0.999) {
+        if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
+            const CBox monPx{0.0, 0.0, m->m_size.x * s, m->m_size.y * s};
+            g_pHyprOpenGL->scissor(pxb(lb, s));
+            g_pHyprOpenGL->renderTexture(btex, monPx, {.a = 1.0F});
+            g_pHyprOpenGL->scissor(nullptr);
+        }
+    }
     // backing (overview_render.cpp) for consistency between the two.
     const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0), std::max(0.0, lb.h - 2.0)};
     g_pHyprOpenGL->renderRect(pxb(bb, s), argb(0xff14181f, 0.08), {.round = pxr(round, s), .roundingPower = roundPow});

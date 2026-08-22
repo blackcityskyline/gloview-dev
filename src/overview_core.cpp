@@ -695,7 +695,12 @@ void Overview::open(bool viaAltTab) {
   hideLayers(); // fade bars out (no-op unless hide_top/overlay_layers set)
   m_cursor.onOpen(m, cursorMode());
   m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO
-  m_blur.drop();           // re-blur from scratch on the next rendered frame
+  // Invalidate but do NOT free the blur cache: its texture doubles as the
+  // frosted backing under translucent tiles from the FIRST overview frame
+  // (see drawPreviewTile) — freeing it would reintroduce the entry blink for
+  // exactly the windows that have blur-behind. The srcId+recipe key forces
+  // one fresh blur on the first backdrop-visible frame anyway.
+  m_blur.valid = false;
   dbg("open");
   damage();
 }
