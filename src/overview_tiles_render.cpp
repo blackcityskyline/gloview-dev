@@ -142,9 +142,8 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // (0.9 → 0.18) rather than reshaping the box/range geometry blind (no way to verify the
     // result visually from here) — still gives opaque windows a faint depth cue in the halo,
     // without being strong enough to read as a second layer through a transparent one.
-    const double range = lift ? 30.0 : 16.0;
-    const double dy    = lift ? 14.0 : 6.0;
-    g_pHyprOpenGL->renderRoundedShadow(pxb(LRect{lb.x, lb.y + dy, lb.w, lb.h}, s), pxr(round, s), roundPow, static_cast<int>(range * s), Config::CGradientValueData(shadowCol), e * 0.18);
+    dropShadow(lb, s, shadowCol, lift ? 14.0 : 6.0, lift ? 30.0 : 16.0,
+               e * 0.18F, round, roundPow);
 
     const bool framed   = (static_cast<int>(i) == m_hovered || lift);
     const bool selected = (static_cast<int>(i) == m_selected) && !lift; // keyboard-nav cursor
@@ -169,22 +168,18 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // constant ring that never changes; on+on = a constant ring whose color/thickness
     // effectively changes on focus, since the focus ring draws right over it.
     if (cfgInt("plugin:gloview:show_border", 0) != 0) {
-        const auto                       baseCol = argb(cfgColor("border_color", "0x50ffffff"), e);
-        const int                        bsz     = cfgInt("plugin:gloview:border_size", 2); // 0 = no ring
-        const Config::CGradientValueData grad(baseCol);
-        g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = bsz, .a = 1.0F, .outerRound = outerRoundPx(round, bsz, roundPow, s)});
+        strokeRing(lb, s, argb(cfgColor("border_color", "0x50ffffff"), e),
+                   cfgInt("plugin:gloview:border_size", 2), round, roundPow);
     }
     if (cfgInt("plugin:gloview:show_focus_border", 1) != 0) {
-        if (framed) {
-            const int                        th = cfgInt("plugin:gloview:hover_border_size", 3); // 0 = no ring (renderBorder no-ops on borderSize < 1)
-            const Config::CGradientValueData grad(hoverCol);
-            g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = th, .a = 1.0F, .outerRound = outerRoundPx(round, th, roundPow, s)});
-        } else if (selected) {
-            const auto                       selCol = argb(cfgColor("select_border", "0xf066ccff"), e);
-            const int                        st     = cfgInt("plugin:gloview:select_border_size", 3); // 0 = no ring
-            const Config::CGradientValueData grad(selCol);
-            g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = st, .a = 1.0F, .outerRound = outerRoundPx(round, st, roundPow, s)});
-        }
+        if (framed) // hovered (or lifted): focus ring wins over selection
+            strokeRing(lb, s, hoverCol,
+                       cfgInt("plugin:gloview:hover_border_size", 3), round,
+                       roundPow);
+        else if (selected)
+            strokeRing(lb, s, argb(cfgColor("select_border", "0xf066ccff"), e),
+                       cfgInt("plugin:gloview:select_border_size", 3), round,
+                       roundPow);
     }
 
     // Thin near-invisible backing — kept ONLY as a safety margin for the 1-3px edge-seam
@@ -233,10 +228,8 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
         }
     }
     // backing (overview_render.cpp) for consistency between the two.
-    const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0), std::max(0.0, lb.h - 2.0)};
-    g_pHyprOpenGL->renderRect(
-        pxb(bb, s), argb(cfgColor("backing_color", "0xff14181f"), 0.08),
-        {.round = pxr(round, s), .roundingPower = roundPow});
+    safetyBacking(lb, s, cfgColor("backing_color", "0xff14181f"), 0.08, round,
+                  roundPow);
 
     // window title in a dark pill below the tile (on hover or keyboard selection)
     if ((framed || selected) && !lift && t.label && t.label->m_size.x > 0) {
@@ -443,10 +436,8 @@ void Overview::drawDragStripChrome() const {
 
     // Same as drawPreviewTile's backing above — thin near-invisible safety margin only, not
     // a deliberate/configurable tint. See its comment for the full reasoning.
-    const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0), std::max(0.0, lb.h - 2.0)};
-    g_pHyprOpenGL->renderRect(
-        pxb(bb, s), argb(cfgColor("backing_color", "0xff14181f"), 0.08),
-        {.round = pxr(round, s), .roundingPower = roundPow});
+    safetyBacking(lb, s, cfgColor("backing_color", "0xff14181f"), 0.08, round,
+                  roundPow);
 }
 
 void Overview::renderDragWindow() const {
