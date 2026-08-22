@@ -202,10 +202,10 @@ void Overview::buildStrip() {
 
   // optional leading "All workspaces" card (toggles expo). Pushed FIRST so it
   // sits at the strip's leading edge; skipped wherever cards are treated as
-  // workspaces (see isAll guards).
+  // workspaces (see the Kind::All guards).
   if (cfgInt("plugin:gloview:strip_all_card", 0) != 0) {
     StripItem all;
-    all.isAll = true;
+    all.kind = StripItem::Kind::All;
     all.id = 0;
     m_strip.push_back(std::move(all));
   }
@@ -243,7 +243,7 @@ void Overview::buildStrip() {
 
   // trailing "+" card to create a new workspace
   StripItem plus;
-  plus.isPlus = true;
+  plus.kind = StripItem::Kind::Plus;
   plus.id = 0;
   m_strip.push_back(std::move(plus));
 
@@ -252,9 +252,9 @@ void Overview::buildStrip() {
     g_pHyprOpenGL->makeEGLCurrent();
     const auto lblCol = CHyprColor(argb(cfgColor("label_color", "0xf2ffffff")));
     for (auto &it : m_strip) {
-      if (it.isPlus)
+      if (it.kind == StripItem::Kind::Plus)
         continue;
-      if (it.isAll) {
+      if (it.kind == StripItem::Kind::All) {
         it.label = g_pHyprRenderer->renderText("All workspaces", lblCol, 13,
                                                false, "", 0, 600);
         continue;

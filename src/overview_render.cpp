@@ -972,7 +972,7 @@ void Overview::renderStrip() const {
     LRect card = it.card;
     card.x += slide.x + scroll.x; // follow the strip slide-in and scroll
     card.y += slide.y + scroll.y;
-    if (m_newCardAnim && it.id == m_newCardId && !it.isPlus && !it.isAll) {
+    if (m_newCardAnim && it.id == m_newCardId && it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All) {
       const double f = newCardScale(); // pop-in: scale up from the card center
       const double cx = card.cx(), cy = card.cy();
       card = LRect{cx - card.w * f / 2.0, cy - card.h * f / 2.0, card.w * f,
@@ -984,9 +984,9 @@ void Overview::renderStrip() const {
     // card body on top leaves a clean ring (four thin strips would blob at the
     // corners).
     const bool actLike =
-        it.active || (allWs && allCardShown && it.isAll); // filled + thick ring
+        it.active || (allWs && allCardShown && it.kind == StripItem::Kind::All); // filled + thick ring
     const bool expoRing =
-        allWs && !allCardShown && !it.isPlus; // outline-all fallback
+        allWs && !allCardShown && it.kind != StripItem::Kind::Plus; // outline-all fallback
     const bool ring = actLike || expoRing;
     if (ring || hover) {
       const auto &lc = ring ? activeLine : hoverLine;
@@ -1000,7 +1000,7 @@ void Overview::renderStrip() const {
         pxb(c, s), actLike ? activeBg : cardBg,
         {.round = pxr(cardRound, s), .roundingPower = roundPow});
 
-    if (it.isPlus) {
+    if (it.kind == StripItem::Kind::Plus) {
       // draw a centered plus
       const double t = std::max(2.0, card.h * 0.04);
       const double L = std::min(card.w, card.h) * 0.34;
@@ -1009,7 +1009,7 @@ void Overview::renderStrip() const {
                                 plusCol, {.round = pxr(t / 2, s)});
       g_pHyprOpenGL->renderRect(pxb(CBox(cx - t / 2, cy - L / 2, t, L), s),
                                 plusCol, {.round = pxr(t / 2, s)});
-    } else if (it.isAll) {
+    } else if (it.kind == StripItem::Kind::All) {
       // 2x2 grid-of-squares glyph = "all windows / every workspace"
       const double pad = std::min(card.w, card.h) * 0.26;
       const double gw = card.w - 2 * pad, gh = card.h - 2 * pad;
@@ -1119,7 +1119,7 @@ void Overview::renderStripButtons() const {
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
-    if (it.isPlus || it.isAll)
+    if (it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All)
       continue;
     const LRect card = stripCardAt(i);
 
@@ -1191,7 +1191,7 @@ void Overview::renderStripWindows() const {
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
-    if (it.isPlus || it.isAll) // neither carries window previews
+    if (it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All) // neither carries window previews
       continue;
     LRect card = it.card;
     card.x += slide.x + scroll.x;

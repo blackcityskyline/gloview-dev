@@ -201,7 +201,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // onKey).
     if (e.button == BTN_MIDDLE) {
       const int idx = stripItemAt(lx, ly);
-      if (idx >= 0 && !m_strip[idx].isPlus && !m_strip[idx].isAll)
+      if (idx >= 0 && m_strip[idx].kind != StripItem::Kind::Plus && m_strip[idx].kind != StripItem::Kind::All)
         closeWorkspaceWindows(m_strip[idx]);
       return true; // swallow; middle is never a switch/drag/dismiss
     }
@@ -229,7 +229,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // above (task 8).
     if (m_desktopMode || closeButtonsAlwaysOn()) {
       for (size_t i = 0; i < m_strip.size(); ++i) {
-        if (m_strip[i].isPlus || m_strip[i].isAll)
+        if (m_strip[i].kind == StripItem::Kind::Plus || m_strip[i].kind == StripItem::Kind::All)
           continue;
         const LRect c = stripCardAt(i);
         const LRect br = stripCloseButtonRect(c);
@@ -251,7 +251,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       if (!c.contains(lx, ly))
         continue;
       auto &it = m_strip[i];
-      if (!it.isPlus && !it.isAll) {
+      if (it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All) {
         for (size_t j = 0; j < it.wins.size(); ++j) {
           const auto w = it.wins[j].win.lock();
           if (!w || !w->m_isMapped || w->isHidden())
@@ -271,9 +271,9 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         }
       }
       m_drag.press = Drag::Press::StripCard;
-      if (it.isAll)
+      if (it.kind == StripItem::Kind::All)
         toggleAllWorkspaces();
-      else if (it.isPlus)
+      else if (it.kind == StripItem::Kind::Plus)
         addWorkspace();
       else
         switchToWorkspace(it);
@@ -416,7 +416,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         if (const auto m = m_monitor.lock();
             m && LRect{0, 0, m->m_size.x, m->m_size.y}.contains(lx, ly)) {
           for (const auto &it : m_strip) {
-            if (!it.isPlus && !it.isAll && it.active) {
+            if (it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All && it.active) {
               if (rmb)
                 swapOnWorkspace(w, it);
               else
@@ -433,7 +433,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // the card
     if (w) {
       for (auto &it : m_strip)
-        if (!it.isPlus && !it.isAll && it.ws.lock() == w->m_workspace) {
+        if (it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All && it.ws.lock() == w->m_workspace) {
           switchToWorkspace(it);
           break;
         }

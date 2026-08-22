@@ -233,12 +233,11 @@ private:
   };
 
   struct StripItem {
+    enum class Kind : int { Ws, Plus, All }; // All = leading expo-toggle card
     PHLWORKSPACEREF ws;
     int id = 0;
     bool active = false;
-    bool isPlus = false;
-    bool isAll =
-        false; // the leading "All workspaces" card (toggles the expo view)
+    Kind kind = Kind::Ws;
     // A placeholder card for a numeric workspace ID that has no real
     // PHLWORKSPACE object yet (Hyprland only keeps workspace objects that were
     // actually created/visited, so an empty never-visited workspace simply
