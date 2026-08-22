@@ -1,0 +1,27 @@
+diff --git a/src/overview_core.cpp b/src/overview_core.cpp
+index be76054..33f3a98 100644
+--- a/src/overview_core.cpp
++++ b/src/overview_core.cpp
+@@ -526,6 +526,22 @@ void Overview::open() {
+   // ("transparent strip").
+   m->m_blurFBDirty = true;
+ 
++  // Force 3 consecutive full-monitor-damage frames, the same public knob
++  // Hyprland itself sets on every other "swapchain buffer-age tracking can no
++  // longer be trusted" transition (CMonitor::onConnect, prop-refresh/config
++  // reload, cursor-theme change — grep m_forceFullFrames across Hyprland src).
++  // A single damage() call (below) only guarantees a correct repaint for
++  // whichever ONE swapchain image consumes it before CDamageRing::rotate()
++  // clears m_current; with a 2-3 image swapchain the OTHER image(s) fall back
++  // to CDamageRing::getBufferDamage(bufferAge), which only reconstructs
++  // history via a 3-deep ring — anything beyond that returns full damage, but
++  // anything within it can render a genuinely stale (in the worst case,
++  // never-composited-into) buffer for as many frames as it takes the rotation
++  // to cycle back through it. Bounded, one-shot (never re-armed while
++  // active), and harmless if the theory is wrong — costs nothing beyond a few
++  // needless full-frame paints right at open.
++  m->m_forceFullFrames = 3;
++
+   // Clear drag/press state: a mid-drag dismiss (ESC/TAB/click) skips the
+   // release handler, so the next open would inherit a half-armed drag (a tile
+   // floats at cursor). One reset covers every field.
