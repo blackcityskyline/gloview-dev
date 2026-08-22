@@ -757,6 +757,7 @@ void Overview::startWinFade() {
     if (const auto w = t.win.lock())
       m_fadeBase.emplace_back(w, w->alpha()[slot]->goal());
   m_winFade = true;
+  dbg("winFade START tiles=" + std::to_string(m_fadeBase.size()));
   // Warp to the CURRENT curve point immediately: the per-frame apply lives in
   // updateAnimation (RENDER_LAST_MOMENT), whose result lands one frame later —
   // without this init the first fade frame drew full-alpha windows under a
@@ -794,6 +795,7 @@ void Overview::endWinFade() {
       w->alpha()[slot]->setValueAndWarp(base);
   m_fadeBase.clear();
   m_winFade = false;
+  dbg("winFade END");
 }
 
 // Immediate, animation-free teardown for the UNLOAD path (`hyprctl
@@ -1093,8 +1095,17 @@ void Overview::updateSnapshots() {
 }
 
 void Overview::dbg(const std::string &msg) const {
-  if (cfgInt("plugin:gloview:debug_logs", 0) != 0 && Log::logger)
+  if (cfgInt("plugin:gloview:debug_logs", 0) == 0)
+    return;
+  if (Log::logger)
     Log::logger->log(Log::INFO, "[gloview] {}", msg);
+  // Mirror to a plain file: Hyprland's own log routing varies by session
+  // init (journald unit names, stdout redirection), this one is always here.
+  static FILE *f = fopen("/tmp/gloview.log", "w"); // truncated per plugin load
+  if (f) {
+    fprintf(f, "%s\n", msg.c_str());
+    fflush(f);
+  }
 }
 
 } // namespace gloview
