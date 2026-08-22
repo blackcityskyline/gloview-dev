@@ -47,12 +47,13 @@
   поверх блита, fade — только альфа блита `k=eased()`. `blur_strength` означает
   ТОЛЬКО радиус фильтра. Ключ кэша = srcId + passes/size/resolution/strength,
   проверяется КАЖДЫЙ кадр (живой конфиг). Не смешивать с fade-фактором.
-- Entry-snapshot база рисуется ТОЛЬКО на входе (`m_opening`); на выходе блюр тает
-  над живым currentFB — иначе ghost'ы окон под плывущими плитками.
-- Entry-snapshot кроссфейд: контракт `open()` ставит `m_entryPrime` →
-  `shouldHideWindow` держит окна видимыми этот кадр → `renderBackdrop` захватывает
-  currentFB и снимает флаг → release в dtor/deactivate/hardClose. Все три места
-  обязательны.
+- Entry/exit window-fade: контракт `startWinFade (open/close)` →
+  `shouldHideWindow` пропускает окна пока `m_winFade` → `applyWinFade` каждый
+  кадр из updateAnimation → `endWinFade` в deactivate/hardClose/dtor ОБЯЗАТЕЛЬНО,
+  иначе окна останутся с искажённым FADE-альфа. Warp из RENDER_LAST_MOMENT
+  действует со СЛЕДУЮЩЕГО кадра (лаг внутри рампы незаметен, на границах
+  значения сходятся). Снапшот-базы у кроссфейда НЕТ: ghost'ы/чёрные кадры
+  решаются именно фейдом реальных окон.
 - Tween: длительности читаются на месте КАЖДЫЙ кадр (живой отклик на смену конфига),
   Tween владеет только стартовой точкой.
 
