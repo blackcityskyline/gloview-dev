@@ -61,7 +61,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
   }
 
   PHLWORKSPACE target;
-  if (it.isPlus) {
+  if (it.kind == StripItem::Kind::Plus) {
     int id = 1;
     while (State::workspaceState()->query().id(id).run())
       ++id;
@@ -169,7 +169,7 @@ void Overview::swapTiles(int a, int b) {
 // target to swap with (empty workspace, or a fullscreen partner with no
 // well-defined slot).
 void Overview::swapOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
-  if (!w || it.isPlus || it.isAll) {
+  if (!w || it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All) {
     damage();
     return;
   }
@@ -230,7 +230,7 @@ void Overview::switchToWorkspace(const StripItem &it) {
     return;
 
   PHLWORKSPACE ws;
-  if (it.isPlus) {
+  if (it.kind == StripItem::Kind::Plus) {
     int id = 1;
     while (State::workspaceState()->query().id(id).run())
       ++id;
@@ -289,7 +289,7 @@ void Overview::stepWorkspace(int dir) {
   std::vector<int> real;
   int activePos = -1;
   for (size_t i = 0; i < m_strip.size(); ++i) {
-    if (m_strip[i].isPlus || m_strip[i].isAll)
+    if (m_strip[i].kind == StripItem::Kind::Plus || m_strip[i].kind == StripItem::Kind::All)
       continue;
     if (m_strip[i].active)
       activePos = static_cast<int>(real.size());
@@ -369,7 +369,7 @@ void Overview::closeTileWindow(int i) {
 // Middle-click a workspace card: send-close every window on it (async, like the
 // per-window middle-click). syncTiles() reflows once the windows actually go.
 void Overview::closeWorkspaceWindows(const StripItem &it) {
-  if (it.isPlus || it.isAll)
+  if (it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All)
     return;
   const auto ws = it.ws.lock();
   if (!ws)
