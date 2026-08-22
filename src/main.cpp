@@ -41,9 +41,9 @@ void addStr(const char* name, Config::STRING fallback) {
 }
 
 // --- every plugin:gloview:* config value, grouped by concern ---
-// Color options are plain strings too: either a manual "0xAARRGGBB" literal or
-// a scheme-role keyword ("primary"/"secondary"/"error"/…) — ONE field does both
-// jobs, see cfgColorScheme() in overview_core.cpp.
+// Color options are plain strings holding a hex literal in any accepted form
+// ("0xAARRGGBB", "#RRGGBB", …) — or a palette-resolved hex produced Lua-side
+// from a theme module (hyprbars pattern), see cfgColor() in overview_core.cpp.
 
 constexpr std::pair<const char*, Config::INTEGER> kIntCfg[] = {
     // --- layout / main area ---
@@ -138,6 +138,10 @@ constexpr std::pair<const char*, const char*> kStrCfg[] = {
     {"plugin:gloview:hover_border", "0xf0ffffff"},
     {"plugin:gloview:border_color", "0x50ffffff"},      // the always-on base ring (show_border)
     {"plugin:gloview:select_border", "0xf066ccff"},     // keyboard-selected tile ring (distinct from hover)
+    {"plugin:gloview:label_color", "0xf2ffffff"},       // window/workspace name text under tiles and cards
+    {"plugin:gloview:title_pill_color", "0xcc11151c"},  // desktop-mode title pill behind a tile's label
+    {"plugin:gloview:backing_color", "0xff14181f"},     // translucent-tile safety backing; renderer applies its own low alpha, only RGB is used
+    {"plugin:gloview:drop_hint_color", "0x38ffffff"},   // strip-card drop-zone highlight flash
     // --- keybinds (key names: esc/tab/enter/left/right/up/down/shift/hjkl/f1…/super/ctrl/alt/grave;
     //     a bare digit = that number-row key; comma/space separated; modifier combos as
     //     "shift+tab" / "ctrl+shift+k"; "" disables → key falls through) ---
@@ -164,7 +168,8 @@ constexpr std::pair<const char*, const char*> kStrCfg[] = {
     // --- workspace scope / strip contents ---
     {"plugin:gloview:new_workspace_mode", "fill"},       // fill (default): "+" takes the lowest free workspace id (backfills a gap) — linear: always appends past the highest existing id
     // --- close buttons ---
-    {"plugin:gloview:close_button_color", "0xe6e23b3b"}, // "✕" close button fill (both per-window and per-workspace); try "error" if group:col.border_locked_active is themed
+    {"plugin:gloview:close_button_color", "0xe6e23b3b"}, // "✕" close button fill (both per-window and per-workspace)
+    {"plugin:gloview:close_glyph_color", "0xffffffff"},  // the ✕ glyph itself, on top of close_button_color
     {"plugin:gloview:close_button_visibility", "shift"}, // shift (default, "standard"): close buttons only show in desktop/canvas mode (key_desktop) — always: show them on every tile and strip card all the time
     {"plugin:gloview:close_button_icon", "✕"},           // glyph drawn in the close buttons
     {"plugin:gloview:close_button_position", "top-right"}, // top-right | top-left | bottom-right | bottom-left

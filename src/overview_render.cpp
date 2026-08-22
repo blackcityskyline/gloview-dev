@@ -780,7 +780,7 @@ void Overview::renderBackdrop() const {
   const int H = m->m_pixelSize.y;
   const double e = eased();
   const auto baseCol =
-      cfgColorScheme("backdrop_color", "0x73070a10"); // raw config literal
+      cfgColor("backdrop_color", "0x73070a10"); // raw config literal
 
   // Crossfade factor. Deliberately just `e` — blur_strength keeps meaning
   // "filter radius", never a blend amount.
@@ -948,7 +948,7 @@ void Overview::renderStrip() const {
 
   // translucent band behind the cards (kept faint per request)
   const auto bandCol =
-      argb(cfgColorScheme("strip_band_color", "0x24ffffff"), e);
+      argb(cfgColor("strip_band_color", "0x24ffffff"), e);
   const bool blur = false; // strip band never uses native blur: it samples
                            // currentFB which can hold a solitary fullscreen
                            // window (the workspace-switch fast path bypasses
@@ -965,16 +965,16 @@ void Overview::renderStrip() const {
       bandCol, {.blur = blur, .blurA = static_cast<float>(e) * blurStrength()});
 
   const int cardRound = cfgInt("plugin:gloview:strip_card_round", 10);
-  const auto cardBg = argb(cfgColorScheme("strip_card_color", "0x3a0e131c"), e);
+  const auto cardBg = argb(cfgColor("strip_card_color", "0x3a0e131c"), e);
   const auto activeBg =
-      argb(cfgColorScheme("strip_active_color", "0x4d1c2c44"), e);
+      argb(cfgColor("strip_active_color", "0x4d1c2c44"), e);
   const auto activeLine =
-      argb(cfgColorScheme("strip_active_border", "0xf0ffffff"), e);
+      argb(cfgColor("strip_active_border", "0xf0ffffff"), e);
   const auto hoverLine =
-      argb(cfgColorScheme("strip_hover_border", "0x80ffffff"), e);
+      argb(cfgColor("strip_hover_border", "0x80ffffff"), e);
   const auto plusCol =
-      argb(cfgColorScheme("strip_plus_color", "0xd0eef4ff"), e);
-  const auto allCol = argb(cfgColorScheme("strip_all_color", "0xd0eef4ff"),
+      argb(cfgColor("strip_plus_color", "0xd0eef4ff"), e);
+  const auto allCol = argb(cfgColor("strip_all_color", "0xd0eef4ff"),
                            e); // own key, no longer plusCol
   // Expo indicator: when all-workspaces is active, the "All" card (if present)
   // lights up active-style; otherwise outline every real card for feedback. The
@@ -1068,7 +1068,7 @@ void Overview::renderStrip() const {
                              !(m_dragging && m_pressStripItem >= 0);
         if (grabbed) {
           const Config::CGradientValueData grad(
-              argb(cfgColorScheme("hover_border", "0xf0ffffff"), e));
+              argb(cfgColor("hover_border", "0xf0ffffff"), e));
           g_pHyprOpenGL->renderBorder(
               pxb(wb, s), grad,
               {.round = pxr(wRound, s),
@@ -1086,7 +1086,8 @@ void Overview::renderStrip() const {
         // now blends almost entirely against the strip band's own already-drawn
         // content instead.
         g_pHyprOpenGL->renderRect(
-            pxb(wb, s), argb(0xff14181f, 0.08 * e),
+            pxb(wb, s),
+            argb(cfgColor("backing_color", "0xff14181f"), 0.08 * e),
             {.round = pxr(wRound, s), .roundingPower = roundPow});
       }
     }
@@ -1158,7 +1159,7 @@ void Overview::renderStripButtons() const {
                                        : LRect{card.x, card.cy(), card.w, card.h / 2.0};
       }
       g_pHyprOpenGL->renderRect(
-          pxb(zone, s), CHyprColor(1.0, 1.0, 1.0, 0.22 * e),
+          pxb(zone, s), argb(cfgColor("drop_hint_color", "0x38ffffff"), e),
           {.round = pxr(cardRound / 2, s), .roundingPower = roundPow});
     }
 
@@ -1172,7 +1173,7 @@ void Overview::renderStripButtons() const {
       const double rad = br.w / 2.0;
       g_pHyprOpenGL->renderRect(
           pxb(box(br), s),
-          argb(cfgColorScheme("close_button_color", "0xe6e23b3b"), e),
+          argb(cfgColor("close_button_color", "0xe6e23b3b"), e),
           {.round = pxr(rad, s)});
       if (m_closeGlyph && m_closeGlyph->m_size.x > 0) {
         const double gw = m_closeGlyph->m_size.x * 0.62,
@@ -1338,7 +1339,7 @@ void Overview::renderCursorOnTop() const {
   if (!m)
     return;
   m_cursor.renderOnTop(
-      m, argb(cfgColorScheme("backdrop_color", "0x73070a10"), 1.0));
+      m, argb(cfgColor("backdrop_color", "0x73070a10"), 1.0));
 }
 
 double Overview::newCardScale() const {
