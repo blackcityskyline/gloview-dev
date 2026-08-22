@@ -136,5 +136,8 @@ Black blink при входе — см. CANDIDATES.md. Следующий шаг
   (f937a08) и сведены к двум сценариям (9169cb8).
 - 2026-08-22: **C1+C5** цвета переписаны (fa36b3c): schemeGradient/градиентная
   machinery удалена, cfgColor = parse-or-fallback; схема живёт Lua-стороной
-  (hyprbars-pattern); 5 инлайн-литералов стали опциями. Код: **4674 строк**
-  (было 4774 на старте подсчёта). Дальше: S1 → C3 → C4 → C6.
+  (hyprbars-pattern); 5 инлайн-литералов стали опциями.
+- 2026-08-22: **S1 выполнена целиком**: b+c Drag-структура + dblclick 4→2
+  (80a0e84), a плитки-часы + Tween.last (858a7dc), d canvasPos→Tile.parked
+  (342cf83), e Kind-enum (3adc60e). Код: **4649 строк**. Осталось:
+  C3 → C4 → C6.
