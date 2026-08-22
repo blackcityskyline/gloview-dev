@@ -77,16 +77,12 @@ bind = SUPER, TAB, gloview:alttab
 bind = SUPER SHIFT, TAB, gloview:alttabback
 ```
 
-Closed → opens straight into the all-workspaces view with the grid itself reordered into MRU
-(most-recently-used) order — not the usual spatial layout — and the cursor already on the
-*previously* focused window (that first invocation already counts as "one tab", and always
-lands there regardless of whether it was `gloview:alttab` or `gloview:alttabback` that
-opened it, same as a real alt-tab's first press). Already open → tapping the same bound key
-again (while still holding the modifier) advances the cycle — Hyprland re-invokes the
-dispatcher on every physical press, exactly like holding Alt and tapping Tab; cycling all the
-way around returns to the window you started on, same as a real alt-tab. Set `alt_tab_modifier`
-to whatever modifier is in that bind (`alt` by default) so releasing it can commit the
-selection — see the config table.
+Closed → opens straight into the all-workspaces view with the selection on the first tile.
+Already open → tapping the same bound key again (while still holding the modifier) advances
+the cycle — Hyprland re-invokes the dispatcher on every physical press, exactly like holding
+Alt and tapping Tab. Tiles keep their normal spatial grid order; cycling just walks the
+selection through them. Set `alt_tab_modifier` to whatever modifier is in that bind (`alt`
+by default) so releasing it can commit the selection — see the config table.
 
 ## Config
 
@@ -150,7 +146,6 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `key_workspace_mode` | `switch` \| `jump` | `switch` | `switch`: a digit changes the displayed workspace and the overview stays open (Ctrl+digit is a no-op) — `jump`: a digit switches AND immediately closes the overview; hold Ctrl+digit for the old stay-open behavior |
 | `alt_tab_modifier` | `alt` \| `ctrl` \| `shift` \| `super` | `alt` | Which modifier's release commits the Alt-Tab selection (match whatever you bound `gloview:alttab` with) |
 | `alt_tab_commit_on_release` | bool (0/1) | `1` | Releasing `alt_tab_modifier` focuses the selection & closes, like a normal alt-tab — off: releasing does nothing, confirm with `key_activate`/click instead |
-| `alt_tab_mode` | `smart` \| `linear` | `smart` | `smart`: first hop lands on the most-recently-focused window (Hyprland's own system-wide focus history — not just windows gloview itself focused), then walks back through recency — `linear`: simple fixed circular order |
 | `exit_on_click` | bool (0/1) | `1` | Click on empty space dismisses the overview |
 | `exit_on_switch` | bool (0/1) | `0` | Dismiss when the live workspace changes underneath (e.g. a keybind) |
 | `show_all_workspaces` | bool (0/1) | `0` | Main area shows every window on the monitor (expo), not just the displayed workspace. Toggle live with `gloview:allworkspaces`, the `key_all_workspaces` key, or the strip's "All" card |
@@ -269,7 +264,6 @@ close_button_color = "error", -- only meaningful if your scheme actually themes 
                 key_workspace_mode = "switch",
                 alt_tab_modifier              = "alt",
                 alt_tab_commit_on_release     = 1,
-                alt_tab_mode                  = "smart",
 
                 show_all_workspaces     = 0,
                 strip_empty_mode        = "show",
@@ -357,7 +351,6 @@ plugin {
         key_workspace_mode = switch
         alt_tab_modifier = alt
         alt_tab_commit_on_release = 1
-        alt_tab_mode = smart
 
         show_all_workspaces     = 0
         strip_empty_mode        = show

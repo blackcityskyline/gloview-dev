@@ -466,63 +466,9 @@ void Overview::moveSelection(int dx, int dy) {
   }
 }
 
-// MRU rank snapshot used by buildTiles() to physically sort m_tiles for an
-// Alt-Tab session. "linear" mode returns an empty map (buildTiles() then leaves
-// the natural build order alone). "smart" ranks by gloview's OWN focus history
-// (m_focusHistory — every real window.active event EXCEPT the ones our own
-// syncFocus() generates while the overview is up; see its comment in
-// overview.hpp) — genuine clicks, keybinds, other plugins' alt-tabs, anything
-// that isn't just us syncing the cursor: walking the history from the back,
-// the FIRST hit is the CURRENTLY focused window (that's what "most recent"
-// means for a live history), the second hit is the previously focused window,
-// and so on.
-//
-// A plain "rank 0 = most recent" numbering would put the CURRENT window in tile
-// slot 0 — a bad first landing spot for a switcher, since the whole point of
-// the first tab is to jump AWAY from where you already are. So the raw ranking
-// is rotated by one: rank 0 becomes the PREVIOUSLY focused window, rank 1 the
-// one before that, …, and the current window is pushed to the very end (rank ==
-// n-1), only reachable again after cycling all the way around — same as a real
-// alt-tab. Windows never seen in history simply have no entry (buildTiles()
-// appends them after every ranked window, preserving their natural relative
-// order).
-std::unordered_map<void *, int> Overview::buildAltTabRank() const {
-  std::unordered_map<void *, int> rank;
-  if (cfgStr("plugin:gloview:alt_tab_mode", "smart") != "smart")
-    return rank;
-  // m_focusHistory, NOT Desktop::History::windowTracker() — see its comment in
-  // overview.hpp for why: the real tracker gets rewritten by our OWN
-  // syncFocus() calls (hover/cursor hover WHILE browsing a previous session,
-  // not genuine commits), which used to make a session's very first landing
-  // spot unreliable — sometimes the window the session started on, sometimes
-  // whatever an earlier session's cursor last swept over.
-  const auto &hist = m_focusHistory; // old -> new
-  int r = 0;
-  for (auto it = hist.rbegin(); it != hist.rend(); ++it) {
-    const auto w = it->lock();
-    if (w && rank.find(w.get()) ==
-                 rank.end()) // first hit walking from the back = most recent
-      rank.emplace(w.get(), r++);
-  }
-  // Rotate: raw rank 0 (the CURRENTLY focused window) moves to the end;
-  // everything else shifts down by one. Without this, rank 0 stayed on the
-  // current window (it IS the freshest history entry), which desynced the
-  // keyboard cursor (landed on rank 1, the previous window) from the grid's
-  // first slot (held rank 0, the current window) — the very bug this rotation
-  // fixes.
-  const int n = static_cast<int>(rank.size());
-  if (n > 1)
-    for (auto &[win, rk] : rank)
-      rk = (rk - 1 + n) % n;
-  return rank;
-}
-
 // Advance the Alt-Tab cursor by dir (+1/-1). Only ever called for an
 // ALREADY-active session (the first "tab" of a session is handled directly in
-// altTabInvoke, which lands on index 0 — the rotated rank already puts the
-// previously focused window there — see its comment). m_tiles is already
-// MRU-sorted by buildTiles() for the whole session (buildAltTabRank() was
-// snapshotted once, before opening), so the visiting order is simply the tile
+// altTabInvoke, which lands on tile 0). The visiting order is simply the tile
 // index — no separate order/position bookkeeping needed.
 void Overview::stepAltTab(int dir) {
   const int n = static_cast<int>(m_tiles.size());
@@ -561,14 +507,7 @@ void Overview::syncFocus() const {
   if (w->m_workspace !=
       m->m_activeWorkspace) // displaying a non-live workspace — don't desync
     return;
-  // Suppressed around this specific call only — see m_suppressHistoryTrack's
-  // comment in overview.hpp. This is UI cursor-follow, not a genuine user
-  // commit, and must not be recorded into m_focusHistory (the SAME real
-  // events.window.active signal fires either way; only the LISTENER's
-  // decision to record differs).
-  m_suppressHistoryTrack = true;
   Desktop::focusState()->fullWindowFocus(w, Desktop::FOCUS_REASON_KEYBIND);
-  m_suppressHistoryTrack = false;
 }
 
 } // namespace gloview

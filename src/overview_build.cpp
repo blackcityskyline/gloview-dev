@@ -65,37 +65,6 @@ void Overview::buildTiles() {
     m_tiles.push_back(t);
   }
 
-  // Alt-Tab session: reorder the tiles THEMSELVES into MRU order (rank 0 = the
-  // PREVIOUSLY focused window, rank 1 = the one before that, … —
-  // buildAltTabRank() rotates the raw ranking so the CURRENTLY focused window
-  // lands last, not first) instead of leaving them in Desktop::windowState()'s
-  // build order. layoutTiles() is told to preserve this order
-  // (LayoutCfg::preserveOrder) instead of its usual spatial reading-order sort,
-  // so the grid visually reflects recency — cycling then reads as a real MRU
-  // switcher instead of a selection ring hopping around a layout that has no
-  // relationship to it (task #1). m_altTabRank is snapshotted once per session
-  // (see altTabInvoke), so this stays stable across any mid-session rebuild.
-  // Windows with no history entry ("linear" mode, or a window never seen in
-  // Hyprland's focus history) keep their relative build order, appended after
-  // every ranked window.
-  if (m_altTabbing && !m_altTabRank.empty()) {
-    std::stable_sort(
-        m_tiles.begin(), m_tiles.end(), [this](const Tile &a, const Tile &b) {
-          const auto wa = a.win.lock();
-          const auto wb = b.win.lock();
-          const auto ra = wa ? m_altTabRank.find(wa.get()) : m_altTabRank.end();
-          const auto rb = wb ? m_altTabRank.find(wb.get()) : m_altTabRank.end();
-          const bool ha = ra != m_altTabRank.end();
-          const bool hb = rb != m_altTabRank.end();
-          if (ha != hb)
-            return ha; // known-recency windows sort before ones with no history
-                       // at all
-          if (ha && hb)
-            return ra->second < rb->second;
-          return false; // stable: preserve relative order among unknowns
-        });
-  }
-
   // cache each window's title texture, drawn under the tile on hover.
   if (g_pHyprOpenGL && g_pHyprRenderer) {
     g_pHyprOpenGL->makeEGLCurrent();
@@ -428,10 +397,6 @@ void Overview::layoutTiles() {
     break;
   }
   cfg.maxScale = cfgFloat("plugin:gloview:max_scale", 1.0F);
-  // Alt-Tab already sorted m_tiles into MRU order (buildTiles()) — keep it; the
-  // Rows engine would otherwise re-sort by on-screen position and undo the
-  // whole point (task #1).
-  cfg.preserveOrder = m_altTabbing;
 
   // Desktop (canvas) mode: fit the WHOLE monitor into the usable area and place
   // each preview at its real scaled position — a shrunk live desktop. A dragged

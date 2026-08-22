@@ -161,7 +161,6 @@ constexpr std::pair<const char*, const char*> kStrCfg[] = {
     // alt_tab_modifier says WHICH modifier's release commits the selection (see
     // alt_tab_commit_on_release) — set it to match whatever modifier is in that bind.
     {"plugin:gloview:alt_tab_modifier", "alt"},          // alt | ctrl | shift | super — which modifier's release commits, when alt_tab_commit_on_release is on
-    {"plugin:gloview:alt_tab_mode", "smart"},            // smart (default): first hop lands on the most-recently-focused window (Hyprland's own system-wide focus history), then walks back through recency; linear: simple fixed circular order
     // --- workspace scope / strip contents ---
     {"plugin:gloview:new_workspace_mode", "fill"},       // fill (default): "+" takes the lowest free workspace id (backfills a gap) — linear: always appends past the highest existing id
     // --- close buttons ---
