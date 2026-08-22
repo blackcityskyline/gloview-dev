@@ -90,10 +90,9 @@ private:
 // IValue directly works for both the legacy/ini and Lua config frontends.
 //
 // No `colors` map: every plugin:gloview:<color> option is registered as a
-// plain STRING (see cfgColorScheme() in overview_core.cpp) so ONE field can
-// hold either a manual hex literal ("0xf0ffffff") or a scheme-role keyword
-// ("primary" / "secondary" / "error" / …, optionally "role:AA" for a custom
-// alpha) — no separate <name>_source key needed anymore.
+// plain STRING (see cfgColor() in overview_core.cpp) holding a hex literal —
+// or a palette-resolved hex produced Lua-side from a theme module (hyprbars
+// pattern), so the plugin stays decoupled from any scheme engine.
 struct ConfigRegistry {
   std::unordered_map<std::string, SP<Config::Values::CIntValue>> ints;
   std::unordered_map<std::string, SP<Config::Values::CStringValue>> strings;
@@ -450,39 +449,9 @@ private:
   // use its hardware cursor plane when the driver supports one — zero GPU cost
   // per move, zero framebuffer pollution, zero trails.
   std::string cursorMode() const;
-  // Unified single-field color read. `base` is the bare option name (no
-  // "plugin:gloview:" prefix), e.g. "hover_border"; `fallback` is that
-  // option's own default written the same way a user would ("0xf0ffffff").
-  // The live config value at plugin:gloview:<base> is ONE string that can be
-  // EITHER:
-  //   - a manual color literal: "0xAARRGGBB" / "0xRRGGBB" / "#AARRGGBB" /
-  //     "#RRGGBB" / bare hex, OR
-  //   - a scheme-role keyword: "primary" | "secondary" | "error"/"danger" |
-  //     "group_active" | "group_inactive" (see schemeGradient()) — RGB comes
-  //     from that live Hyprland gradient, alpha comes from `fallback`'s own
-  //     alpha byte unless overridden with "role:AA" (e.g. "primary:cc").
-  // No separate <base>_source key anymore — one field does both jobs.
-  // Universal by construction: whatever tool (Noctalia/matugen/pywal/wallust/
-  // hand-edited hyprland.conf) set Hyprland's own general:col.*/group:col.*,
-  // variable substitution has already resolved by the time this reads it back.
-  Hyprlang::INT cfgColorScheme(const char *base, const char *fallback) const;
-  // Live Hyprland gradient for a scheme role keyword, or nullptr if `role`
-  // isn't one of the whitelisted names below. DELIBERATELY a closed
-  // whitelist, each entry a compile-time string literal bound the same way
-  // Hyprland's own internal CConfigValue users do (static local, bound once)
-  // — verified against ConfigValues.cpp on the pinned/running source. NEVER
-  // forward an arbitrary user-supplied path into CConfigValue: an unknown
-  // path fails Config::mgr()->getConfigValue()'s RASSERT and calls
-  // raise(SIGABRT) (ConfigValue.cpp), taking down the whole Hyprland session,
-  // not just the plugin — so only these pre-verified literals are reachable,
-  // no matter what a person types in their config.
-  //   primary        -> general:col.active_border
-  //   secondary      -> general:col.inactive_border
-  //   error / danger -> group:col.border_locked_active
-  //   group_active   -> group:col.border_active
-  //   group_inactive -> group:col.border_inactive
-  const Config::CGradientValueData *
-  schemeGradient(const std::string &role) const;
+  // Unified color read — see cfgColor() in overview_core.cpp for the value
+  // grammar (hex literal, or a palette-resolved hex produced Lua-side).
+  Hyprlang::INT cfgColor(const char *base, const char *fallback) const;
 
   // Which monitor edge the workspace strip is anchored to. Top/Bottom give a
   // horizontal strip (cards in a row); Left/Right give a vertical strip (cards

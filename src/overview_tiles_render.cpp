@@ -112,8 +112,8 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     const double e         = eased();
     const int    round     = cfgInt("plugin:gloview:preview_round", 12);
     const float  roundPow  = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
-    const auto   shadowCol = argb(cfgColorScheme("shadow_color", "0x70000000"), 1.0);
-    const auto   hoverCol  = argb(cfgColorScheme("hover_border", "0xf0ffffff"), e);
+    const auto   shadowCol = argb(cfgColor("shadow_color", "0x70000000"), 1.0);
+    const auto   hoverCol  = argb(cfgColor("hover_border", "0xf0ffffff"), e);
 
     const auto& t = m_tiles[i];
     const auto  w = t.win.lock();
@@ -169,7 +169,7 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // constant ring that never changes; on+on = a constant ring whose color/thickness
     // effectively changes on focus, since the focus ring draws right over it.
     if (cfgInt("plugin:gloview:show_border", 0) != 0) {
-        const auto                       baseCol = argb(cfgColorScheme("border_color", "0x50ffffff"), e);
+        const auto                       baseCol = argb(cfgColor("border_color", "0x50ffffff"), e);
         const int                        bsz     = cfgInt("plugin:gloview:border_size", 2); // 0 = no ring
         const Config::CGradientValueData grad(baseCol);
         g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = bsz, .a = 1.0F, .outerRound = outerRoundPx(round, bsz, roundPow, s)});
@@ -180,7 +180,7 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
             const Config::CGradientValueData grad(hoverCol);
             g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = th, .a = 1.0F, .outerRound = outerRoundPx(round, th, roundPow, s)});
         } else if (selected) {
-            const auto                       selCol = argb(cfgColorScheme("select_border", "0xf066ccff"), e);
+            const auto                       selCol = argb(cfgColor("select_border", "0xf066ccff"), e);
             const int                        st     = cfgInt("plugin:gloview:select_border_size", 3); // 0 = no ring
             const Config::CGradientValueData grad(selCol);
             g_pHyprOpenGL->renderBorder(pxb(lb, s), grad, {.round = pxr(round, s), .roundingPower = roundPow, .borderSize = st, .a = 1.0F, .outerRound = outerRoundPx(round, st, roundPow, s)});
@@ -234,7 +234,9 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     }
     // backing (overview_render.cpp) for consistency between the two.
     const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0), std::max(0.0, lb.h - 2.0)};
-    g_pHyprOpenGL->renderRect(pxb(bb, s), argb(0xff14181f, 0.08), {.round = pxr(round, s), .roundingPower = roundPow});
+    g_pHyprOpenGL->renderRect(
+        pxb(bb, s), argb(cfgColor("backing_color", "0xff14181f"), 0.08),
+        {.round = pxr(round, s), .roundingPower = roundPow});
 
     // window title in a dark pill below the tile (on hover or keyboard selection)
     if ((framed || selected) && !lift && t.label && t.label->m_size.x > 0) {
@@ -245,7 +247,7 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
         const double ph   = lh + 2 * padY;
         const double px   = std::clamp(lb.cx() - pw / 2.0, 6.0, m->m_size.x - pw - 6.0);
         const double py   = std::min(lb.y + lb.h + 10.0, m->m_size.y - ph - 6.0);
-        g_pHyprOpenGL->renderRect(pxb(CBox(px, py, pw, ph), s), argb(0xcc11151c, e), {.round = pxr(ph / 2.0, s)});
+        g_pHyprOpenGL->renderRect(pxb(CBox(px, py, pw, ph), s), argb(cfgColor("title_pill_color", "0xcc11151c"), e), {.round = pxr(ph / 2.0, s)});
         g_pHyprOpenGL->renderTexture(t.label, pxb(CBox(px + padX, py + padY, lw, lh), s), {.a = static_cast<float>(e)});
     }
 }
@@ -344,7 +346,7 @@ void Overview::renderTileButtons() const {
             continue;
         const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
         const LRect br = closeButtonRect(lb);
-        g_pHyprOpenGL->renderRect(pxb(br, s), argb(cfgColorScheme("close_button_color", "0xe6e23b3b"), e), {.round = pxr(br.h / 2.0, s)});
+        g_pHyprOpenGL->renderRect(pxb(br, s), argb(cfgColor("close_button_color", "0xe6e23b3b"), e), {.round = pxr(br.h / 2.0, s)});
         if (m_closeGlyph && m_closeGlyph->m_size.x > 0) {
             const double gw = m_closeGlyph->m_size.x, gh = m_closeGlyph->m_size.y;
             const double gs = std::min((br.w * 0.62) / std::max(1.0, gw), (br.h * 0.62) / std::max(1.0, gh));
@@ -423,8 +425,8 @@ void Overview::drawDragStripChrome() const {
     const LRect  lb        = dragStripBox();
     const int    round     = clampRound(cfgInt("plugin:gloview:preview_round", 12), lb.w, lb.h);
     const float  roundPow  = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
-    const auto   shadowCol = argb(cfgColorScheme("shadow_color", "0x70000000"), 1.0);
-    const auto   hoverCol  = argb(cfgColorScheme("hover_border", "0xf0ffffff"), e);
+    const auto   shadowCol = argb(cfgColor("shadow_color", "0x70000000"), 1.0);
+    const auto   hoverCol  = argb(cfgColor("hover_border", "0xf0ffffff"), e);
 
     // Same reasoning as drawPreviewTile's shadow above — its box is tile-sized (just offset),
     // so its solid core sits inside the tile's own footprint and now shows through real
@@ -441,7 +443,9 @@ void Overview::drawDragStripChrome() const {
     // Same as drawPreviewTile's backing above — thin near-invisible safety margin only, not
     // a deliberate/configurable tint. See its comment for the full reasoning.
     const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0), std::max(0.0, lb.h - 2.0)};
-    g_pHyprOpenGL->renderRect(pxb(bb, s), argb(0xff14181f, 0.08), {.round = pxr(round, s), .roundingPower = roundPow});
+    g_pHyprOpenGL->renderRect(
+        pxb(bb, s), argb(cfgColor("backing_color", "0xff14181f"), 0.08),
+        {.round = pxr(round, s), .roundingPower = roundPow});
 }
 
 void Overview::renderDragWindow() const {

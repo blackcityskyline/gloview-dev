@@ -1,4 +1,5 @@
 #include "overview.hpp"
+#include "overlay_gl.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -68,7 +69,7 @@ void Overview::buildTiles() {
   // cache each window's title texture, drawn under the tile on hover.
   if (g_pHyprOpenGL && g_pHyprRenderer) {
     g_pHyprOpenGL->makeEGLCurrent();
-    const auto lblCol = CHyprColor(1.0, 1.0, 1.0, 0.96);
+    const auto lblCol = CHyprColor(argb(cfgColor("label_color", "0xf2ffffff")));
     for (auto &t : m_tiles) {
       const auto w = t.win.lock();
       if (!w)
@@ -87,8 +88,9 @@ void Overview::buildTiles() {
     const std::string closeIcon =
         cfgStr("plugin:gloview:close_button_icon", "✕");
     if (!m_closeGlyph || m_closeGlyphIcon != closeIcon) {
-      m_closeGlyph = g_pHyprRenderer->renderText(
-          closeIcon, CHyprColor(1.0, 1.0, 1.0, 1.0), 16, false, "", 0, 800);
+      m_closeGlyph = g_pHyprRenderer->renderText(closeIcon,
+          CHyprColor(argb(cfgColor("close_glyph_color", "0xffffffff"))), 16,
+          false, "", 0, 800);
       m_closeGlyphIcon = closeIcon;
     }
   }
@@ -237,7 +239,7 @@ void Overview::buildStrip() {
   // render workspace name labels (cached textures) up front
   if (g_pHyprOpenGL && g_pHyprRenderer) {
     g_pHyprOpenGL->makeEGLCurrent();
-    const auto lblCol = CHyprColor(1.0, 1.0, 1.0, 0.92);
+    const auto lblCol = CHyprColor(argb(cfgColor("label_color", "0xf2ffffff")));
     for (auto &it : m_strip) {
       if (it.isPlus)
         continue;

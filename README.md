@@ -158,6 +158,11 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `switch_on_new_workspace` | bool (0/1) | `1` | Clicking `+` follows the display to the new workspace |
 | `new_workspace_mode` | `fill` \| `linear` | `fill` | `fill`: `+` takes the lowest free workspace id (backfills a gap left by a closed one) — `linear`: always appends past the highest existing id, never backfills |
 | `close_button_color` | color/role | `"0xe6e23b3b"` | `✕` close-button fill — per-window, and per-workspace (closes every window on it) |
+| `close_glyph_color` | color | `"0xffffffff"` | the `✕` glyph itself, drawn on top of `close_button_color` |
+| `label_color` | color | `"0xf2ffffff"` | window/workspace name text under tiles and strip cards |
+| `title_pill_color` | color | `"0xcc11151c"` | pill behind a tile's title label in desktop/canvas mode |
+| `backing_color` | color | `"0xff14181f"` | translucent-tile safety backing — only its RGB is used, the renderer applies its own low alpha |
+| `drop_hint_color` | color | `"0x38ffffff"` | drop-zone highlight flash on a workspace card while dragging |
 | `close_button_visibility` | `shift` \| `always` | `shift` | `shift`: close buttons only show in desktop/canvas mode (`key_desktop`) — `always`: show them on every tile and strip card all the time |
 | `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |
 | `close_button_size` | float | `1.0` | Scale multiplier over the computed base button size |
@@ -188,36 +193,41 @@ them however you like:
 `border_color`/`border_size` style the always-on ring; `hover_border`/`select_border` and their
 `_size` options style the focus ring, same as before.
 
-### Color scheme import
+### Colors
 
-Every `color/role` option above takes ONE value that's either a manual hex color or a
-scheme-role keyword — no separate `<name>_source` key anymore:
+Every color option takes ONE string: a hex literal in any accepted form, or a
+palette-resolved hex produced Lua-side from your theme module (the hyprbars
+pattern) — gloview itself has zero coupling to any scheme engine:
 
 | Value | Meaning |
 |---|---|
-| `"0xAARRGGBB"` / `"0xRRGGBB"` / `"#AARRGGBB"` / `"#RRGGBB"` / bare hex | Manual color, unchanged from before (now written as a **string**) |
-| `"primary"` | Hyprland's live `general:col.active_border` |
-| `"secondary"` | Hyprland's live `general:col.inactive_border` |
-| `"error"` / `"danger"` | Hyprland's live `group:col.border_locked_active` |
-| `"group_active"` / `"group_inactive"` | Hyprland's live `group:col.border_active` / `border_inactive` |
+| `"0xAARRGGBB"` / `"0xRRGGBB"` / `"#AARRGGBB"` / `"#RRGGBB"` / bare hex | Manual color (written as a **string**) |
+| `col("primary")` etc. | Resolved by YOUR Lua config via `require(...)` — see below |
 
-Role keywords read Hyprland's OWN config back through Hyprland's own config system, so it
-doesn't matter which tool set it — Noctalia, matugen, pywal, wallust, or a value hand-written
-into `hyprland.conf`/`hyprland.lua` all work the same way, since any variable substitution has
-already happened by the time gloview reads it back. Only the RGB comes from the scheme; alpha
-comes from the option's own default (e.g. `strip_band_color` stays faint even sourced from a
-bright accent) — override it per-key with `"role:AA"` (2 hex digits), e.g. `"primary:cc"`.
-
-Only these five roles are recognized — not an arbitrary Hyprland config path — because handing
-an unknown path straight to Hyprland's config lookup crashes the whole compositor, not just the
-plugin. Anything that isn't one of the five keywords above is parsed as a manual hex color
-instead (a typo like `"primry"` just falls back to that option's own default).
+Scheme integration is fully optional and lives in the config:
 
 ```lua
-hover_border = "primary",
-select_border = "secondary",
-close_button_color = "error", -- only meaningful if your scheme actually themes group:col.border_locked_active
+-- noctalia module — same one hyprbars uses; any key it exposes works
+local ok_c, c = pcall(require, "noctalia.noctalia-colors-extended")
+local function col(key, fallback)
+    if ok_c and type(c[key]) == "string" then return c[key] end
+    return fallback
+end
+local function with_alpha(color_str, alpha_hex)
+    local hex = string.match(color_str, "#?(%x%x%x%x%x%x)")
+    if not hex then return color_str end
+    return "#" .. alpha_hex .. hex
+end
+
+hover_border        = with_alpha(col("primary", "ffffff"), "f0"),
+close_button_color  = with_alpha(col("error",   "e23b3b"), "e6"),
+strip_band_color    = with_alpha(col("primary", "ffffff"), "24"),
 ```
+
+A value that doesn't parse falls through to that option's documented default,
+so a missing module or a typo degrades gracefully instead of going black.
+Noctalia rewrites its module on theme change; re-evaluating `hl.config{}`
+applies the new colors live.
 
 ### Lua
 

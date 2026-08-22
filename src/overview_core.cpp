@@ -309,85 +309,21 @@ Hyprlang::INT parseHexColor(std::string s, Hyprlang::INT fallback) {
 }
 } // namespace
 
-// Live Hyprland gradient for a whitelisted scheme-role keyword — see the
-// exhaustive safety rationale on the declaration in overview.hpp (short
-// version: an unknown Config::mgr()->getConfigValue() path SIGABRTs the whole
-// compositor, so this can NEVER bind a runtime/user-supplied path, only these
-// literals). Each verified present in ConfigValues.cpp on the pinned/running
-// source before being added here:
-//   general:col.active_border / inactive_border   (primary / secondary)
-//   group:col.border_locked_active                (error / danger)
-//   group:col.border_active / border_inactive     (group_active / group_inactive)
-// static locals per branch: bind once, like Hyprland's own internal
-// CConfigValue users — the bound pointer stays valid and current across
-// config reloads, only the ONE-TIME lookup is cached.
-const Config::CGradientValueData *Overview::schemeGradient(const std::string &role) const {
-  if (role == "primary" || role == "accent") {
-    static auto V = CConfigValue<Config::IComplexConfigValue>("general:col.active_border");
-    return static_cast<const Config::CGradientValueData *>(V.ptr());
-  }
-  if (role == "secondary") {
-    static auto V = CConfigValue<Config::IComplexConfigValue>("general:col.inactive_border");
-    return static_cast<const Config::CGradientValueData *>(V.ptr());
-  }
-  if (role == "error" || role == "danger") {
-    static auto V = CConfigValue<Config::IComplexConfigValue>("group:col.border_locked_active");
-    return static_cast<const Config::CGradientValueData *>(V.ptr());
-  }
-  if (role == "group_active") {
-    static auto V = CConfigValue<Config::IComplexConfigValue>("group:col.border_active");
-    return static_cast<const Config::CGradientValueData *>(V.ptr());
-  }
-  if (role == "group_inactive") {
-    static auto V = CConfigValue<Config::IComplexConfigValue>("group:col.border_inactive");
-    return static_cast<const Config::CGradientValueData *>(V.ptr());
-  }
-  return nullptr;
-}
-
-// ONE field does everything a color option needs: a manual hex literal, or a
-// scheme-role keyword (optionally "role:AA" for a custom alpha) — see the
-// declaration in overview.hpp for the full grammar. `fallback` is this
-// option's own default written the exact same way a user would.
-Hyprlang::INT Overview::cfgColorScheme(const char *base, const char *fallback) const {
-  const std::string key = std::string("plugin:gloview:") + base;
-  std::string        raw = cfgStr(key.c_str(), fallback);
-  while (!raw.empty() && std::isspace(static_cast<unsigned char>(raw.front())))
-    raw.erase(raw.begin());
-  while (!raw.empty() && std::isspace(static_cast<unsigned char>(raw.back())))
-    raw.pop_back();
-  if (raw.empty())
-    return parseHexColor(fallback, 0xffffffffLL);
-
-  // Optional "<role>:AA" alpha override — exactly 2 trailing hex digits after
-  // the LAST colon. Never ambiguous with a manual hex value: none of the
-  // supported hex forms (0x../#../bare) ever contain a colon, so seeing one
-  // at all already means this is scheme-role syntax, not a color literal.
-  std::string rolePart      = raw;
-  int         alphaOverride = -1;
-  if (const auto pos = raw.rfind(':'); pos != std::string::npos && raw.size() - pos == 3) {
-    const std::string tail = raw.substr(pos + 1);
-    if (std::isxdigit(static_cast<unsigned char>(tail[0])) && std::isxdigit(static_cast<unsigned char>(tail[1]))) {
-      rolePart      = raw.substr(0, pos);
-      alphaOverride = static_cast<int>(std::stoul(tail, nullptr, 16));
-    }
-  }
-  std::string roleLower = rolePart;
-  for (auto &c : roleLower)
-    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-  if (const auto *grad = schemeGradient(roleLower); grad && !grad->m_colors.empty()) {
-    const auto &c              = grad->m_colors.front(); // 0..1 doubles
-    const auto  chan           = [](double v) { return static_cast<Hyprlang::INT>(std::clamp(v, 0.0, 1.0) * 255.0 + 0.5); };
-    const Hyprlang::INT defA   = (parseHexColor(fallback, 0xffffffffLL) >> 24) & 0xFF; // this option's own default alpha
-    const Hyprlang::INT a      = alphaOverride >= 0 ? alphaOverride : defA;
-    return (a << 24) | (chan(c.r) << 16) | (chan(c.g) << 8) | chan(c.b);
-  }
-  // Not a recognized role (or its live gradient isn't readable yet) — treat
-  // the whole string as a manual color literal instead of silently going
-  // black; parseHexColor() rejects anything that isn't 6/8 hex digits (a typo
-  // like "primry" falls straight through to the option's own default here).
-  return parseHexColor(raw, parseHexColor(fallback, 0xffffffffLL));
+// ONE accessor for every color option. The config value is a plain string:
+// a hex literal in any accepted form ("0xAARRGGBB", "0xRRGGBB", "#AARRGGBB",
+// "#RRGGBB", bare 6/8 digits) — or, for scheme integration, the RESOLVED hex
+// produced Lua-side from a palette module (the hyprbars pattern):
+//
+//   local c = require("noctalia.noctalia-colors-extended")
+//   hover_border = c.primary,
+//
+// i.e. the plugin never sees role names and has zero coupling to any theme
+// engine; whatever writes the config is responsible for substitution. A value
+// that parses as nothing falls through to `fallback` (also parsed), so a typo
+// degrades to the documented default instead of black.
+Hyprlang::INT Overview::cfgColor(const char *base, const char *fallback) const {
+  return parseHexColor(cfgStr((std::string("plugin:gloview:") + base).c_str(), fallback),
+                       parseHexColor(fallback, 0xffffffffLL));
 }
 
 Overview::Anchor Overview::stripAnchor() const {
