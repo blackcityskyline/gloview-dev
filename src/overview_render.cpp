@@ -1139,7 +1139,7 @@ void Overview::renderStripButtons() const {
     // of preview_round_power — a "squircle" close button would look broken at
     // non-default curve exponents.
     if (showClose) {
-      const LRect br = stripCloseButtonRect(card);
+      const LRect br = closeButtonRect(card);
       const double rad = br.w / 2.0;
       g_pHyprOpenGL->renderRect(
           pxb(box(br), s),

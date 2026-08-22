@@ -232,7 +232,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         if (m_strip[i].kind == StripItem::Kind::Plus || m_strip[i].kind == StripItem::Kind::All)
           continue;
         const LRect c = stripCardAt(i);
-        const LRect br = stripCloseButtonRect(c);
+        const LRect br = closeButtonRect(c);
         if (br.contains(lx, ly)) {
           m_drag.press = Drag::Press::Consumed;
           closeWorkspaceWindows(m_strip[i]);

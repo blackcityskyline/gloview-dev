@@ -83,12 +83,6 @@ LRect Overview::closeButtonRect(const LRect& lb) const {
     return LRect{cx - r, cy - r, 2 * r, 2 * r};
 }
 
-// Same idea, for a strip card's "close every window on this workspace" button (task #8);
-// shares the same size/position config as the per-window button (task #10) for consistency.
-LRect Overview::stripCloseButtonRect(const LRect& card) const {
-    return closeButtonRect(card);
-}
-
 // plugin:gloview:close_button_visibility == "always" — show close buttons on every tile
 // and strip card all the time, not just in desktop mode / while Shift is the desktop-mode
 // key (task #9).
@@ -193,15 +187,9 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // blends almost entirely against our own backdrop, which is ALREADY correctly blurred
     // and already drawn (renderBackdrop() runs before renderPreviews() calls into this
     // function) — so a window shows up with the same transparency Hyprland itself would give
-    // it, not an approximation. INSET 1px: backing is a logical rect (rounded OUTWARD),
-    // surface is clipped in pixel space, so on a fractional edge the backing is ~1px wider
-    // and peeks out; the inset keeps it under the over-covered surface.
-    // Deliberately NOT a themable config color (there is no plugin:gloview:preview_bg — an
-    // earlier version read one via cfgColor() here, but it was never registered in main.cpp,
-    // so that lookup always silently fell through to this same literal anyway; removed to stop
-    // pretending it's user-configurable). At alpha 0.08 the hue is essentially imperceptible —
-    // this exists purely as the safety-margin backing described above, not a decorative tint,
-    // so a fixed literal is the honest representation. Same literal as renderStrip()'s window
+    // it, not an approximation. The 1px inset + near-invisible alpha rationale
+    // lives on safetyBacking() in overlay_gl.hpp (shared with every other
+    // chrome site); the color itself is plugin:gloview:backing_color.
 
     // Frosted backing during the transition: until the fullscreen blurred
     // backdrop is opaque (e < 1), a translucent tile's see-through pixels
@@ -227,7 +215,6 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
             g_pHyprOpenGL->scissor(nullptr);
         }
     }
-    // backing (overview_render.cpp) for consistency between the two.
     safetyBacking(lb, s, cfgColor("backing_color", "0xff14181f"), 0.08, round,
                   roundPow);
 
