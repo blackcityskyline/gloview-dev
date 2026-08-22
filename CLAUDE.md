@@ -1,99 +1,130 @@
-# GloView - Claude Code Context
+# GloView — task prompt: two visual bugs
 
-## Project Summary
+You are working on gloview, a Hyprland 0.56.2 plugin (.so, C++23/GLES 3.2).
+Read AGENTS.md first — every rule there is binding (crash = whole session down;
+hot-reload via `cmake --build build --target reload`; comments document
+verified Hyprland internals only).
 
-GloView is a macOS Mission Control-style overview plugin for the Hyprland Wayland compositor. It's a C++23 shared library (`gloview.so`) loaded at runtime via `hyprpm`. When activated (e.g. `SUPER+TAB`), it draws a compositor-side overlay showing live window previews over a blurred backdrop, with a workspace strip at a configurable screen edge.
+This document defines exactly two tasks. Do not refactor anything else.
 
-**Key facts:**
-- Language: C++23, built with CMake
-- Output: `build/gloview.so`
-- Dependencies: Hyprland headers, GLESv2 (raw OpenGL ES 3.2), Lua
-- All blur shaders are embedded in C++ source as GLSL raw string literals (no separate .glsl files)
+---
 
-## Blur System Architecture
+## Bug A — black flash on overview OPEN
 
-The blur is a **self-contained GL pipeline** that bypasses Hyprland's global `decoration:blur:*` settings. It uses a **dual-Kawase pyramid** for primary blur strength with an optional **separable 9-tap gaussian** at the pyramid bottom.
+### Symptom
+1–3 frames right after the bind: the screen goes BLACK except one window which
+renders crisp and live (that crisp window is actually gloview's tile preview —
+previews draw opaque at their natural boxes from frame 1). Then the entry
+animation plays normally. Currently ~2 frames @60fps.
 
-### Pipeline Flow
-```
-Source texture (full-res monitor, W x H)
-  |
-  v
-[1] DUAL-KAWASE DOWN-CHAIN (blur.cpp:486-499)
-  |-- Downsample level 1: W/2  x H/2
-  |-- Downsample level 2: W/4  x H/4
-  \-- Downsample level N: W/2^N x H/2^N  (= m_fbA)
-       |
-       v
-[2] SEPARABLE GAUSSIAN at bottom (blur.cpp:501-507)
-  |-- H pass: m_fbA -> m_fbB
-  \-- V pass: m_fbB -> m_fbA  (repeated `m_passes` times)
-       |
-       v
-[3] DUAL-KAWASE UP-CHAIN (blur.cpp:509-528)
-  |-- Upsample level N-1: m_downFBs[N-2]
-  \-- Upsample level 1:   dst framebuffer (full-res)
-       |
-       v
-[4] DIM COMPOSITE (blur.cpp:530-546)
-  \-- src-over blend of backdrop_color
-```
+### Verified facts (do not re-litigate)
+- NOT simplify()/damage-discard: `debug:pass=1` (forces infinite damage,
+  disables occlusion culling) does not fix it.
+- Independent of wallpaper source: identical with noctalia layer, swaybg, and
+  NO wallpaper at all. With `misc:background_color=ff0000` runtime-set the
+  flash stayed black (a red frame appeared exactly once, right after eval,
+  before the plugin's reloadConfig re-read the file value rgb(000000)).
+- `misc:disable_hyprland_logo=true` on this system ⇒ Hyprland's
+  renderBackground() is a full no-op normally (`PRENDERTEX=false` and
+  `m_backgroundOpacity` not animated ⇒ neither clear nor texture queued);
+  the visible desktop background comes ONLY from BACKGROUND/BOTTOM layer
+  surfaces (noctalia/swaybg).
+- Therefore the flash frames are commits where (a) bg layer surfaces did not
+  reach the framebuffer AND (b) the target buffer held zeros (fresh/unrendered),
+  while windows/tile-previews DID draw.
+- The event-loop animation pump (rearmanim/ensureAnimPump, ticks strictly
+  between frames) reduced this from ~30 frames to 2–3 but did not eliminate it.
+- Hypothesis board lives in CANDIDATES.md — C1/C2 (simplify family) are
+  REFUTED there; read it before proposing anything.
 
-### Config Keys (registered in main.cpp)
-```
-plugin:gloview:blur              = 1.0   (float 0..1)   -- backdrop blur strength (0=off)
-plugin:gloview:blur_passes       = 3     (int 1..16)     -- gaussian iterations at pyramid bottom
-plugin:gloview:blur_size         = 8     (int 1..200)    -- gaussian radius in screen pixels
-plugin:gloview:blur_resolution   = 4     (int 1..32)     -- blur buffer = 1/N monitor resolution
-```
+### Where to dig (pinned Hyprland source: /tmp/opencode/HLsrc, v0.56.2)
+`IHyprRenderer::renderMonitor()` flow: early-return gate on
+`needsFrame/forceFullFrames/m_damage.hasChanged()` → direct-scanout attempt
+(`canAttemptDirectScanoutFast()` / `attemptDirectScanout()`) → `beginRender`
+→ solitary-client branch (`m_solitaryClient` renders ONLY that window,
+skipping renderAllClientsForWorkspace entirely) → renderWorkspace (background
+→ layers → windows) → RENDER_LAST_MOMENT (gloview appends its pass elements)
+→ endRender → `m_renderPass.render(damage)` → commit.
 
-### How Blur Transitions Work
+Prime suspects, in order:
+1. **Direct scanout engage/leave**: the damage storm at open() may let
+   `attemptDirectScanout()` present client buffers for 1–2 frames, then
+   `handleDSleave()` transitions back to composition — check what the
+   composited framebuffer contains right after DS leave, and whether our
+   shouldRenderWindow-hook/hide state makes a single-window workspace look
+   scanout-eligible for a moment.
+2. **Solitary-client branch**: same trigger shape — if `m_solitaryClient` is
+   set for a frame, background/layers are skipped wholesale while our overlay
+   still queues (RENDER_LAST_MOMENT fires regardless). Check what sets/clears
+   it and whether gloview's window-hiding influences it.
+3. **Who schedules the first commits**: log every scheduleFrame source +
+   damage region size for ~5 frames around open(); compare against presented
+   frames captured with wf-recorder (frame-extract workflow: record to /tmp,
+   extract PNGs, inspect YAVG per frame — see git history for the exact
+   commands used previously).
 
-The blur is **NOT independently animated** — it fades as part of the single `m_progress` animation curve:
+### Instrumentation rules
+- Plugin side: use Overview::dbg() (debug_logs=1 → /tmp/gloview.log).
+- Compositor side: DO NOT patch Hyprland; reason from the pinned source +
+  logs. If a decisive experiment REQUIRES a compositor change, propose it in
+  the final report instead of applying it.
+- One experiment = one commit (build green, no warnings), so any result can
+  be bisected.
 
-1. **Open:** `m_progress` goes 0→1 via `easeOutCubic`. Blur alpha = `e * blurStrength()` (overview_render.cpp:817). First frame sets `m_blurDirty = true` (overview_core.cpp:712), blur is computed once, subsequent frames blit cached result.
+### Definition of done (Bug A)
+Toggle produces zero dark frames on entry in all three wallpaper scenarios
+(noctalia / swaybg / none), verified frame-by-frame on extracted PNGs, across
+10 consecutive toggles including after idle periods. No GPU-load regression
+while idle (the hkDamageSurface suppression must keep working).
 
-2. **Close:** `m_progress` goes 1→0. Same `eased()` factor fades blur out. No re-blur during close — cached FBO drawn at progressively lower alpha.
+---
 
-3. **Workspace switch:** Blur cache is NOT invalidated unless source texture changes (e.g. fullscreen mpv). This prevents brightness shifts.
+## Bug B — blur → sharp → blur on overview CLOSE
 
-4. **Reflow (drag-drop):** `m_progress` stays pinned at 1.0 so blur stays settled.
+### Symptom
+During close the backdrop reads as: blurred (our backdrop crossfade) → SHARP
+(middle of the glide) → blurred again at the end. The middle-sharp phase is
+wrong; the desktop should never appear sharper than its resting state at any
+point of the transition.
 
-### Blur Cache System
+### Mechanism to verify first (high confidence)
+- Our backdrop is a cached blur blitted with fading alpha over live currentFB;
+  as it fades, the sharp desktop shows through BY DESIGN.
+- Translucent windows on the desktop carry Hyprland's PER-WINDOW decoration
+  blur (blur-behind). While the overview is up, real windows are hidden and
+  our preview surfaces are queued WITHOUT per-surface blur (see
+  renderWindowLive's data.blur comment). When close completes and real
+  windows return, their decoration blur snaps back ⇒ sharp phase sits between
+  our fading backdrop blur and the windows' own blur.
+- Check renderWindowLive (overview_render.cpp) for how data.blur /
+  needsLiveBlur interact with our phases, and whether enabling the previews'
+  blur-behind to MATCH the real windows' setting removes the sharp phase.
 
-- `m_blurCacheFB` — persistent FBO holding blurred backdrop
-- `m_blurDirty` — flag triggering re-blur (set on open, source change)
-- `clearBlurCache()` resets both: `m_blurDirty = true; m_blurCacheFB.reset();`
-- Cache invalidation tracks source identity via `m_cachedBackdropWs` / `m_cachedBackdropMpv`
+### Candidate fixes (evaluate, pick ONE, measure GPU cost)
+1. Queue preview surfaces with the same blur-behind the real window has, so
+   mid-transition pixels already match the end state (preferred if cheap —
+   reuses Hyprland's live-blur machinery our Back/Mid phases already feed via
+   needsLiveBlur()).
+2. Hold a low-alpha floor of our cached backdrop blur until the handoff frame
+   (m_pendingDeactivate), then cut — simplest, but check it doesn't read as a
+   dim step (the entry-side equivalent was fixed once; see the (1-e) backing
+   alpha comment in drawPreviewTile).
+3. Crossfade OUR blur into per-window blur by fading the backdrop slower than
+   the tiles fly (curve change only) — last resort, changes feel globally.
 
-## Files to Focus On
+### Definition of done (Bug B)
+Frame-extracted close sequence shows monotonically non-increasing sharpness
+(no local maximum mid-glide) for: plain toggle, expo close, alt-tab commit,
+close-during-open. Idle GPU load unchanged. The entry look must remain
+exactly as-is (entry was tuned separately; don't touch its curves).
 
-### Core Blur Implementation
-- **`src/blur.hpp`** (122 lines) — `CBlurFilter` class declaration, all GL state, comments explaining the pyramid architecture
-- **`src/blur.cpp`** (551 lines) — All 5 GLSL shaders (embedded), GL program compilation, `prepare()`, `render()` with the full 4-stage pipeline
+---
 
-### Blur Integration in Render Pipeline
-- **`src/overview_render.cpp`** lines 805-925 — `renderBackdrop()`: the main call site that invokes `CBlurFilter`, manages blur cache FBO, draws blurred result
-- **`src/overview_render.cpp`** line 476 — `eased()` function driving the animation curve
-- **`src/overview_render.cpp`** lines 437-440 — `needsLiveBlur()` telling Hyprland renderer to refresh live-blur
-
-### Blur Configuration & Lifecycle
-- **`src/overview_core.cpp`** lines 500-518 — `blurEnabled()`, `blurStrength()`, `blurPasses()`, `blurSize()`, `blurResolution()` accessors
-- **`src/overview_core.cpp`** lines 703-714 — `open()` sets `m_blurDirty = true` and `clearBlurCache()`
-- **`src/overview_core.cpp`** lines 716-753 — `close()` starts close animation, no blur re-computation
-- **`src/overview_core.cpp`** lines 967-972 — `clearBlurCache()` implementation
-
-### Blur State in Overview
-- **`src/overview.hpp`** lines 387-416 — Blur cache members: `m_blurCacheFB`, `m_blurDirty`, `m_blurFilter`, `m_cachedBackdropWs`, `m_cachedBackdropMpv`
-
-### Config Registration
-- **`src/main.cpp`** lines ~139-142 — Blur config key registration
-
-## Key Constraints
-
-- Blur must be called with an active monitor render (`m_renderData.pMonitor` set) and projection `RPT_EXPORT`
-- The filter switches viewport/fbSize for intermediate FBOs and leaves the final viewport at `(W,H)`
-- `resolution` (pyramid depth) is the PRIMARY blur-strength control, not just anti-aliasing
-- Each Kawase down+up step is a real box/tent filter; more levels = more compound blur
-- The gaussian stage runs at the BOTTOM of the pyramid (small buffer), so 9 taps stay cheap regardless of output resolution
-- Blend state is fully captured and restored in `CBlurFilter::render()` to avoid corrupting downstream draw calls
+## Working rules for both bugs
+- Start each session by reading REFACTORING.md (current state) and CANDIDATES.md.
+- Never use currentFB as a blur/backdrop source (solitary-client fast path) —
+  backdropSource()/renderBackdropSource() only.
+- Coordinates: monitor-local logical px through pxb()/pxr() before any GL call.
+- Config only via cfg* helpers; colors via cfgColor().
+- If an experiment disproves a CANDIDATES.md item, update that file in the
+  same commit.
