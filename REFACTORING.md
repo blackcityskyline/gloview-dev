@@ -47,11 +47,37 @@ blur-бэкдроп, alt-tab). Ранний рефакторинг R1–R5/S1–
 - README: раздел «Цвета» с примером hyprbars-стиля.
 Оценка: **−80…100 строк**, исчезает самый хрупкий подсистемный путь.
 
-### C2. Анимация — одни часы
-Tween×3 (timeline/reflow/newCard) + парные `m_*Raw` + stall-guard
-(`m_lastAnimTick`) + pump + `rearmanim()` в Front-фазе → один тип
-`Clock{t0,dur}` (`raw/seek/pinEnd`), централизованный clamp разрыва кадров,
-один путь re-arm. Оценка: **−60…80**, меньше рассинхронизаций.
+### S1. Модель состояния — переосмысление (главный шаг)
+
+Не выбрасывание, а смена модели — 5 подсистем:
+
+**a) Плитки = часы.** Убрать m_reflow/m_reflowing/m_reflowRaw и ветвление в
+tileBaseProgress(). Единая модель: плитка ВСЕГДА рисуется по `tileClock.raw()`;
+любое изменение лейаута (open, drop, syncTiles, desktop-флип, close) = 
+«перезадать target + перезапустить часы». Хром живёт на master-часах, плитки —
+на своих; никаких режимных флагов. Оценка: −50…70, минус целый класс
+рассинхронизаций chrome/tiles.
+
+**b) Один Drag вместо 11 членов.** m_pressTile, m_dragging, m_pressX/Y,
+m_grabDX/DY, m_dragX/Y, m_pressButton, m_pressStripItem, m_pressStripWin,
+m_dragStripWin → `struct Drag{enum{None,Grid,Strip} src; int idx,win;
+PHLWINDOWREF w; V2 press,grabOff,cur; int button;} dragging() = src!=None.
+Уже дважды ловили баг «полунаследованного драга» (комментарии в open()) —
+структура с одним полем src убивает класс насовсем. Оценка: −30…50 net.
+
+**c) Double-click: 4 члена → 2.** m_pendingClickWin + таймер кодируют всё:
+m_lastClickWin/m_lastClickTime лишние — «второй клик до срабатывания таймера»
+проверяется наличием armed-таймера с тем же окном. Оценка: −15…25.
+
+**d) canvasPos внутрь Tile.** m_canvasPos (map по raw-указателю — нарушение
+собственного правила AGENTS про ABA!) → флаг `parked` + target прямо в Tile:
+desktop-режим = «target не перезаписывать у parked». Один источник истины
+«где превью». Оценка: −25…40.
+
+**e) m_altTabRank map<void*,int> → vector<PHLWINDOWREF>** (порядок = ранг;
+поиск линейный по ≤128 — бесплатно). Вторая raw-keyed карта исчезает.
+StripItem: 4 bool → enum Kind{Ws,Plus,All}+virtual. dbg → dbgf(fmt,...).
+Оценка: −20…35.
 
 ### C3. Хром плиток/стрипа — унификация
 `drawPreviewTile` / `drawDragStripChrome` / card-chrome внутри `renderStrip`
@@ -67,15 +93,16 @@ Tween×3 (timeline/reflow/newCard) + парные `m_*Raw` + stall-guard
 Оценка: **−15…25**.
 
 ### C6. Прочистка
-Мёртвые члены overview.hpp, дублирующиеся guard-условия, форматирование dbg.
-Оценка: **−50…80**.
+Мёртвые члены overview.hpp, дублирующиеся guard-условия.
+Оценка: **−40…60**.
 
-**Итого: −325…465 → ≈4950…5080 строк.**
+**Итого: −475…700 → ≈4710…4935 строк.**
 
 ## Порядок
 
-C1 → C5 → C2 → C3 → C4 → C6. После каждого шага: сборка без warning,
-коммит `refactor(scope): …`, визуальная проверка.
+C1 (цвета) → C5 (конфиг-хелперы) → S1 (модель состояния: часы→драг→клик→
+canvas→ранги) → C3 (хром) → C4 (фазы) → C6. После каждого шага: сборка без
+warning, коммит `refactor(scope): …`, визуальная проверка.
 
 ## Отдельный трек (вне объёма)
 
