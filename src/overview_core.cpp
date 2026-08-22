@@ -962,6 +962,19 @@ void Overview::damage() const {
     g_pHyprRenderer->damageMonitor(m);
 }
 
+void Overview::rearmanim() const {
+  if (!m_active)
+    return;
+  const bool animating = m_reflowing || m_newCardAnim || m_dragging ||
+                         (m_opening && m_progress < 1.0) ||
+                         (!m_opening && m_progress > 0.0);
+  if (!animating)
+    return;
+  damage(); // full-monitor region for the NEXT frame's snapshot
+  if (const auto m = m_monitor.lock())
+    m->scheduleFrame(); // and make sure that frame actually happens
+}
+
 // snapshot preview mode (plugin:gloview:preview_mode == "snapshot"): grab each
 // tile/strip window's main surface texture into m_snapshots so
 // renderWindowLive() can draw it statically. The window's LAST COMMITTED
