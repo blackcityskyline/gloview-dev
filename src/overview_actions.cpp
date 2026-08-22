@@ -68,6 +68,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
     target = State::workspaceState()->create(id, m->m_id);
     m_newCardId = id; // pop the new card in
     m_newCard.begin();
+    m_newCardRaw = 0.0;
     m_newCardAnim = true;
   } else if (it.virtualWs) {
     // strip_empty_mode show/neighbors placeholder card (task #3): no real
@@ -83,6 +84,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
       m_newWorkspaces.push_back(target);
       m_newCardId = it.id;
       m_newCard.begin();
+      m_newCardRaw = 0.0;
       m_newCardAnim = true;
     }
   } else
@@ -334,6 +336,7 @@ void Overview::addWorkspace() {
   m_newWorkspaces.push_back(ws);
   m_newCardId = id;
   m_newCard.begin();
+  m_newCardRaw = 0.0;
   m_newCardAnim = true;
   dbg("added workspace " + std::to_string(id));
   if (cfgInt("plugin:gloview:switch_on_new_workspace", 1) != 0) {
