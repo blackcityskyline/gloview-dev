@@ -694,6 +694,7 @@ void Overview::open(bool viaAltTab) {
   m_cursor.onOpen(m, cursorMode());
   m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO
   m_blur.drop();           // re-blur from scratch on the next rendered frame
+  startWinFade();          // real scene stays visible, dissolves out per-frame
   dbg("open");
   damage();
 }
@@ -730,6 +731,10 @@ void Overview::close() {
   restoreLayers(); // bars fade back in over the close animation, not in a pop
                    // at the end
   m_cursor.onClose();
+  // Bring the real scene back gradually: windows render again (hook
+  // pass-through) and their FADE alpha rides the exit curve up to full by the
+  // handoff frame. No-op capture-wise if the entry fade is still running.
+  startWinFade();
   // Continue the close glide from the CURRENT progress (not from 1): a close
   // during the open animation (or mid-reflow) must not jump. While closing,
   // updateAnimation reads m_progress as 1 - timeline.raw(), so resuming from
@@ -737,6 +742,49 @@ void Overview::close() {
   m_timeline.seek(1.0 - m_progress, animDuration());
   dbg("close from progress " + std::to_string(m_progress).substr(0, 5));
   damage();
+}
+
+void Overview::startWinFade() {
+  if (m_winFade)
+    return; // already fading — keep the ORIGINAL bases, not warped values
+  m_fadeBase.clear();
+  const auto slot = static_cast<uint8_t>(Desktop::View::eWindowAlpha::WINDOW_ALPHA_FADE);
+  for (const auto &t : m_tiles)
+    if (const auto w = t.win.lock())
+      m_fadeBase.emplace_back(w, w->alpha()[slot]->goal());
+  m_winFade = true;
+}
+
+void Overview::applyWinFade(double visible) {
+  const float f = std::clamp(visible, 0.0, 1.0);
+  const auto slot = static_cast<uint8_t>(Desktop::View::eWindowAlpha::WINDOW_ALPHA_FADE);
+  for (auto &[wref, base] : m_fadeBase)
+    if (const auto w = wref.lock())
+      w->alpha()[slot]->setValueAndWarp(base * f);
+  // Tiles added mid-fade (syncTiles rebuild) enter unwarped: capture + apply.
+  for (const auto &t : m_tiles) {
+    if (const auto w = t.win.lock()) {
+      bool known = false;
+      for (const auto &[wref, base] : m_fadeBase)
+        if (!wref.expired() && wref.lock().get() == w.get()) {
+          known = true;
+          break;
+        }
+      if (!known) {
+        m_fadeBase.emplace_back(w, w->alpha()[slot]->goal());
+        w->alpha()[slot]->setValueAndWarp(w->alpha()[slot]->goal() * f);
+      }
+    }
+  }
+}
+
+void Overview::endWinFade() {
+  const auto slot = static_cast<uint8_t>(Desktop::View::eWindowAlpha::WINDOW_ALPHA_FADE);
+  for (const auto &[wref, base] : m_fadeBase)
+    if (const auto w = wref.lock())
+      w->alpha()[slot]->setValueAndWarp(base);
+  m_fadeBase.clear();
+  m_winFade = false;
 }
 
 // Immediate, animation-free teardown for the UNLOAD path (`hyprctl
@@ -759,6 +807,7 @@ void Overview::hardClose() {
   restoreFill();   // never leave a window's surface stuck stretching its small
                    // buffer
   releaseNewWorkspaces();
+  endWinFade(); // never strand a warped FADE alpha
 
   m_active = false;
   m_opening = false;
@@ -817,6 +866,10 @@ bool Overview::shouldHideWindow(const PHLWINDOW &w,
                                 const PHLMONITOR &mon) const {
   const auto m = m_monitor.lock();
   if (!m_active || !w || mon != m)
+    return false;
+  // Window-fade transition (see m_winFade): windows must render normally so
+  // their FADE alpha can dissolve the real scene in/out without a dip.
+  if (m_winFade)
     return false;
   // Fullscreen windows are hidden wholesale while the overview is up. Without
   // this, a workspace-transition force-render of an off-display fullscreen
@@ -919,6 +972,7 @@ void Overview::deactivate() {
   // phantom persistent workspaces — task/bug #4.)
   dbg("deactivate (natural close end)");
   releaseNewWorkspaces();
+  endWinFade(); // never strand a warped FADE alpha
 
   m_active = false;
   m_opening = false;

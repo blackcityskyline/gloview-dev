@@ -541,6 +541,23 @@ private:
   void layoutTiles();
   void updateAnimation();
   void deactivate();
+  // ---- entry/exit window fade -------------------------------------------
+  // The backdrop crossfade alone cannot bridge the boundary frames: real
+  // windows used to vanish in ONE frame on open (their Hyprland blur behind
+  // translucent parts popping off instantly) and reappear one frame after the
+  // backdrop hit zero on close ("blur gap"). Instead, tile windows are kept
+  // RENDERED throughout the transition with their FADE alpha slot warped to
+  // follow the same curve: on open they dissolve out under the departing
+  // previews (scene at frame 0 is pixel-identical to the pre-open desktop),
+  // on close they dissolve back in before the previews land. Hyprland's own
+  // decoration blur belongs to the window surface, so it fades WITH it — no
+  // dip is possible by construction. Empty workspaces simply have nothing to
+  // fade and fall back to the pure wallpaper<->blur curve.
+  bool m_winFade = false;
+  std::vector<std::pair<PHLWINDOWREF, float>> m_fadeBase; // original FADE goals
+  void startWinFade();                 // capture FADE bases, let hook render
+  void applyWinFade(double visible);   // warp every tile window's FADE slot
+  void endWinFade();                   // restore bases, re-enable hiding
   double eased() const; // opacity / backdrop progress
   // plugin:gloview:duration with the shared floor (ms), read LIVE so config
   // changes apply to in-flight animations.

@@ -475,6 +475,18 @@ void Overview::updateAnimation() {
     m_progress = 0.0;
     m_pendingDeactivate = true;
   }
+  // Window fade (see m_winFade): entry dissolves the real scene OUT under the
+  // rising backdrop, exit dissolves it back IN ahead of the handoff — with
+  // the same slower exit tail as the blur so windows are fully opaque exactly
+  // when the previews land.
+  if (m_winFade) {
+    const double ee = eased();
+    const double blurFactor =
+        m_opening ? ee : std::pow(ee, 0.45); // mirrors the backdrop's kk
+    applyWinFade(1.0 - blurFactor);
+    if (m_opening && ee >= 0.999)
+      endWinFade(); // settled open: let shouldHideWindow hide them again
+  }
 }
 
 // ---- render -----------------------------------------------------------------
@@ -812,9 +824,9 @@ void Overview::renderBackdrop() const {
                             : "NONE") +
       " cached=" + std::to_string(m_blur.valid));
 
-  // Skip work only when nothing can be visible this frame: mid-ENTRY the
-  // opaque source base alone justifies drawing even at k≈0.
-  if (k <= 0.0F && !(m_opening && src))
+  // Nothing to draw at zero; the real scene (windows fading per m_winFade)
+  // shows through currentFB untouched.
+  if (k <= 0.0F)
     return;
 
   // ---- Cached-blur backdrop ----
@@ -886,12 +898,6 @@ void Overview::renderBackdrop() const {
     }
     m_blur.valid = true;
   }
-
-  // ENTRY: opaque, window-free base from the resolved source — guarantees a
-  // fully-defined desktop under the fade from frame 0 (no dark blink from
-  // transient currentFB content), while staying ghost-free by construction.
-  if (m_opening && k < 0.999F && src && src->ok())
-    g_pHyprOpenGL->renderTexture(src, fullPx, {.a = 1.0F});
 
   // Cheap path: blit the cached blurred backdrop, faded by the animation
   // curve, then the dim rect on top.
