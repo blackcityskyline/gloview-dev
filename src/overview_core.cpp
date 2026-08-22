@@ -560,6 +560,7 @@ void Overview::open() {
 
   m_active = true;
   m_opening = true;
+  m_openStamp = std::chrono::steady_clock::now();
   m_pendingDeactivate = false;
   m_progress = 0.0;
   m_timeline.begin();   // chrome reveal
@@ -574,7 +575,7 @@ void Overview::open() {
   // exactly the windows that have blur-behind. The srcId+recipe key forces
   // one fresh blur on the first backdrop-visible frame anyway.
   m_blur.valid = false;
-  dbg("open");
+  dbg("=== OPEN ===");
   damage();
 }
 
@@ -619,7 +620,7 @@ void Overview::close() {
   // huge phantom gap and rewind every clock to its pre-close anchor — the
   // tiles' fresh glide included. open() does the same.
   m_lastAnimTick = {};
-  dbg("close from progress " + std::to_string(m_progress).substr(0, 5));
+  dbg("=== CLOSE from progress " + std::to_string(m_progress).substr(0, 5) + " ===");
   damage();
 }
 

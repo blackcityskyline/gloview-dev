@@ -261,6 +261,8 @@ private:
   HANDLE m_handle = nullptr;
   bool m_active = false;
   bool m_opening = false;
+  std::chrono::steady_clock::time_point m_openStamp{}; // frame-trace t=0
+
   // Close animation just hit progress 0 THIS frame. shouldRenderWindow (which
   // hides the real windows) is evaluated early in the frame, before our
   // RENDER_LAST_MOMENT pass; if we flipped m_active off mid-frame we'd skip
