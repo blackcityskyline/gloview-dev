@@ -1139,32 +1139,23 @@ void Overview::renderStripButtons() const {
     const LRect card = stripCardAt(i);
 
     // Destination placement hint: while dragging a window (from the grid or
-    // straight off another card) over THIS card, highlight where it would
-    // land. The card's inner slots ARE the target workspace's real tiling —
-    // each StripWin.rel is that window's actual monitor-space box — so this
-    // needs zero knowledge of the layout engine's name: dwindle, master or
-    // anything else is already reflected in the slot shapes. Cursor over a
-    // window's slot splits THAT slot by the nearest edges (a wide slot hints
-    // left/right, a tall one top/bottom, a square follows the cursor's intent);
-    // anywhere else (empty card, gaps) highlights the whole card. Still a hint:
-    // the real tiling has the final say once the drop happens.
+    // straight off another card) over THIS card, show one of exactly TWO
+    // scenarios — the whole card (empty workspace), or the card split into
+    // two halves. Split orientation follows the workspace's current tiling:
+    // a wide first window means the tree splits left/right, a tall one
+    // top/bottom; anything deeper than one split still reads as the same two
+    // halves. The hovered half lights up. Still a hint — the real tiling has
+    // the final say once the drop happens.
     if (dropping && static_cast<int>(i) == m_hoveredStrip) {
       LRect zone = card;
-      constexpr double TOL = 6.0; // logical px: tolerate rounding/gaps
-      for (size_t j = 0; j < it.wins.size(); ++j) {
-        const LRect sl = stripWinSlotRect(it, card, j);
-        if (m_dragX < sl.x - TOL || m_dragX > sl.x + sl.w + TOL ||
-            m_dragY < sl.y - TOL || m_dragY > sl.y + sl.h + TOL)
-          continue;
-        const double dl = m_dragX - sl.x, dr = sl.x + sl.w - m_dragX;
-        const double dt = m_dragY - sl.y, db = sl.y + sl.h - m_dragY;
-        if (std::min(dl, dr) <= std::min(dt, db))
-          zone = (dl < dr) ? LRect{sl.x, sl.y, sl.w / 2.0, sl.h}
-                           : LRect{sl.x + sl.w / 2.0, sl.y, sl.w / 2.0, sl.h};
-        else
-          zone = (dt < db) ? LRect{sl.x, sl.y, sl.w, sl.h / 2.0}
-                           : LRect{sl.x, sl.y + sl.h / 2.0, sl.w, sl.h / 2.0};
-        break;
+      if (!it.wins.empty()) {
+        const auto &r = it.wins.front().rel;
+        if (r.w * card.w >= r.h * card.h) // wide → left/right halves
+          zone = (m_dragX < card.cx()) ? LRect{card.x, card.y, card.w / 2.0, card.h}
+                                       : LRect{card.cx(), card.y, card.w / 2.0, card.h};
+        else                              // tall → top/bottom halves
+          zone = (m_dragY < card.cy()) ? LRect{card.x, card.y, card.w, card.h / 2.0}
+                                       : LRect{card.x, card.cy(), card.w, card.h / 2.0};
       }
       g_pHyprOpenGL->renderRect(
           pxb(zone, s), CHyprColor(1.0, 1.0, 1.0, 0.22 * e),
