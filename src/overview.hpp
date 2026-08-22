@@ -52,7 +52,14 @@ struct Tween {
   mutable double last = 0.0; // last value raw() returned — the anchor stall
                              // compensation rewinds to
 
-  void begin() { start = clock::now(); }
+  // A fresh run starts at 0 AND resets `last`: the stall guard rewinds to
+  // `last`, so keeping a previous run's value (typically 1.0 after an idle
+  // period) would make the very first post-begin frame snap the clock to its
+  // end — the "close lands instantly while the strip is still collapsing" bug.
+  void begin() {
+    start = clock::now();
+    last = 0.0;
+  }
   // Discard any wall-time that passed while the compositor was not producing
   // frames (damage-chain stalls, VFR, system hiccups): re-anchor at the LAST
   // KNOWN pre-gap value — re-anchoring at the current raw would be a no-op,

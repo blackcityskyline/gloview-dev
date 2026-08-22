@@ -614,6 +614,11 @@ void Overview::close() {
   // updateAnimation reads m_progress as 1 - timeline.raw(), so resuming from
   // progress p means seeking the timeline to (1 - p).
   m_timeline.seek(1.0 - m_progress, animDuration());
+  // Fresh animation cycle: the overview may have sat IDLE since the last
+  // animated frame (pump off), so the next updateAnimation would measure a
+  // huge phantom gap and rewind every clock to its pre-close anchor — the
+  // tiles' fresh glide included. open() does the same.
+  m_lastAnimTick = {};
   dbg("close from progress " + std::to_string(m_progress).substr(0, 5));
   damage();
 }
