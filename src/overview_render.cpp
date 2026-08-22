@@ -116,8 +116,15 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
     if (w->m_ruleApplicator->opaque().valueOrDefault())
       active = 1.0F;
   }
-  const float fade = w->alphaValue(Desktop::View::WINDOW_ALPHA_FADE) *
-                     w->alphaValue(Desktop::View::WINDOW_ALPHA_FULLSCREEN) *
+  // NOTE: WINDOW_ALPHA_FADE is deliberately EXCLUDED here. That is the slot
+  // Overview::winFade warps on the REAL windows during the entry/exit
+  // transition, and CSurfacePassElement multiplies data.alpha * data.fadeAlpha
+  // — inheriting it made every preview's effective alpha equal
+  // previewCurve * (1 - previewCurve): content visibly dimmed to an empty
+  // frame by the end of each cycle and snapped back when the fade ended.
+  // The preview fade axis belongs solely to the caller's alpha parameter
+  // (Overview::previewAlphaMul).
+  const float fade = w->alphaValue(Desktop::View::WINDOW_ALPHA_FULLSCREEN) *
                      w->alphaValue(Desktop::View::WINDOW_ALPHA_LAYOUT);
   return std::clamp(active * fade, 0.0F, 1.0F);
 }
