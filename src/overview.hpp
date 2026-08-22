@@ -541,9 +541,6 @@ private:
   LRect closeButtonRect(
       const LRect &tile) const; // "✕" hit/draw rect for a tile content box
                                 // (position/size/visibility configurable)
-  LRect stripCloseButtonRect(
-      const LRect &card) const; // "✕" hit/draw rect for a strip card (closes
-                                // every window on that workspace)
   bool closeButtonsAlwaysOn()
       const; // plugin:gloview:close_button_visibility == "always"
   bool closeOnDoubleClick()
