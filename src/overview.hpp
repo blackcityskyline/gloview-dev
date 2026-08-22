@@ -191,6 +191,13 @@ public:
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
+  // The cached FULLSCREEN blurred-wallpaper texture (or null). Read by the
+  // tile chrome to frost translucent previews during the entry fade — see
+  // drawPreviewTile().
+  [[nodiscard]] SP<Render::ITexture> backdropBlurTexture() const {
+    return (m_blur.fb && m_blur.fb->isAllocated()) ? m_blur.fb->getTexture()
+                                                   : nullptr;
+  }
   [[nodiscard]] const std::unordered_map<void *, SP<Render::ITexture>> &
   snapshots() const { // read by renderWindowLive() for the static-texture path
     return m_snapshots;
