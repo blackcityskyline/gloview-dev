@@ -690,6 +690,7 @@ void Overview::open(bool viaAltTab) {
   m_pendingDeactivate = false;
   m_progress = 0.0;
   m_timeline.begin();
+  m_lastAnimTick = std::chrono::steady_clock::now();
   hideLayers(); // fade bars out (no-op unless hide_top/overlay_layers set)
   m_cursor.onOpen(m, cursorMode());
   m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO

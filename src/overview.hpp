@@ -51,6 +51,16 @@ struct Tween {
   std::chrono::steady_clock::time_point start{};
 
   void begin() { start = clock::now(); }
+  // Re-anchor at the CURRENT raw value, discarding any wall-time that passed
+  // while the compositor was not producing frames (damage-chain stalls, VFR,
+  // system hiccups). Without this, a multi-frame render hole silently
+  // fast-forwards the whole animation — the open transition appeared to
+  // "skip to the end" whenever the frame chain broke right after open().
+  void compensateStall(double gapMs, double durMs) {
+    if (gapMs <= 100.0)
+      return;
+    seek(raw(durMs), durMs);
+  }
   void seek(double frac, double durMs) {
     const auto ms = std::chrono::duration_cast<clock::duration>(
         std::chrono::duration<double, std::milli>{std::clamp(frac, 0.0, 1.0) *
@@ -238,6 +248,7 @@ private:
   bool m_pendingDeactivate = false;
   double m_progress = 0.0;
   Tween m_timeline; // master open/close clock (direction via m_opening)
+  mutable std::chrono::steady_clock::time_point m_lastAnimTick{};
   // A post-move reflow glides the tiles into their new slots WITHOUT re-running
   // the chrome (backdrop + strip) reveal. m_progress stays pinned at 1 (chrome
   // settled) while this separate timer drives the tile natural->target lerp, so

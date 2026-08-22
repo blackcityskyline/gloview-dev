@@ -458,6 +458,21 @@ LRect Overview::currentBox(const Tile &t, int i) const {
 
 void Overview::updateAnimation() {
   const double dur = animDuration();
+  // Stall guard FIRST: measure the gap since the previous animated frame and
+  // re-anchor every active clock so wall-time holes don't fast-forward them.
+  const auto nowTick = std::chrono::steady_clock::now();
+  const double gapMs =
+      m_lastAnimTick.time_since_epoch().count() == 0
+          ? 0.0
+          : std::chrono::duration<double, std::milli>(nowTick - m_lastAnimTick)
+                .count();
+  m_lastAnimTick = nowTick;
+  m_timeline.compensateStall(gapMs, dur);
+  if (m_reflowing)
+    m_reflow.compensateStall(gapMs, dur);
+  if (m_newCardAnim)
+    m_newCard.compensateStall(gapMs, newCardDur());
+
   const double t = m_timeline.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
   if (m_reflowing && m_reflow.raw(dur) >= 1.0)
