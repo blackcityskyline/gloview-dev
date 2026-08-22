@@ -490,15 +490,13 @@ void Overview::toggleDesktop() {
 // Flip grid <-> canvas while open, gliding previews into the new layout. Canvas
 // is purely visual — NO real window is floated/moved/resized.
 void Overview::setDesktopMode(bool on) {
-  m_desktopMode = on;
-  m_canvasPos
-      .clear(); // each entry into the canvas starts from the real positions
+  m_desktopMode = on; // each entry into the canvas starts from fresh targets
 
   auto oldBoxes = captureCurrentBoxes();
   m_hovered = m_hoveredStrip = -1;
   m_selected = -1;
   // Canvas is PURELY VISUAL — never floats/moves/resizes a real window.
-  // Survivors don't shuffle on add/remove: syncTiles parks them in m_canvasPos
+  // Survivors don't shuffle on add/remove: their targets stay parked on the Tile
   // (frozen slot) + frozen aspect, so only the newcomer flows (residual: a
   // re-tiled survivor's live content is over-covered to fill its slot).
   replayReflow(
@@ -535,7 +533,6 @@ void Overview::open() {
   m_pendingFocus.reset(); // no stale carry-over from a previous session
   cancelPendingClick();   // ditto for any close_trigger=doubleclick timer
   m_altTabbing = false;   // altTabInvoke re-arms it after we return
-  m_canvasPos.clear();
   m_desktopMode = false; // open into the tidy grid; Shift / gloview:desktop
                          // flips to the canvas
   m_newCardAnim = false;
@@ -657,7 +654,6 @@ void Overview::hardClose() {
   m_tiles.clear();
   m_strip.clear();
   m_snapshots.clear();
-  m_canvasPos.clear();
   m_hovered = m_hoveredStrip = -1;
   m_selected = -1;
 
@@ -737,7 +733,6 @@ void Overview::deactivate() {
                    // empty
   restoreFill(); // drop the fill-small override so real windows render normally
                  // again
-  m_canvasPos.clear();
 
   if (const auto m = m_monitor.lock()) {
     if (const auto ws = m_workspace.lock(); ws && ws != m->m_activeWorkspace) {

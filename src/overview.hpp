@@ -219,6 +219,8 @@ private:
     PHLWINDOWREF win;
     LRect natural; // monitor-local logical: real place (goal); animation start
     LRect target;  // monitor-local logical: grid slot
+    bool parked = false; // canvas mode: target is user-placed — rebuilds and
+                         // syncs must not move it (only the tile's own drag)
     SP<Render::ITexture> label; // cached window title, shown on hover
   };
 
@@ -310,10 +312,6 @@ private:
   double m_desktopS = 1.0;  // monitor→preview scale (and its inverse for drops)
   double m_desktopOx = 0.0; // monitor-local preview origin x
   double m_desktopOy = 0.0; // monitor-local preview origin y
-  // Canvas mode is purely VISUAL: dragging a preview parks it here (window* →
-  // canvas box, monitor-local) so the arrangement survives per-frame rebuilds.
-  // Dragging a preview never floats/moves the real window — that stays put.
-  std::unordered_map<void *, LRect> m_canvasPos;
   // plugin:gloview:preview_mode == "snapshot": PHLWINDOW* -> the window's main
   // surface texture captured at tile-build time. renderWindowLive() renders
   // this static texture (CSurfacePassElement with data.texture) instead of
