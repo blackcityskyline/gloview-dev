@@ -119,9 +119,9 @@ int Overview::stripItemAt(double lx, double ly) const {
 }
 
 int Overview::draggedTile() const {
-  return (m_dragging && m_pressTile >= 0 &&
-          m_pressTile < static_cast<int>(m_tiles.size()))
-             ? m_pressTile
+  return (m_drag.press == Drag::Press::Tile && m_drag.lifted &&
+          m_drag.idx < static_cast<int>(m_tiles.size()))
+             ? m_drag.idx
              : -1;
 }
 
@@ -135,19 +135,20 @@ void Overview::updateHover() {
   const double lx = mc.x - m->m_position.x;
   const double ly = mc.y - m->m_position.y;
 
-  // drag tracking: promote a pressed tile (or a pressed strip window) to a real
-  // drag once the pointer passes a small threshold, then follow the cursor.
-  if (m_pressTile >= 0 || m_pressStripItem >= 0) {
-    const double dx = lx - m_pressX;
-    const double dy = ly - m_pressY;
-    if (!m_dragging && (dx * dx + dy * dy) > 64.0) // ~8px
-      m_dragging = true;
-    if (m_dragging) {
-      m_dragX = lx;
-      m_dragY = ly;
+  // drag tracking: promote an armed press (tile or strip-window slot) to a
+  // real drag once the pointer passes a small threshold, then follow it.
+  if (m_drag.armed()) {
+    const double dx = lx - m_drag.pressX;
+    const double dy = ly - m_drag.pressY;
+    if (!m_drag.lifted && (dx * dx + dy * dy) > 64.0) // ~8px
+      m_drag.lifted = true;
+    if (m_drag.lifted) {
+      m_drag.x = lx;
+      m_drag.y = ly;
       m_hoveredStrip = stripItemAt(lx, ly); // card under the cursor, if any
-      m_hovered =
-          m_pressTile; // -1 while dragging a strip window, which is correct
+      m_hovered = (m_drag.press == Drag::Press::Tile)
+                      ? m_drag.idx
+                      : -1; // -1 while dragging a strip window, which is correct
       damage();
       return;
     }
@@ -169,15 +170,6 @@ void Overview::updateHover() {
 }
 
 namespace {
-constexpr int PRESS_NONE = -1;
-constexpr int PRESS_STRIP =
-    -2; // press landed on a strip card (switch happened)
-constexpr int PRESS_EMPTY =
-    -3; // press landed on empty space (close on release)
-constexpr int PRESS_CONSUMED =
-    -4; // press fully handled (e.g. desktop ✕) — release must do nothing
-// BTN_MIDDLE (0x112) comes from linux/input-event-codes.h, pulled in
-// transitively.
 // close_trigger == "doubleclick": max gap between two clicks on the same tile
 // to count as one double-click, instead of two independent single clicks. A
 // touchpad "double-tap" arrives as the same two-click sequence, so this covers
@@ -200,12 +192,9 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
   const double ly = mc.y - m->m_position.y;
 
   if (e.state == WL_POINTER_BUTTON_STATE_PRESSED) {
-    m_pressTile = PRESS_NONE;
-    m_dragging = false;
-    m_pressButton = e.button;
-    m_pressStripItem = -1;
-    m_pressStripWin = -1;
-    m_dragStripWin.reset();
+    m_drag = {};
+    m_drag.press = Drag::Press::Empty;
+    m_drag.button = e.button;
 
     // middle-click a workspace card → close every window on it (handled fully
     // on press). Per-window close is keyboard-only now (key_close_window, see
@@ -227,8 +216,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
             tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
         const LRect br = closeButtonRect(lb);
         if (br.contains(lx, ly)) {
-          m_pressTile = PRESS_CONSUMED; // so the release doesn't treat it as an
-                                        // empty-space click
+          m_drag.press =
+              Drag::Press::Consumed; // the release must treat it as handled
           closeTileWindow(static_cast<int>(i));
           return true;
         }
@@ -245,7 +234,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         const LRect c = stripCardAt(i);
         const LRect br = stripCloseButtonRect(c);
         if (br.contains(lx, ly)) {
-          m_pressTile = PRESS_CONSUMED;
+          m_drag.press = Drag::Press::Consumed;
           closeWorkspaceWindows(m_strip[i]);
           return true;
         }
@@ -269,18 +258,19 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
             continue;
           const LRect wb = stripWinSlotRect(it, c, j);
           if (wb.contains(lx, ly)) {
-            m_pressStripItem = static_cast<int>(i);
-            m_pressStripWin = static_cast<int>(j);
-            m_dragStripWin = w;
-            m_pressX = m_dragX = lx;
-            m_pressY = m_dragY = ly;
-            m_grabDX = lx - wb.x;
-            m_grabDY = ly - wb.y;
+            m_drag.press   = Drag::Press::StripWin;
+            m_drag.idx     = static_cast<int>(i);
+            m_drag.winIdx  = static_cast<int>(j);
+            m_drag.win     = w;
+            m_drag.pressX = m_drag.x = lx;
+            m_drag.pressY = m_drag.y = ly;
+            m_drag.grabDX = lx - wb.x;
+            m_drag.grabDY = ly - wb.y;
             return true;
           }
         }
       }
-      m_pressTile = PRESS_STRIP;
+      m_drag.press = Drag::Press::StripCard;
       if (it.isAll)
         toggleAllWorkspaces();
       else if (it.isPlus)
@@ -291,34 +281,36 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     }
     // window tile → arm a drag candidate; click vs drag decided on release
     if (const int hit = tileAt(lx, ly); hit >= 0) {
-      m_pressTile = hit;
+      m_drag.press = Drag::Press::Tile;
+      m_drag.idx = hit;
       const LRect b = currentBox(m_tiles[hit], hit);
-      m_pressX = m_dragX = lx;
-      m_pressY = m_dragY = ly;
-      m_grabDX = lx - b.x;
-      m_grabDY = ly - b.y;
+      m_drag.pressX = m_drag.x = lx;
+      m_drag.pressY = m_drag.y = ly;
+      m_drag.grabDX = lx - b.x;
+      m_drag.grabDY = ly - b.y;
       return true;
     }
     // empty space
-    m_pressTile = PRESS_EMPTY;
+    m_drag.press = Drag::Press::Empty;
     return true;
   }
 
   // ---- release ----
-  if (e.button == BTN_MIDDLE) {
-    m_pressTile = PRESS_NONE;
+  if (e.button == BTN_MIDDLE)
     return true; // middle was fully handled on press
+
+  switch (m_drag.press) {
+  case Drag::Press::StripCard:
+  case Drag::Press::Consumed: { // switch / ✕ already handled on press
+    m_drag = {};
+    return true;
   }
-  const int press = m_pressTile;
-  m_pressTile = PRESS_NONE;
-
-  if (press == PRESS_STRIP || press == PRESS_CONSUMED)
-    return true; // switch / ✕ already handled on press; ignore the release
-
-  if (press >= 0 && press < static_cast<int>(m_tiles.size())) {
+  case Drag::Press::Tile: {
+    const int press = m_drag.idx;
     const auto w = m_tiles[press].win.lock();
-    if (m_dragging) {
-      m_dragging = false;
+    const double grabDX = m_drag.grabDX, grabDY = m_drag.grabDY;
+    if (m_drag.lifted) {
+      m_drag = {};
       // dropped onto a workspace card → move the window there (RMB: swap
       // instead — task #8, mirrors the strip-window-drag drop branch below)
       if (dropOnStripCard(w, lx, ly, -1))
@@ -360,7 +352,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       if (m_desktopMode && w) {
         const LRect cur =
             m_tiles[press].target; // keep the canvas size, move the corner
-        const LRect parked{lx - m_grabDX, ly - m_grabDY, cur.w, cur.h};
+        const LRect parked{lx - grabDX, ly - grabDY, cur.w, cur.h};
         m_canvasPos[w.get()] = parked;
         m_tiles[press].target = parked;
         m_tiles[press].natural =
@@ -383,47 +375,38 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // see cancelPendingClick() for how every other path that ends the
     // overview also drops this state so a stale timer can't fire later
     // against a tile that no longer means anything.
-    if (closeOnDoubleClick()) {
-      const auto now = std::chrono::steady_clock::now();
-      if (w && m_lastClickWin.lock() == w &&
-          (now - m_lastClickTime) <= DBLCLICK_WINDOW) {
+    if (closeOnDoubleClick() && w && g_pEventLoopManager) {
+      if (m_clickTimer && m_pendingClickWin.lock() == w) {
+        // second click on the same window inside the window → close it
         cancelPendingClick();
         closeTileWindow(press);
         return true;
       }
       cancelPendingClick(); // drop any OTHER tile's still-pending timer first
-      m_lastClickWin = w;
-      m_lastClickTime = now;
-      if (w && g_pEventLoopManager) {
-        m_pendingClickWin = w;
-        m_clickTimer = makeShared<CEventLoopTimer>(
-            DBLCLICK_WINDOW,
-            [this](SP<CEventLoopTimer>, void *) {
-              const auto pw = m_pendingClickWin.lock();
-              m_pendingClickWin.reset();
-              if (pw && m_active)
-                focusAndClose(pw, Desktop::FOCUS_REASON_CLICK);
-            },
-            nullptr);
-        g_pEventLoopManager->addTimer(m_clickTimer);
-        return true;
-      }
-      // no event loop / no window — fall through rather than eat the click.
+      m_pendingClickWin = w;
+      m_clickTimer = makeShared<CEventLoopTimer>(
+          DBLCLICK_WINDOW,
+          [this](SP<CEventLoopTimer>, void *) {
+            const auto pw = m_pendingClickWin.lock();
+            m_pendingClickWin.reset();
+            if (pw && m_active)
+              focusAndClose(pw, Desktop::FOCUS_REASON_CLICK);
+          },
+          nullptr);
+      g_pEventLoopManager->addTimer(m_clickTimer);
+      return true;
     }
     focusAndClose(w, Desktop::FOCUS_REASON_CLICK);
     return true;
   }
 
-  // strip-card window drag: release decides click-to-switch vs. drop-to-move
-  if (m_pressStripItem >= 0) {
-    const int stripItem = m_pressStripItem;
-    const auto w = m_dragStripWin.lock();
-    m_pressStripItem = -1;
-    m_pressStripWin = -1;
-    m_dragStripWin.reset();
-
-    if (m_dragging) {
-      m_dragging = false;
+  case Drag::Press::StripWin: {
+    const int stripItem = m_drag.idx;
+    const auto w = m_drag.win.lock();
+    const bool rmb = m_drag.button == BTN_RIGHT;
+    const bool lifted = m_drag.lifted;
+    m_drag = {};
+    if (lifted) {
       if (w) {
         // dropped onto a DIFFERENT card → move it there, same as a grid-tile
         // drop (RMB: swap with that workspace's window instead — task #8)
@@ -435,7 +418,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
             m && LRect{0, 0, m->m_size.x, m->m_size.y}.contains(lx, ly)) {
           for (const auto &it : m_strip) {
             if (!it.isPlus && !it.isAll && it.active) {
-              if (m_pressButton == BTN_RIGHT)
+              if (rmb)
                 swapOnWorkspace(w, it);
               else
                 dropOnWorkspace(w, it);
@@ -457,6 +440,9 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         }
     }
     return true;
+  }
+  default:
+    break;
   }
 
   if (cfgInt("plugin:gloview:exit_on_click", 1) != 0)
@@ -606,7 +592,6 @@ void Overview::focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason) {
 // / hardClose / dtor) or start a fresh one (open), so a stale timer can never
 // fire against a tile from a session that's already gone.
 void Overview::cancelPendingClick() {
-  m_lastClickWin.reset();
   m_pendingClickWin.reset();
   if (m_clickTimer) {
     m_clickTimer->cancel();

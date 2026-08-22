@@ -340,35 +340,40 @@ private:
   // normally activates it IMMEDIATELY (focusAndClose), which leaves no room to
   // detect a second click on the same tile afterward — the overview is simply
   // gone by then. So in this mode the single click is deferred behind a short
-  // timer instead: a genuine second click on the SAME window before it fires
-  // cancels the deferred activate and closes the window instead (keeping the
-  // overview open), the same single-select-vs-double-open pattern any desktop
-  // file manager uses. See onMouseButton / cancelPendingClick().
-  PHLWINDOWREF m_lastClickWin; // window from the most recent tile click,
-                               // whatever the outcome
-  PHLWINDOWREF
-      m_pendingClickWin; // window the deferred single click would focus+close
-  std::chrono::steady_clock::time_point m_lastClickTime;
+  // timer: an armed timer with m_pendingClickWin == w IS the "first click
+  // recently happened" record; a second click on the same window before it
+  // fires cancels it and closes the window instead (staying open). See
+  // onMouseButton / cancelPendingClick().
+  PHLWINDOWREF m_pendingClickWin; // window the deferred single click would focus+close
   SP<CEventLoopTimer> m_clickTimer;
 
-  // drag-and-drop of a window preview onto a workspace card
-  int m_pressTile = -1;              // tile under the press (drag candidate)
-  bool m_dragging = false;           // moved past the threshold
-  double m_pressX = 0, m_pressY = 0; // monitor-local press point
-  double m_grabDX = 0, m_grabDY = 0; // cursor offset inside the tile at grab
-  double m_dragX = 0, m_dragY = 0;   // current monitor-local cursor
-  // Which button armed the current drag (BTN_LEFT/BTN_RIGHT) — dropping a grid
-  // tile or a strip window onto a DIFFERENT workspace card moves it with the
-  // left button, swaps it with that workspace's window with the right button
-  // (task #8).
-  int m_pressButton = 0;
+  // Everything the pointer did between PRESS and RELEASE, for both drag kinds
+  // (a grid tile, a window grabbed straight off a strip card) and every press
+  // outcome. One value instead of the old eleven scattered members — a stale
+  // half-armed drag can no longer exist across sessions (open() just resets
+  // it), and release logic switches on `press` instead of decoding sentinels.
+  struct Drag {
+    enum class Press : int {
+      Tile,      // pressed on a main-grid tile: idx = m_tiles index
+      StripWin,  // pressed on a strip card's window slot: idx = m_strip index,
+                 // winIdx = index into its wins, win = the window
+      StripCard, // pressed elsewhere on a strip card — switch already happened
+                 // on press; release must do nothing
+      Empty,     // empty space → close on release unless consumed
+      Consumed,  // press fully handled on the spot (e.g. a ✕ button)
+    };
+    Press press = Press::Empty;
+    int idx = -1, winIdx = -1;
+    PHLWINDOWREF win;
+    int button = 0;
+    double pressX = 0, pressY = 0;   // monitor-local press point
+    double grabDX = 0, grabDY = 0;   // cursor offset inside the grabbed box
+    double x = 0, y = 0;             // current cursor, kept fresh by updateHover
+    bool lifted = false;             // moved past the threshold → a real drag
+    bool armed() const { return press == Press::Tile || press == Press::StripWin; }
+  };
+  Drag m_drag;
 
-  // drag-and-drop of a window picked up directly FROM A STRIP CARD (not the
-  // main grid). Indices rather than a pointer since m_strip is rebuilt on any
-  // change.
-  int m_pressStripItem = -1;   // index into m_strip
-  int m_pressStripWin = -1;    // index into m_strip[m_pressStripItem].wins
-  PHLWINDOWREF m_dragStripWin; // resolved window being dragged from the strip
 
   // Alt-Tab session: armed by altTabInvoke() on open, released when the
   // configured modifier goes up (commit-on-release) or the overview closes.
@@ -509,7 +514,7 @@ private:
                  const LRect &slot) const; // slot fitted to the window's aspect
   LRect dragBox() const; // the picked-up tile's box at the cursor
   int draggedTile()
-      const; // m_pressTile while a grid drag is live (bounds-checked), else -1
+      const; // m_drag.idx while a grid drag is lifted (bounds-checked), else -1
   void
   drawPreviewTile(size_t i, const LRect &slot,
                   bool lift) const; // tile chrome (shadow/border/backing/title)

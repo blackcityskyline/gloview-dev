@@ -529,15 +529,9 @@ void Overview::open() {
   m->m_blurFBDirty = true;
 
   // Clear drag/press state: a mid-drag dismiss (ESC/TAB/click) skips the
-  // release handler, so the next open would inherit m_dragging + stale
-  // m_pressTile (a tile floats at cursor).
-  m_pressTile = -1;
-  m_dragging = false;
-  m_dragX = m_dragY = m_pressX = m_pressY = m_grabDX = m_grabDY = 0.0;
-  m_pressButton = 0;
-  m_pressStripItem = -1;
-  m_pressStripWin = -1;
-  m_dragStripWin.reset();
+  // release handler, so the next open would inherit a half-armed drag (a tile
+  // floats at cursor). One reset covers every field.
+  m_drag = {};
   m_pendingFocus.reset(); // no stale carry-over from a previous session
   cancelPendingClick();   // ditto for any close_trigger=doubleclick timer
   m_altTabbing = false;   // altTabInvoke re-arms it after we return
@@ -664,9 +658,6 @@ void Overview::hardClose() {
   m_newCardId = 0;
   m_progress = 0.0;
   m_altTabbing = false;
-  m_pressStripItem = -1;
-  m_pressStripWin = -1;
-  m_dragStripWin.reset();
   m_tiles.clear();
   m_strip.clear();
   m_snapshots.clear();
@@ -854,7 +845,7 @@ void Overview::damage() const {
 void Overview::rearmanim() const {
   if (!m_active)
     return;
-  const bool animating = m_reflowing || m_newCardAnim || m_dragging ||
+  const bool animating = m_reflowing || m_newCardAnim || m_drag.lifted ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0);
   if (!animating)
@@ -865,7 +856,7 @@ void Overview::rearmanim() const {
 
 void Overview::ensureAnimPump() {
   const bool stillAnimating =
-      m_active && (m_reflowing || m_newCardAnim || m_dragging ||
+      m_active && (m_reflowing || m_newCardAnim || m_drag.lifted ||
                    (m_opening && m_progress < 1.0) ||
                    (!m_opening && m_progress > 0.0));
   if (!stillAnimating) {
@@ -885,7 +876,7 @@ void Overview::ensureAnimPump() {
       std::chrono::milliseconds(8),
       [this](SP<CEventLoopTimer> self, void *) {
         const bool go = m_active && g_pHyprRenderer &&
-                        (m_reflowing || m_newCardAnim || m_dragging ||
+                        (m_reflowing || m_newCardAnim || m_drag.lifted ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0));
         if (!go) {

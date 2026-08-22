@@ -284,11 +284,12 @@ LRect Overview::dragBox() const {
     // that visual spot, so offsetting it would leave it somewhere the user never saw.
     const LRect  base = m_tiles[dragIdx].target;
     if (m_desktopMode)
-        return LRect{m_dragX - m_grabDX, m_dragY - m_grabDY, base.w, base.h};
+        return LRect{m_drag.x - m_drag.grabDX, m_drag.y - m_drag.grabDY,
+                     base.w, base.h};
     const double w = base.w * 0.5;
     const double h = base.h * 0.5;
     constexpr double offX = 46.0, offY = 64.0; // clear of the cursor/hotspot, down-right
-    return LRect{m_dragX + offX, m_dragY + offY, w, h};
+    return LRect{m_drag.x + offX, m_drag.y + offY, w, h};
 }
 
 void Overview::renderPreviews() const {
@@ -392,7 +393,7 @@ void Overview::renderMainWindows() const {
 // making it hard to see exactly where you're about to drop the window. Hit-testing on
 // release still uses the real cursor position; only the VISUAL sits offset/shrunk.
 LRect Overview::dragStripBox() const {
-    const auto w = m_dragStripWin.lock();
+    const auto w = m_drag.win.lock();
     if (!w)
         return LRect{0, 0, 0, 0};
     const auto   size   = w->sizeAnimation()->goal();
@@ -400,7 +401,7 @@ LRect Overview::dragStripBox() const {
     const double w_     = 150.0; // fixed on-screen preview width while dragging off the strip
     const double h_     = w_ / std::max(0.1, aspect);
     constexpr double offX = 46.0, offY = 64.0; // clear of the cursor/hotspot, down-right — same convention as dragBox()
-    return LRect{m_dragX + offX, m_dragY + offY, w_, h_};
+    return LRect{m_drag.x + offX, m_drag.y + offY, w_, h_};
 }
 
 void Overview::renderDragTile() const {
@@ -409,7 +410,7 @@ void Overview::renderDragTile() const {
         drawPreviewTile(static_cast<size_t>(dragIdx), dragBox(), true); // chrome; surface queued in renderDragWindow
         return;
     }
-    if (m_dragging && m_pressStripItem >= 0 && !m_dragStripWin.expired())
+    if (m_drag.press == Drag::Press::StripWin && !m_drag.win.expired())
         drawDragStripChrome();
 }
 
@@ -417,7 +418,7 @@ void Overview::renderDragTile() const {
 // same visual language as a grid-tile drag (drawPreviewTile), scaled down to match.
 void Overview::drawDragStripChrome() const {
     const auto m = m_monitor.lock();
-    const auto w = m_dragStripWin.lock();
+    const auto w = m_drag.win.lock();
     if (!m || !w)
         return;
     const double s         = m->m_scale;
@@ -465,8 +466,8 @@ void Overview::renderDragWindow() const {
         renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(), round, cfgFloat("plugin:gloview:preview_round_power", 2.0F));
         return;
     }
-    if (m_dragging && m_pressStripItem >= 0) {
-        const auto w = m_dragStripWin.lock();
+    if (m_drag.press == Drag::Press::StripWin) {
+        const auto w = m_drag.win.lock();
         if (!w || !w->m_isMapped || w->isHidden())
             return;
         const double e     = eased();
