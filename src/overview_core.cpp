@@ -590,20 +590,20 @@ void Overview::close() {
   // redundant or act on gone state.
   cancelPendingClick();
 
-  // Tiles fly home under their own clock: freeze them where they are shown
-  // now, retarget at the window's REAL settled geometry, restart. Pixel-perfect
-  // landing regardless of what any earlier glide was doing.
+  // Close rides m_progress down (see tileProgress): target = where the tile
+  // is shown RIGHT NOW, natural = the window's REAL settled geometry. The
+  // descending eased progress then glides shown -> real pixel-perfect,
+  // whatever any earlier glide was doing.
   if (const auto m = m_monitor.lock()) {
     for (auto &t : m_tiles) {
-      t.natural = currentBox(t, static_cast<int>(&t - m_tiles.data()));
+      t.target = currentBox(t, static_cast<int>(&t - m_tiles.data()));
       if (const auto w = t.win.lock()) {
         const auto p = w->positionAnimation()->goal();
         const auto s = w->sizeAnimation()->goal();
-        t.target = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
-                         std::max(1.0, s.x), std::max(1.0, s.y)};
+        t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
+                          std::max(1.0, s.x), std::max(1.0, s.y)};
       }
     }
-    m_tileClock.begin();
   }
 
   restoreLayers(); // bars fade back in over the close animation, not in a pop
@@ -613,7 +613,7 @@ void Overview::close() {
   // during the open animation (or mid-reflow) must not jump. While closing,
   // updateAnimation reads m_progress as 1 - timeline.raw(), so resuming from
   // progress p means seeking the timeline to (1 - p).
-  m_timeline.seek(1.0 - m_progress, chromeDur());
+  m_timeline.seek(1.0 - m_progress, animDuration());
   // Fresh animation cycle: the overview may have sat IDLE since the last
   // animated frame (pump off), so the next updateAnimation would measure a
   // huge phantom gap and rewind every clock to its pre-close anchor — the

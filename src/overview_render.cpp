@@ -425,26 +425,20 @@ private:
 
 double Overview::eased() const { return easeOutCubic(m_progress); }
 
-// Chrome (backdrop + strip + buttons) collapse span on CLOSE, as a fraction
-// of the tile glide: the strip must finish folding away BEFORE the window
-// lands in its tile — a preview settling into an empty desktop reads as the
-// handoff; one still fighting the strip band reads as desync. Entry keeps
-// the full duration for both (reveal-first, tiles-after is already that order).
-static constexpr double EXIT_CHROME_SPAN = 0.6;
-
-double Overview::chromeDur() const {
-  return m_opening ? animDuration() : animDuration() * EXIT_CHROME_SPAN;
-}
-
 double Overview::animDuration() const {
   return std::max(1.0, static_cast<double>(cfgInt("plugin:gloview:duration", 360)));
 }
 
 double Overview::tileProgress(int i) const {
-  // Tiles ALWAYS ride their own clock (see m_tileClock) — open, reflow and
-  // close are the same "retarget + restart" mechanism, so there is no
-  // separate reflow mode for the base to switch on.
-  const double base = m_tileClock.raw(animDuration());
+  // Entry and reflows ride the tiles' own forward clock (m_tileClock). CLOSE
+  // deliberately goes back to riding m_progress DOWN: the tile lerp then has
+  // the exact same shape as the collapsing chrome (both easeOutCubic of the
+  // descending progress), keeping landing and strip-collapse frame-synced.
+  // Driving close on a forward clock gave tiles easeOutCubic(u) against the
+  // chrome's 1-u^3 — tiles raced ahead mid-flight while the band lingered,
+  // the "window lands before the strip finishes" desync.
+  const double base =
+      m_opening ? m_tileClock.raw(animDuration()) : m_progress;
   const int n = static_cast<int>(m_tiles.size());
   if (n <= 1)
     return base;
@@ -484,7 +478,7 @@ void Overview::updateAnimation() {
         std::chrono::duration<double, std::milli>(nowTick - m_lastAnimTick)
             .count();
     if (gapMs > 100.0) {
-      m_timeline.compensateStall(gapMs, chromeDur());
+      m_timeline.compensateStall(gapMs, dur);
       m_tileClock.compensateStall(gapMs, dur);
       if (m_newCardAnim)
         m_newCard.compensateStall(gapMs, newCardDur());
@@ -492,7 +486,7 @@ void Overview::updateAnimation() {
   }
   m_lastAnimTick = nowTick;
 
-  const double t = m_timeline.raw(chromeDur());
+  const double t = m_timeline.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
   if (m_newCardAnim && m_newCard.done(newCardDur())) {
     m_newCardAnim = false;
