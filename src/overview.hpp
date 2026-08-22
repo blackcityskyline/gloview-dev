@@ -170,6 +170,11 @@ public:
   void renderDragWindow() const; // the picked-up tile's live surface
   void renderCursorOnTop()
       const; // hardware or software cursor over our overlay (sees HW/SW split)
+  // Re-arm the animation loop from pass-execution time (COverlayPass::Front):
+  // full-monitor damage + an explicit scheduleFrame, so the next frame is both
+  // scheduled AND carries a full-damage region. Partial damage into a fresh
+  // back buffer presented as a mostly-black frame — the entry "black flash".
+  void rearmanim() const;
   bool isAboveLayer(const std::string &ns) const;
   void renderAboveLayers() const; // re-render opted-in TOP/OVERLAY layer
                                   // surfaces on top of the overview

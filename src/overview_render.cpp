@@ -368,6 +368,14 @@ public:
       break; // dragged tile chrome; surface queued after
     case Phase::Front:
       m_owner->renderCursorOnTop();
+      // Re-arm the animation loop HERE, in the LAST phase of pass EXECUTION —
+      // not from the renderStage build callback. damage() called during BUILD
+      // landed on the CURRENT frame's already-snapshotted region and was
+      // consumed by its commit: the next frame then ran with a partial/empty
+      // damage (whatever unrelated source — e.g. the terminal caret — happened
+      // to damage), scissored all drawing to that region, and presented a
+      // freshly-allocated mostly-black buffer. The "black flash" frames.
+      m_owner->rearmanim();
       break;
     }
     return {};
@@ -639,20 +647,8 @@ void Overview::renderStage(eRenderStage stage) {
   // Every actual change during a session (a tab step, a hover/selection change,
   // a click) already calls damage() itself (stepAltTab, moveSelection,
   // updateHover, …), so nothing needs a per-frame poke on top of that.
-  const bool animating = m_reflowing || m_newCardAnim || m_dragging ||
-                         (m_opening && m_progress < 1.0) ||
-                         (!m_opening && m_progress > 0.0);
-  if (animating) {
-    damage();
-    // damage() alone proved unreliable as a next-frame scheduler here (the
-    // open-transition render chain died mid-animation until an external
-    // stimulus — the >1s hole in /tmp/gloview.log). A direct scheduleFrame
-    // while this frame is still rendering sets m_pendingFrame, which the
-    // output commits unconditionally after the current frame.
-    if (const auto mm = m_monitor.lock())
-      mm->scheduleFrame();
-  }
 }
+
 
 SP<Render::ITexture> Overview::backdropSource(bool &live) const {
   live = false;
