@@ -454,36 +454,41 @@ Overview::captureCurrentBoxes(PHLWINDOW exclude) const {
   return boxes;
 }
 
+// After a rebuild+relayout: freeze every tile at the box it is shown at right
+// now (from `oldBoxes`, captured before the rebuild; empty = keep the freshly
+// assigned naturals, i.e. a plain open starts from the real boxes) and restart
+// the tile clock. The next frames glide into the fresh targets.
+void Overview::startTileGlide(
+    const std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes) {
+  if (!oldBoxes.empty())
+    for (auto &t : m_tiles) {
+      t.natural = t.target;
+      for (const auto &[oldWin, oldBox] : oldBoxes)
+        if (oldWin == t.win.lock()) {
+          t.natural = oldBox;
+          break;
+        }
+    }
+  m_tileClock.begin();
+}
+
 void Overview::replayReflow(
     std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes) {
   m_hovered = m_hoveredStrip = -1;
   buildTiles();
   buildStrip();
   layoutTiles();
-  for (auto &t : m_tiles) {
-    const auto win = t.win.lock();
-    t.natural = t.target;
-    for (const auto &[oldWin, oldBox] : oldBoxes) {
-      if (oldWin == win) {
-        t.natural = oldBox;
-        break;
-      }
-    }
-  }
+  startTileGlide(oldBoxes);
   if (m_selected >= static_cast<int>(m_tiles.size()))
     m_selected = m_tiles.empty() ? -1 : static_cast<int>(m_tiles.size()) - 1;
   m_progress = 1.0;
   m_opening = true;
-  m_timeline.pinEnd(animDuration()); // chrome settled; the reflow clock below
-                                     // drives only the tile glide
-  m_reflowing = true;
-  m_reflow.begin();
-  m_reflowRaw = 0.0;
+  m_timeline.pinEnd(animDuration()); // chrome settled; only the tiles glide
   damage();
 }
 
 void Overview::syncTiles() {
-  if (!m_active || !m_opening || m_pendingDeactivate || m_reflowing)
+  if (!m_active || !m_opening || m_pendingDeactivate)
     return;
   const auto ws = m_workspace.lock();
   if (!ws)

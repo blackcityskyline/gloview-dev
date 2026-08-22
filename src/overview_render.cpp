@@ -429,16 +429,11 @@ double Overview::animDuration() const {
   return std::max(1.0, static_cast<double>(cfgInt("plugin:gloview:duration", 360)));
 }
 
-double Overview::tileBaseProgress() const {
-  // During a drop reflow the tiles glide on their own timer while the chrome
-  // (m_progress) stays pinned at 1; everywhere else they ride m_progress.
-  if (m_reflowing)
-    return m_reflow.raw(animDuration());
-  return m_progress;
-}
-
 double Overview::tileProgress(int i) const {
-  const double base = tileBaseProgress();
+  // Tiles ALWAYS ride their own clock (see m_tileClock) — open, reflow and
+  // close are the same "retarget + restart" mechanism, so there is no
+  // separate reflow mode for the base to switch on.
+  const double base = m_tileClock.raw(animDuration());
   const int n = static_cast<int>(m_tiles.size());
   if (n <= 1)
     return base;
@@ -469,39 +464,28 @@ LRect Overview::currentBox(const Tile &t, int i) const {
 
 void Overview::updateAnimation() {
   const double dur = animDuration();
-  // Stall guard FIRST: measure the gap since the previous animated frame and
-  // re-anchor every active clock so wall-time holes don't fast-forward them.
+  // Stall guard FIRST: measure the gap since the previous animated frame; a
+  // render hole rewinds every active clock to its last-known position so the
+  // wall-time inside the hole never counts.
   const auto nowTick = std::chrono::steady_clock::now();
   if (m_lastAnimTick.time_since_epoch().count() != 0) {
     const double gapMs =
         std::chrono::duration<double, std::milli>(nowTick - m_lastAnimTick)
             .count();
     if (gapMs > 100.0) {
-      // Render hole: rewind every active clock to its last-known position so
-      // the wall-time inside the hole never counts.
-      m_timeline.seek(m_timelineRaw, dur);
-      if (m_reflowing)
-        m_reflow.seek(m_reflowRaw, dur);
+      m_timeline.compensateStall(gapMs, dur);
+      m_tileClock.compensateStall(gapMs, dur);
       if (m_newCardAnim)
-        m_newCard.seek(m_newCardRaw, newCardDur());
+        m_newCard.compensateStall(gapMs, newCardDur());
     }
   }
   m_lastAnimTick = nowTick;
 
   const double t = m_timeline.raw(dur);
-  m_timelineRaw = t;
   m_progress = m_opening ? t : 1.0 - t;
-  if (m_reflowing) {
-    m_reflowRaw = m_reflow.raw(dur);
-    if (m_reflowRaw >= 1.0)
-      m_reflowing = false;
-  }
-  if (m_newCardAnim) {
-    m_newCardRaw = m_newCard.raw(newCardDur());
-    if (m_newCardRaw >= 1.0) {
-      m_newCardAnim = false;
-      m_newCardId = 0;
-    }
+  if (m_newCardAnim && m_newCard.done(newCardDur())) {
+    m_newCardAnim = false;
+    m_newCardId = 0;
   }
   // Close complete: DON'T deactivate here — flipping m_active off mid-frame
   // would make renderStage skip this frame's overlay → one transparent frame
