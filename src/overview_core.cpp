@@ -613,7 +613,7 @@ void Overview::close() {
   // during the open animation (or mid-reflow) must not jump. While closing,
   // updateAnimation reads m_progress as 1 - timeline.raw(), so resuming from
   // progress p means seeking the timeline to (1 - p).
-  m_timeline.seek(1.0 - m_progress, animDuration());
+  m_timeline.seek(1.0 - m_progress, chromeDur());
   // Fresh animation cycle: the overview may have sat IDLE since the last
   // animated frame (pump off), so the next updateAnimation would measure a
   // huge phantom gap and rewind every clock to its pre-close anchor — the

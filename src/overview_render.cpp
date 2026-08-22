@@ -425,6 +425,17 @@ private:
 
 double Overview::eased() const { return easeOutCubic(m_progress); }
 
+// Chrome (backdrop + strip + buttons) collapse span on CLOSE, as a fraction
+// of the tile glide: the strip must finish folding away BEFORE the window
+// lands in its tile — a preview settling into an empty desktop reads as the
+// handoff; one still fighting the strip band reads as desync. Entry keeps
+// the full duration for both (reveal-first, tiles-after is already that order).
+static constexpr double EXIT_CHROME_SPAN = 0.6;
+
+double Overview::chromeDur() const {
+  return m_opening ? animDuration() : animDuration() * EXIT_CHROME_SPAN;
+}
+
 double Overview::animDuration() const {
   return std::max(1.0, static_cast<double>(cfgInt("plugin:gloview:duration", 360)));
 }
@@ -473,7 +484,7 @@ void Overview::updateAnimation() {
         std::chrono::duration<double, std::milli>(nowTick - m_lastAnimTick)
             .count();
     if (gapMs > 100.0) {
-      m_timeline.compensateStall(gapMs, dur);
+      m_timeline.compensateStall(gapMs, chromeDur());
       m_tileClock.compensateStall(gapMs, dur);
       if (m_newCardAnim)
         m_newCard.compensateStall(gapMs, newCardDur());
@@ -481,7 +492,7 @@ void Overview::updateAnimation() {
   }
   m_lastAnimTick = nowTick;
 
-  const double t = m_timeline.raw(dur);
+  const double t = m_timeline.raw(chromeDur());
   m_progress = m_opening ? t : 1.0 - t;
   if (m_newCardAnim && m_newCard.done(newCardDur())) {
     m_newCardAnim = false;
@@ -492,7 +503,11 @@ void Overview::updateAnimation() {
   // (real windows already suppressed). Pin progress to 0, let renderStage draw
   // the final opaque-preview frame, then deactivate once the pass is built
   // (m_pendingDeactivate).
-  if (!m_opening && t >= 1.0) {
+  // Close completion needs BOTH clocks done: chrome finishes early
+  // (EXIT_CHROME_SPAN), but flipping m_active off before the tiles have
+  // landed would pop them mid-air — real windows reappear while previews are
+  // still gliding home.
+  if (!m_opening && t >= 1.0 && m_tileClock.done(dur)) {
     m_progress = 0.0;
     m_pendingDeactivate = true;
   }

@@ -509,6 +509,10 @@ private:
   // plugin:gloview:duration with the shared floor (ms), read LIVE so config
   // changes apply to in-flight animations.
   double animDuration() const;
+  // Duration of the CHROME clock: full duration on open, shortened by
+  // EXIT_CHROME_SPAN on close (see overview_render.cpp) so the strip folds
+  // away while the tiles are still gliding home.
+  double chromeDur() const;
   // "+" card pop-in duration: never shorter than the tile glide it overlaps.
   double newCardDur() const { return std::max(120.0, animDuration()); }
   double tileProgress(int i) const; // staggered raw progress for tile i
