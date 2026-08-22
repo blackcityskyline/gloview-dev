@@ -516,6 +516,20 @@ void Overview::updateAnimation() {
 // ---- render -----------------------------------------------------------------
 
 void Overview::renderStage(eRenderStage stage) {
+  // Pre-active probe: the black-flash frames may fire while m_active is still
+  // false (or before LAST_MOMENT reaches us). For ~400ms after openStamp,
+  // log every render-stage emission with the frame's damage footprint so a
+  // recording can pin exact black-frame indices against these lines.
+  if (!m_active && stage == RENDER_PRE) {
+    const auto rm0 = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    if (rm0 && rm0 == m_monitor.lock()) {
+      const double ms = std::chrono::duration<double, std::milli>(
+                            std::chrono::steady_clock::now() - m_openStamp)
+                            .count();
+      if (ms > -300.0 && ms < 400.0)
+        dbg("PRE t=+" + std::to_string(ms).substr(0, 7) + "ms inactive");
+    }
+  }
   if (!m_active)
     return;
   const auto rm = g_pHyprRenderer->m_renderData.pMonitor.lock();
@@ -549,7 +563,10 @@ void Overview::renderStage(eRenderStage stage) {
     const bool   blurOK =
         m_blur.valid && m_blur.fb && m_blur.fb->isAllocated() &&
         m_blur.fb->getTexture() && m_blur.fb->getTexture()->ok();
-    const auto &dmg = g_pHyprRenderer->m_renderData.damage;
+    // Damage footprint: empty-flag alone hid partial-damage frames — a
+    // caret-sized region renders the terminal crisp over an otherwise-stale
+    // buffer, exactly the flash signature.
+    const auto ext = g_pHyprRenderer->m_renderData.damage.copy().getExtents();
     dbg("F t=+" +
         std::to_string(
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_openStamp)
@@ -562,7 +579,8 @@ void Overview::renderStage(eRenderStage stage) {
         " bdDrawn=" + std::to_string(m_backdropDrawn) +
         " soli=" + std::to_string((bool)sol) +
         " dso=" + std::to_string(rm->m_directScanoutIsActive) +
-        " dmgE=" + std::to_string(dmg.empty()));
+        " dmg=" + std::to_string(ext.w) + "x" + std::to_string(ext.h) +
+        " rects=" + std::to_string(g_pHyprRenderer->m_renderData.damage.copy().getRects().size()));
   }
 
   updateHover(); // keep hover fresh even when the pointer is warped, not moved
