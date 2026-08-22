@@ -504,6 +504,9 @@ void Overview::renderStage(eRenderStage stage) {
   updateAnimation();
   if (!m_active)
     return;
+  dbg(std::string("stage prog=") + std::to_string(m_progress).substr(0, 5) +
+      " opening=" + std::to_string(m_opening) +
+      " winFade=" + std::to_string(m_winFade));
 
   updateHover(); // keep hover fresh even when the pointer is warped, not moved
   syncTiles(); // window opened/closed/moved on this workspace → reflow the grid
@@ -783,8 +786,12 @@ void Overview::renderBackdrop() const {
   // over live currentFB straight into the real desktop the previews are
   // landing on.
   const float k = static_cast<float>(e);
+  dbg(std::string("backdrop e=") + std::to_string(e).substr(0, 5) +
+      " opening=" + std::to_string(m_opening) +
+      " k=" + std::to_string(k).substr(0, 5));
 
   if (!blurEnabled()) {
+    dbg("backdrop no-blur path");
     // ---- No-blur backdrop ----
     const auto col = argb(baseCol, e);
     if (col.a <= 0.0)
@@ -799,7 +806,6 @@ void Overview::renderBackdrop() const {
   // identities invalidates only on genuine source changes while plain
   // workspace switches sharing the same wallpaper keep the cached blur.
   bool liveSrc = false;
-  bool layersSrc = false;
   auto src = backdropSource(liveSrc);
   if (!src) {
     // Wallpaper layers → private FBO; its immediate draws want pixel coords,
@@ -811,15 +817,7 @@ void Overview::renderBackdrop() const {
     src = renderBackdropSource(W, H);
     g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
     g_pHyprRenderer->setProjectionType(oldProj);
-    layersSrc = true;
   }
-  dbg(std::string("backdrop e=") + std::to_string(e).substr(0, 5) +
-      " opening=" + std::to_string(m_opening) +
-      " k=" + std::to_string(k).substr(0, 5) +
-      " src=" + (liveSrc ? "live" : layersSrc ? "layers"
-                : src       ? "direct"
-                            : "NONE") +
-      " cached=" + std::to_string(m_blur.valid));
 
   // Nothing to draw at zero; the real scene (windows fading per m_winFade)
   // shows through currentFB untouched.
