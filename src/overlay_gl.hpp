@@ -30,8 +30,10 @@
 #include <algorithm>
 #include <cmath>
 
+#include <hyprland/src/config/shared/complex/ComplexDataTypes.hpp>
 #include <hyprland/src/helpers/math/Math.hpp>
 #include <hyprland/src/helpers/Color.hpp>
+#include <hyprland/src/render/OpenGL.hpp>
 
 #include "layout.hpp"
 
@@ -75,6 +77,58 @@ inline CHyprColor argb(Hyprlang::INT raw, double alphaMul = 1.0) {
   const auto g = static_cast<double>((raw >> 8) & 0xFF) / 255.0;
   const auto b = static_cast<double>(raw & 0xFF) / 255.0;
   return CHyprColor(r, g, b, a * std::clamp(alphaMul, 0.0, 1.0));
+}
+
+// ---- chrome kernel ----------------------------------------------------------
+// The three primitives every piece of tile/card chrome is composed of. All of
+// them take LOGICAL boxes + scale, like everything in this header.
+//
+// WHY each looks the way it does (verified once, applies to every call site):
+// * Ring = renderBorder STROKE, never a filled rect grown by the line width:
+//   a filled underlay relied on the live surface on top being fully opaque to
+//   hide everything but the outward edge; against a transparent window it
+//   reads as a solid wash over the whole preview instead of a frame.
+//   renderBorder shades only its own pixels (it subtracts the inner box), so
+//   transparency is safe at any size. `lb` is passed UN-grown — renderBorder
+//   expands outward by borderSize itself, same as real window borders. Sizes
+//   < 1 are an explicit "off".
+// * Backing = thin near-invisible safety margin (backing_color, renderer
+//   applies ~0.08) ONLY to cover the 1-3px edge-seam case where the rounded
+//   logical backing would peek past the pixel-clipped live surface — NOT a
+//   decorative tint; INSET 1px so it stays under the over-covered surface.
+// * Shadow = renderRoundedShadow with the box TILE-SIZED, just shifted down
+//   dy: its solid core therefore sits inside the tile footprint and shows
+//   through genuinely transparent windows; alpha is cut hard (×~0.18 at the
+//   call site) so it reads as depth cue, not a second layer.
+
+inline void strokeRing(const LRect &lb, double s, const CHyprColor &col,
+                       int size, int round, float roundPow) {
+  if (size < 1)
+    return; // renderBorder no-ops below 1 anyway; keep call sites honest
+  Render::GL::g_pHyprOpenGL->renderBorder(
+      pxb(lb, s), Config::CGradientValueData(col),
+      {.round = pxr(round, s),
+       .roundingPower = roundPow,
+       .borderSize = size,
+       .a = 1.0F,
+       .outerRound = outerRoundPx(round, size, roundPow, s)});
+}
+
+inline void safetyBacking(const LRect &lb, double s, Hyprlang::INT col,
+                          double alphaMul, int round, float roundPow) {
+  const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0),
+                 std::max(0.0, lb.h - 2.0)};
+  Render::GL::g_pHyprOpenGL->renderRect(pxb(bb, s), argb(col, alphaMul),
+                                        {.round = pxr(round, s),
+                                         .roundingPower = roundPow});
+}
+
+inline void dropShadow(const LRect &lb, double s, const CHyprColor &col,
+                       double dy, double range, float alpha, int round,
+                       float roundPow) {
+  Render::GL::g_pHyprOpenGL->renderRoundedShadow(
+      pxb(LRect{lb.x, lb.y + dy, lb.w, lb.h}, s), pxr(round, s), roundPow,
+      static_cast<int>(range * s), Config::CGradientValueData(col), alpha);
 }
 
 } // namespace gloview

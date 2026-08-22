@@ -1036,11 +1036,7 @@ void Overview::renderStrip() const {
         const auto w = sw.win.lock();
         if (!w || !w->m_isMapped || w->isHidden())
           continue;
-        // inset 1px so the backing stays under the live surface and can't peek
-        // as a thin dark edge line (see drawPreviewTile).
         const LRect wbL = stripWinSlotRect(it, card, j);
-        const CBox wb(wbL.x + 1.0, wbL.y + 1.0, std::max(2.0, wbL.w - 2.0),
-                      std::max(2.0, wbL.h - 2.0));
         const int wRound = clampRound(previewRound, wbL.w, wbL.h);
         // Grab indicator (task #6): a bright highlight around the exact slot
         // that's currently pressed, before it's lifted into a floating drag — a
@@ -1050,17 +1046,9 @@ void Overview::renderStrip() const {
         const bool grabbed = static_cast<int>(i) == m_drag.idx &&
                              static_cast<int>(j) == m_drag.winIdx &&
                              !(m_drag.press == Drag::Press::StripWin);
-        if (grabbed) {
-          const Config::CGradientValueData grad(
-              argb(cfgColor("hover_border", "0xf0ffffff"), e));
-          g_pHyprOpenGL->renderBorder(
-              pxb(wb, s), grad,
-              {.round = pxr(wRound, s),
-               .roundingPower = roundPow,
-               .borderSize = 2,
-               .a = 1.0F,
-               .outerRound = outerRoundPx(wRound, 2, roundPow, s)});
-        }
+        if (grabbed)
+          strokeRing(wbL, s, argb(cfgColor("hover_border", "0xf0ffffff"), e),
+                     2, wRound, roundPow);
         // Thin near-invisible backing — see drawPreviewTile's comment
         // (overview_tiles_render.cpp) for the full reasoning: this used to be a
         // flat opaque/semi-opaque tint standing in for "whatever's really
@@ -1069,10 +1057,8 @@ void Overview::renderStrip() const {
         // alpha (fadeAlpha, computed the same way as any real Hyprland window)
         // now blends almost entirely against the strip band's own already-drawn
         // content instead.
-        g_pHyprOpenGL->renderRect(
-            pxb(wb, s),
-            argb(cfgColor("backing_color", "0xff14181f"), 0.08 * e),
-            {.round = pxr(wRound, s), .roundingPower = roundPow});
+        safetyBacking(wbL, s, cfgColor("backing_color", "0xff14181f"),
+                      0.08 * e, wRound, roundPow);
       }
     }
 
