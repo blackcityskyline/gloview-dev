@@ -49,33 +49,37 @@ namespace gloview {
 //                      duration from the start timestamp)
 struct Tween {
   std::chrono::steady_clock::time_point start{};
+  mutable double last = 0.0; // last value raw() returned — the anchor stall
+                             // compensation rewinds to
 
   void begin() { start = clock::now(); }
-  // Re-anchor at the CURRENT raw value, discarding any wall-time that passed
-  // while the compositor was not producing frames (damage-chain stalls, VFR,
-  // system hiccups). Without this, a multi-frame render hole silently
-  // fast-forwards the whole animation — the open transition appeared to
-  // "skip to the end" whenever the frame chain broke right after open().
-  void compensateStall(double gapMs, double durMs, double lastRaw) {
-    // Re-anchor at the LAST KNOWN pre-gap value. Re-anchoring at the current
-    // raw would be a no-op: by now it already includes the hole.
+  // Discard any wall-time that passed while the compositor was not producing
+  // frames (damage-chain stalls, VFR, system hiccups): re-anchor at the LAST
+  // KNOWN pre-gap value — re-anchoring at the current raw would be a no-op,
+  // by now it already includes the hole. Without this a multi-frame render
+  // hole silently fast-forwards the whole animation (the open transition
+  // "skipped to the end" whenever the frame chain broke right after open()).
+  void compensateStall(double gapMs, double durMs) {
     if (gapMs > 100.0)
-      seek(lastRaw, durMs);
+      seek(last, durMs);
   }
   void seek(double frac, double durMs) {
     const auto ms = std::chrono::duration_cast<clock::duration>(
         std::chrono::duration<double, std::milli>{std::clamp(frac, 0.0, 1.0) *
                                                   std::max(1.0, durMs)});
     start = clock::now() - ms;
+    last = std::clamp(frac, 0.0, 1.0);
   }
   void pinEnd(double durMs) { seek(1.0, durMs); }
-  // Linear 0..1, clamped.
-  [[nodiscard]] double raw(double durMs) const {
-    return std::clamp(
+  bool done(double durMs) const { return raw(durMs) >= 1.0; }
+  // Linear 0..1, clamped; refreshes `last`.
+  double raw(double durMs) const {
+    last = std::clamp(
         std::chrono::duration<double, std::milli>(clock::now() - start)
                 .count() /
             std::max(1.0, durMs),
         0.0, 1.0);
+    return last;
   }
 
 private:
@@ -259,19 +263,19 @@ private:
   // decision sees m_active=false and renders the real windows cleanly.
   bool m_pendingDeactivate = false;
   double m_progress = 0.0;
-  Tween m_timeline; // master open/close clock (direction via m_opening)
+  Tween m_timeline; // master open/close clock (direction via m_opening);
+                    // drives the CHROME only (backdrop/strip/buttons)
   mutable std::chrono::steady_clock::time_point m_lastAnimTick{};
-  // Last-known timeline positions, captured every animated frame — the anchor
-  // points stall compensation rewinds to.
-  double m_timelineRaw = 0.0;
-  double m_reflowRaw = 0.0;
-  double m_newCardRaw = 0.0;
-  // A post-move reflow glides the tiles into their new slots WITHOUT re-running
-  // the chrome (backdrop + strip) reveal. m_progress stays pinned at 1 (chrome
-  // settled) while this separate timer drives the tile natural->target lerp, so
-  // the strip no longer re-slides and the backdrop no longer flashes on a drop.
-  bool m_reflowing = false;
-  Tween m_reflow; // post-move tile-glide clock (chrome stays settled at 1)
+  // Tiles ride their OWN clock, never m_progress: any layout change (open,
+  // drop reflow, sync, desktop flip, close) is just "retarget + restart".
+  // natural = where the tile is shown now, target = where it must land.
+  Tween m_tileClock;
+  // Set every tile's natural to the box it is being shown at RIGHT NOW
+  // (`oldBoxes` — captured before a rebuild) and restart the clock: the next
+  // frames glide them into the fresh targets. Empty oldBoxes = start from the
+  // freshly assigned naturals (plain open).
+  void startTileGlide(
+      const std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);
   PHLMONITORREF m_monitor;
   PHLWORKSPACEREF m_workspace;    // workspace shown in the main area
   PHLWORKSPACEREF m_liveWsAtOpen; // monitor's live active workspace when opened
@@ -503,8 +507,6 @@ private:
   double animDuration() const;
   // "+" card pop-in duration: never shorter than the tile glide it overlaps.
   double newCardDur() const { return std::max(120.0, animDuration()); }
-  double tileBaseProgress()
-      const; // 0..1 driver for tile glide (reflow timer or m_progress)
   double tileProgress(int i) const; // staggered raw progress for tile i
   LRect
   currentBox(const Tile &t,

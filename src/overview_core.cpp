@@ -563,11 +563,10 @@ void Overview::open() {
 
   m_active = true;
   m_opening = true;
-  m_reflowing = false;
   m_pendingDeactivate = false;
   m_progress = 0.0;
-  m_timeline.begin();
-  m_timelineRaw = 0.0;
+  m_timeline.begin();   // chrome reveal
+  m_tileClock.begin();  // tiles glide real boxes -> grid slots
   m_lastAnimTick = {}; // fresh animation cycle: no stale gap measurement
   hideLayers(); // fade bars out (no-op unless hide_top/overlay_layers set)
   m_cursor.onOpen(m, cursorMode());
@@ -586,7 +585,6 @@ void Overview::close() {
   if (!m_active)
     return;
   m_opening = false;
-  m_reflowing = false;
 
   // Once ANYTHING starts a close (this one included — the doubleclick timer's
   // own callback routes back through here), a still-pending single-click
@@ -595,20 +593,20 @@ void Overview::close() {
   // redundant or act on gone state.
   cancelPendingClick();
 
-  // Re-seed every tile's `natural` to the window's REAL settled geometry so the
-  // close anim glides target -> real pixel-perfect (renderMainWindows assumes
-  // "progress 0 == real"). `natural` gets repurposed as a reflow START box
-  // (always in desktop mode, after any swap/drop reflow), so without this
-  // windows jump on close.
+  // Tiles fly home under their own clock: freeze them where they are shown
+  // now, retarget at the window's REAL settled geometry, restart. Pixel-perfect
+  // landing regardless of what any earlier glide was doing.
   if (const auto m = m_monitor.lock()) {
     for (auto &t : m_tiles) {
+      t.natural = currentBox(t, static_cast<int>(&t - m_tiles.data()));
       if (const auto w = t.win.lock()) {
         const auto p = w->positionAnimation()->goal();
         const auto s = w->sizeAnimation()->goal();
-        t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
-                          std::max(1.0, s.x), std::max(1.0, s.y)};
+        t.target = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
+                         std::max(1.0, s.x), std::max(1.0, s.y)};
       }
     }
+    m_tileClock.begin();
   }
 
   restoreLayers(); // bars fade back in over the close animation, not in a pop
@@ -619,7 +617,6 @@ void Overview::close() {
   // updateAnimation reads m_progress as 1 - timeline.raw(), so resuming from
   // progress p means seeking the timeline to (1 - p).
   m_timeline.seek(1.0 - m_progress, animDuration());
-  m_timelineRaw = 1.0 - m_progress;
   dbg("close from progress " + std::to_string(m_progress).substr(0, 5));
   damage();
 }
@@ -651,7 +648,6 @@ void Overview::hardClose() {
 
   m_active = false;
   m_opening = false;
-  m_reflowing = false;
   m_pendingDeactivate = false;
   m_desktopMode = false;
   m_newCardAnim = false;
@@ -811,7 +807,6 @@ void Overview::deactivate() {
 
   m_active = false;
   m_opening = false;
-  m_reflowing = false;
   m_pendingDeactivate = false;
   m_desktopMode = false;
   m_allOverride =
@@ -845,7 +840,9 @@ void Overview::damage() const {
 void Overview::rearmanim() const {
   if (!m_active)
     return;
-  const bool animating = m_reflowing || m_newCardAnim || m_drag.lifted ||
+  const double dur = animDuration();
+  const bool animating = !m_tileClock.done(dur) || m_newCardAnim ||
+                         m_drag.lifted ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0);
   if (!animating)
@@ -856,7 +853,8 @@ void Overview::rearmanim() const {
 
 void Overview::ensureAnimPump() {
   const bool stillAnimating =
-      m_active && (m_reflowing || m_newCardAnim || m_drag.lifted ||
+      m_active && (!m_tileClock.done(animDuration()) || m_newCardAnim ||
+                   m_drag.lifted ||
                    (m_opening && m_progress < 1.0) ||
                    (!m_opening && m_progress > 0.0));
   if (!stillAnimating) {
@@ -876,7 +874,8 @@ void Overview::ensureAnimPump() {
       std::chrono::milliseconds(8),
       [this](SP<CEventLoopTimer> self, void *) {
         const bool go = m_active && g_pHyprRenderer &&
-                        (m_reflowing || m_newCardAnim || m_drag.lifted ||
+                        (!m_tileClock.done(animDuration()) ||
+                         m_newCardAnim || m_drag.lifted ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0));
         if (!go) {
