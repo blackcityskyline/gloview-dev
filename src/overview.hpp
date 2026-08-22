@@ -558,6 +558,18 @@ private:
   void startWinFade();                 // capture FADE bases, let hook render
   void applyWinFade(double visible);   // warp every tile window's FADE slot
   void endWinFade();                   // restore bases, re-enable hiding
+  // Current real-scene visibility (1 = fully real desktop). Shared by the
+  // per-frame warp AND by startWinFade's immediate init — warping only from
+  // RENDER_LAST_MOMENT left one stale frame where just-re-shown windows drew
+  // at full alpha under the semi-transparent backdrop (the boundary blink).
+  double winFadeVisNow() const;
+  // Multiplier for PREVIEW surface alphas while fading: previews materialize
+  // out of the real scene on entry and dissolve back into it on exit. Without
+  // this, an unblurred CSurfacePassElement copy instantly replaced the blurred
+  // real window at its natural box (the "blur vanishes in one frame" artifact).
+  [[nodiscard]] double previewAlphaMul() const {
+    return m_winFade ? (m_opening ? eased() : std::pow(eased(), 0.45)) : 1.0;
+  }
   double eased() const; // opacity / backdrop progress
   // plugin:gloview:duration with the shared floor (ms), read LIVE so config
   // changes apply to in-flight animations.

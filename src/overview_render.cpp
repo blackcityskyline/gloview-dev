@@ -480,11 +480,8 @@ void Overview::updateAnimation() {
   // the same slower exit tail as the blur so windows are fully opaque exactly
   // when the previews land.
   if (m_winFade) {
-    const double ee = eased();
-    const double blurFactor =
-        m_opening ? ee : std::pow(ee, 0.45); // mirrors the backdrop's kk
-    applyWinFade(1.0 - blurFactor);
-    if (m_opening && ee >= 0.999)
+    applyWinFade(winFadeVisNow());
+    if (m_opening && eased() >= 0.999)
       endWinFade(); // settled open: let shouldHideWindow hide them again
   }
 }
@@ -1210,7 +1207,8 @@ void Overview::renderStripWindows() const {
                         slot.h * scale);
       const CBox cardPx(card.x * scale, card.y * scale, card.w * scale,
                         card.h * scale);
-      renderWindowLive(w, m, slotPx, cardPx, static_cast<float>(e), when, round,
+      renderWindowLive(w, m, slotPx, cardPx,
+                       static_cast<float>(e * previewAlphaMul()), when, round,
                        roundPow);
     }
   }
