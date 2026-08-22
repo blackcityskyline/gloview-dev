@@ -221,8 +221,14 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     if (e < 0.999) {
         if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
             const CBox monPx{0.0, 0.0, m->m_size.x * s, m->m_size.y * s};
+            // Alpha (1 - e): the backing hands over to the global backdrop
+            // CONTINUOUSLY. A fixed 1.0 made the tile region brighter than
+            // its surroundings while active (extra un-dimmed blur layer) and
+            // snapped darker the moment the backing stopped at e >= 0.999 —
+            // the one-frame "dim step" at animation end.
             g_pHyprOpenGL->scissor(pxb(lb, s));
-            g_pHyprOpenGL->renderTexture(btex, monPx, {.a = 1.0F});
+            g_pHyprOpenGL->renderTexture(btex, monPx,
+                                         {.a = static_cast<float>(1.0 - e)});
             g_pHyprOpenGL->scissor(nullptr);
         }
     }
