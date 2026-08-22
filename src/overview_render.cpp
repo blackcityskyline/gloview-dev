@@ -1139,17 +1139,35 @@ void Overview::renderStripButtons() const {
     const LRect card = stripCardAt(i);
 
     // Destination placement hint: while dragging a window (from the grid or
-    // straight off another card) over THIS card, split it into quadrants by
-    // cursor position and highlight the nearest one — a spatial hint of roughly
-    // where the window would land in that workspace's tiling, not a guarantee
-    // of the exact slot (the real tiling layout has the final say once it's
-    // actually dropped there).
+    // straight off another card) over THIS card, highlight where it would
+    // land. The card's inner slots ARE the target workspace's real tiling —
+    // each StripWin.rel is that window's actual monitor-space box — so this
+    // needs zero knowledge of the layout engine's name: dwindle, master or
+    // anything else is already reflected in the slot shapes. Cursor over a
+    // window's slot splits THAT slot by the nearest edges (a wide slot hints
+    // left/right, a tall one top/bottom, a square follows the cursor's intent);
+    // anywhere else (empty card, gaps) highlights the whole card. Still a hint:
+    // the real tiling has the final say once the drop happens.
     if (dropping && static_cast<int>(i) == m_hoveredStrip) {
-      const double qx = (m_dragX < card.cx()) ? card.x : card.cx();
-      const double qy = (m_dragY < card.cy()) ? card.y : card.cy();
-      const LRect quad{qx, qy, card.w / 2.0, card.h / 2.0};
+      LRect zone = card;
+      constexpr double TOL = 6.0; // logical px: tolerate rounding/gaps
+      for (size_t j = 0; j < it.wins.size(); ++j) {
+        const LRect sl = stripWinSlotRect(it, card, j);
+        if (m_dragX < sl.x - TOL || m_dragX > sl.x + sl.w + TOL ||
+            m_dragY < sl.y - TOL || m_dragY > sl.y + sl.h + TOL)
+          continue;
+        const double dl = m_dragX - sl.x, dr = sl.x + sl.w - m_dragX;
+        const double dt = m_dragY - sl.y, db = sl.y + sl.h - m_dragY;
+        if (std::min(dl, dr) <= std::min(dt, db))
+          zone = (dl < dr) ? LRect{sl.x, sl.y, sl.w / 2.0, sl.h}
+                           : LRect{sl.x + sl.w / 2.0, sl.y, sl.w / 2.0, sl.h};
+        else
+          zone = (dt < db) ? LRect{sl.x, sl.y, sl.w, sl.h / 2.0}
+                           : LRect{sl.x, sl.y + sl.h / 2.0, sl.w, sl.h / 2.0};
+        break;
+      }
       g_pHyprOpenGL->renderRect(
-          pxb(quad, s), CHyprColor(1.0, 1.0, 1.0, 0.22 * e),
+          pxb(zone, s), CHyprColor(1.0, 1.0, 1.0, 0.22 * e),
           {.round = pxr(cardRound / 2, s), .roundingPower = roundPow});
     }
 
