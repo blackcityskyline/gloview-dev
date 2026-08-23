@@ -215,6 +215,12 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
             g_pHyprOpenGL->renderTexture(
                 btex, monPx,
                 {.a = static_cast<float>(std::max(1.0 - e, 1.0 - apNow))});
+            // the cached blur carries NO dim (it is painted once over the
+            // whole backdrop at the blit site) — without this rect a popping
+            // tile shows unlit wallpaper against the dimmed surroundings
+            g_pHyprOpenGL->renderRect(
+                pxb(lb, s),
+                argb(cfgColor("backdrop_color", "0x73070a10"), 1.0), {});
             g_pHyprOpenGL->scissor(nullptr);
         }
     }
