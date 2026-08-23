@@ -1186,10 +1186,11 @@ void Overview::renderStripButtons() const {
   const bool showClose = m_desktopMode || closeButtonsAlwaysOn();
   const bool dropping =
       m_drag.armed() && m_drag.lifted;
-  // RMB drag carrying a strip window = swap mode (real-slot rings, no zones)
+  // Carrying a STRIP window: hovering an exact slot means swap intent —
+  // real-slot rings for ANY button (both swap on slot drop); insert-zone
+  // hints only apply away from slots.
   const bool rmbSwap =
-      dropping && m_drag.press == Drag::Press::StripWin &&
-      m_drag.button == BTN_RIGHT;
+      dropping && m_drag.press == Drag::Press::StripWin;
 
   // RMB swap-drag: ring the SOURCE slot once, wherever it lives.
   if (rmbSwap && m_drag.idx >= 0 &&
