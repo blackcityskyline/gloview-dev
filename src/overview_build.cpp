@@ -323,9 +323,12 @@ void Overview::buildStrip() {
   }
 
   // On open / rebuild, scroll the active workspace into view (centered) when
-  // the group overflows. Manual wheel scrolling (onMouseAxis) overrides this
-  // afterwards.
+  // the group overflows. If a strip was already on screen, GLIDE to the new
+  // offset (strip_step) — that is what makes each workspace step read as one
+  // motion; a first build snaps (from==want on a fresh session).
+  const double prevScroll = m_stripScrollTarget;
   m_stripScroll = 0.0;
+  double want = 0.0;
   if (m_stripScrollMax > 0.0) {
     for (const auto &it : m_strip) {
       if (!it.active)
@@ -333,11 +336,11 @@ void Overview::buildStrip() {
       const double cardCenter =
           (horiz ? it.card.x + it.card.w / 2.0 : it.card.y + it.card.h / 2.0);
       const double viewCenter = mainOrigin + availMain / 2.0;
-      m_stripScroll =
-          std::clamp(cardCenter - viewCenter, 0.0, m_stripScrollMax);
+      want = std::clamp(cardCenter - viewCenter, 0.0, m_stripScrollMax);
       break;
     }
   }
+  animateStripTo(prevScroll, want);
 }
 
 // Scroll offset of the strip group along its main axis (horizontal → x,

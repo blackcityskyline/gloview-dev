@@ -495,6 +495,15 @@ void Overview::updateAnimation() {
   }
   m_lastAnimTick = nowTick;
 
+  // AN5: ease the strip scroll toward its target (strip_step leaf).
+  if (!m_stripTween.done(animMs("strip_step", nullptr, 200)))
+    m_stripScroll = std::lerp(
+        m_stripScrollFrom, m_stripScrollTarget,
+        curveEval(anim("strip_step").curve,
+                  m_stripTween.raw(animMs("strip_step", nullptr, 200))));
+  else
+    m_stripScroll = m_stripScrollTarget;
+
   // Advance/prune swap pulses. Progress accumulates per animated frame with
   // the frame delta CAPPED, so a post-drop render hole cannot jump the ring
   // through its overshoot plateau (the "snaps wide and freezes" artifact).
@@ -1448,6 +1457,24 @@ void Overview::renderCursorOnTop() const {
     return;
   m_cursor.renderOnTop(
       m, argb(cfgColor("backdrop_color", "0x73070a10"), 1.0));
+}
+
+void Overview::animateStripTo(double from, double to) {
+  from = std::clamp(from, 0.0, std::max(0.0, m_stripScrollMax));
+  to = std::clamp(to, 0.0, std::max(0.0, m_stripScrollMax));
+  const auto a = anim("strip_step");
+  if (!a.on || std::abs(to - from) < 0.5) {
+    m_stripScrollFrom = to;
+    m_stripScrollTarget = to;
+    m_stripScroll = to;
+    return;
+  }
+  // retarget mid-flight: continue from wherever the eased value is NOW so
+  // rapid wheel notches read as one continuous scrub
+  m_stripScrollFrom =
+      !m_stripTween.done(a.ms) ? m_stripScroll : from;
+  m_stripScrollTarget = to;
+  m_stripTween.begin();
 }
 
 void Overview::kickPulse(const PHLWINDOW &w) {

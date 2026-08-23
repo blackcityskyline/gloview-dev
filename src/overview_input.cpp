@@ -71,8 +71,9 @@ bool Overview::onMouseAxis(const IPointer::SAxisEvent &e) {
   if (m_stripScrollMax <= 0.0)
     return true;
   const double step = stripThickness() * 0.9; // ~one card per notch
-  m_stripScroll =
-      std::clamp(m_stripScroll + notches * step, 0.0, m_stripScrollMax);
+  animateStripTo(
+      m_stripScroll,
+      std::clamp(m_stripScrollTarget + notches * step, 0.0, m_stripScrollMax));
   updateHover(); // the card under the cursor changed
   damage();
   return true;
