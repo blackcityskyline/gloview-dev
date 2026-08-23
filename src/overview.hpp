@@ -189,7 +189,11 @@ public:
   SP<Render::ITexture> renderBackdropSource(int W, int H) const;
   void renderStrip() const;
   void
-  renderStripWindows() const; // live window surfaces inside the strip cards
+  renderStripWindows(bool execCtx = false) const; // live window surfaces inside
+                                                  // the strip cards; execCtx=true
+                                                  // when called from pass
+                                                  // EXECUTION (Phase::Mid) —
+                                                  // enables the immediate leaf
   void
   renderStripButtons() const;  // per-card close-all button + drag destination
                                // hint, drawn after the strip's live surfaces
@@ -255,6 +259,10 @@ public:
   [[nodiscard]] bool
   snapshotMode() const; // plugin:gloview:preview_mode == "snapshot" (queried
                         // by renderWindowLive too)
+  [[nodiscard]] bool
+  immediateSurfaces() const; // R1 A/B flag (REFACTORING.md v5): draw window
+                             // content immediately inside the chrome phase
+                             // instead of queueing CSurfacePassElements
 
 private:
   struct Tile {

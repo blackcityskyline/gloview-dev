@@ -40,8 +40,8 @@ using Render::GL::g_pHyprOpenGL;
 namespace gloview {
 
 // Defined (external linkage) in overview_render.cpp; forward-declared here rather than
-// duplicated since both TUs need the exact same ~70-line implementation.
-void renderWindowLive(const PHLWINDOW& w, const PHLMONITOR& mon, const CBox& destPx, const CBox& clipPx, float alpha, const Time::steady_tp& when, int roundPx = 0, float roundingPower = 2.0F);
+// duplicated since both TUs need the exact same implementation.
+void renderWindowLive(const PHLWINDOW& w, const PHLMONITOR& mon, const CBox& destPx, const CBox& clipPx, float alpha, const Time::steady_tp& when, int roundPx = 0, float roundingPower = 2.0F, bool execCtx = false);
 bool windowBlurEligible(const PHLWINDOW &w); // defined in overview_render.cpp
 
 namespace {
