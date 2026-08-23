@@ -42,6 +42,7 @@ namespace gloview {
 // Defined (external linkage) in overview_render.cpp; forward-declared here rather than
 // duplicated since both TUs need the exact same ~70-line implementation.
 void renderWindowLive(const PHLWINDOW& w, const PHLMONITOR& mon, const CBox& destPx, const CBox& clipPx, float alpha, const Time::steady_tp& when, int roundPx = 0, float roundingPower = 2.0F);
+bool windowBlurEligible(const PHLWINDOW &w); // defined in overview_render.cpp
 
 namespace {
 
@@ -203,7 +204,13 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // frame 1 and the global backdrop then dissolves over it seamlessly.
     const double apNow =
         t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
-    if (e < 0.999 || apNow < 0.999) {
+    // Eligible translucent windows draw their ENTIRE session with the frost
+    // underlay (cached blur + dim): that is what makes a preview's interior
+    // pixel-identical to the surrounding backdrop, independent of window
+    // count/class. Non-eligible ones keep the legacy transient-only rule.
+    const bool frostAlways =
+        w && windowBlurEligible(w);
+    if (frostAlways || e < 0.999 || apNow < 0.999) {
         if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
             const CBox monPx{0.0, 0.0, m->m_size.x * s, m->m_size.y * s};
             // Alpha (1 - e): the backing hands over to the global backdrop
@@ -214,7 +221,10 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
             g_pHyprOpenGL->scissor(pxb(lb, s));
             g_pHyprOpenGL->renderTexture(
                 btex, monPx,
-                {.a = static_cast<float>(std::max(1.0 - e, 1.0 - apNow))});
+                {.a = frostAlways
+                          ? 1.0F
+                          : static_cast<float>(
+                                std::max(1.0 - e, 1.0 - apNow))});
             // the cached blur carries NO dim (it is painted once over the
             // whole backdrop at the blit site) — without this rect a popping
             // tile shows unlit wallpaper against the dimmed surroundings
