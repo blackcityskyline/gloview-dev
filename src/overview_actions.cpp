@@ -290,6 +290,7 @@ void Overview::switchToWorkspace(const StripItem &it) {
     t.appear = 0.0;
   m_ghosts.clear();
   m_populate.begin();
+  ensureAnimPump();
   m_tileClock.pinEnd(reflowDur());
   m_progress = 1.0;
   m_opening = true;
