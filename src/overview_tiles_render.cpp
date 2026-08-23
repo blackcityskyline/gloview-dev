@@ -372,11 +372,12 @@ void Overview::renderMainWindows() const {
             continue;
         const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
         const CBox  px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
-        const double ap = m_tiles[i].appear < 1.0
-                              ? tileAppear(static_cast<int>(i))
-                              : 1.0;
-        renderWindowLive(w, m, px, px, static_cast<float>(ap), when, round,
-                         roundPow);
+        // Surface alpha stays 1.0 ALWAYS: an alpha<1 surface element flips
+        // CSurfacePassElement into blended/blur-gate territory (needsLiveBlur
+        // sees ALPHA<1, CANDISABLEBLEND breaks) — every grid rebuild then
+        // flickered dim/bright. Population is expressed by the box scale in
+        // currentBox() alone.
+        renderWindowLive(w, m, px, px, 1.0F, when, round, roundPow);
     }
 }
 
