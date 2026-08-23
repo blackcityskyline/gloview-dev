@@ -38,6 +38,33 @@ class CEventLoopTimer;
 
 namespace gloview {
 
+// Easing curves selectable per animation leaf from the config
+// (plugin:gloview:<leaf>_curve). Values mirror the CSS-ish names users know.
+enum class Curve : int { Linear, EaseOut, EaseInOut, Back };
+
+inline double curveEval(Curve c, double t) {
+  t = std::clamp(t, 0.0, 1.0);
+  switch (c) {
+  case Curve::Linear: return t;
+  case Curve::EaseInOut:
+    return t < 0.5 ? 4.0 * t * t * t : 1.0 - std::pow(-2.0 * t + 2.0, 3.0) / 2.0;
+  case Curve::Back: { // easeOutBack — small overshoot, for pops only
+    const double c1 = 1.70158, c3 = c1 + 1.0;
+    return 1.0 + c3 * std::pow(t - 1.0, 3.0) + c1 * std::pow(t - 1.0, 2.0);
+  }
+  case Curve::EaseOut: break;
+  }
+  const double inv = 1.0 - t;
+  return 1.0 - inv * inv * inv; // easeOutCubic — the historical default
+}
+
+inline Curve curveFromName(const std::string &s) {
+  if (s == "linear") return Curve::Linear;
+  if (s == "easeinout") return Curve::EaseInOut;
+  if (s == "back") return Curve::Back;
+  return Curve::EaseOut; // "easeout" + anything unparsable
+}
+
 // Monotonic timeline anchor for the overview's hand-driven animation clocks.
 // Durations live at the call sites (the `duration` config must be picked up
 // live even mid-animation), the tween only owns WHEN the clock started plus
@@ -468,6 +495,23 @@ private:
   // grammar (hex literal, or a palette-resolved hex produced Lua-side).
   Hyprlang::INT cfgColor(const char *base, const char *fallback) const;
 
+  // ---- animation registry (AN1) -----------------------------------------
+  // Every animation is a config "leaf": <leaf>_enabled / <leaf>_ms /
+  // <leaf>_curve (see the kAnimCfg table in main.cpp), under one master
+  // switch animations_enabled that gates EVERYTHING. _ms = -1 means "follow
+  // the legacy `duration` option", preserving single-knob configs.
+  struct AnimCfg {
+    bool on = false;
+    int ms = 1;
+    Curve curve = Curve::EaseOut;
+  };
+  AnimCfg anim(const char *leaf) const;
+  // Effective duration for a leaf: 1ms when master/leaf disabled (every clock
+  // then completes within one frame — the whole plugin goes static without
+  // any per-site branching), else <leaf>_ms or its fallback.
+  double animMs(const char *leaf, const char *msFallbackKey,
+                int msFallback) const;
+
   // Which monitor edge the workspace strip is anchored to. Top/Bottom give a
   // horizontal strip (cards in a row); Left/Right give a vertical strip (cards
   // in a column).
@@ -511,8 +555,14 @@ private:
   // plugin:gloview:duration with the shared floor (ms), read LIVE so config
   // changes apply to in-flight animations.
   double animDuration() const;
+  // Tile-glide leaf (entry, reflow, close-home all ride one clock).
+  double reflowDur() const {
+    return animMs("reflow", "plugin:gloview:duration", 360);
+  }
   // "+" card pop-in duration: never shorter than the tile glide it overlaps.
-  double newCardDur() const { return std::max(120.0, animDuration()); }
+  double newCardDur() const {
+    return std::max(120.0, animMs("new_card", "plugin:gloview:duration", 360));
+  }
   double tileProgress(int i) const; // staggered raw progress for tile i
   LRect
   currentBox(const Tile &t,

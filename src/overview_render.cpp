@@ -45,12 +45,6 @@ namespace gloview {
 
 namespace {
 
-double easeOutCubic(double t) {
-  t = std::clamp(t, 0.0, 1.0);
-  const double inv = 1.0 - t;
-  return 1.0 - inv * inv * inv;
-}
-
 double lerp(double a, double b, double t) { return a + (b - a) * t; }
 
 CBox box(const LRect &r) { return CBox{r.x, r.y, r.w, r.h}; }
@@ -429,10 +423,17 @@ private:
 
 // ---- animation --------------------------------------------------------------
 
-double Overview::eased() const { return easeOutCubic(m_progress); }
+double Overview::eased() const {
+  // Chrome reveal/collapse curve follows its own leaf: open while entering,
+  // close while exiting (m_progress is the LINEAR clock value either way).
+  return curveEval(anim(m_opening ? "open" : "close").curve, m_progress);
+}
 
 double Overview::animDuration() const {
-  return std::max(1.0, static_cast<double>(cfgInt("plugin:gloview:duration", 360)));
+  // Legacy shared knob: open/close/reflow leaves follow it when their own
+  // _ms is unset (sentinel -1). Master-off collapses everything to 1ms.
+  return animMs(m_opening ? "open" : "close",
+                "plugin:gloview:duration", 360);
 }
 
 double Overview::tileProgress(int i) const {
@@ -444,7 +445,7 @@ double Overview::tileProgress(int i) const {
   // chrome's 1-u^3 — tiles raced ahead mid-flight while the band lingered,
   // the "window lands before the strip finishes" desync.
   const double base =
-      m_opening ? m_tileClock.raw(animDuration()) : m_progress;
+      m_opening ? m_tileClock.raw(reflowDur()) : m_progress;
   const int n = static_cast<int>(m_tiles.size());
   if (n <= 1)
     return base;
@@ -466,7 +467,7 @@ LRect Overview::currentBox(const Tile &t, int i) const {
   // shorter) stagger above it read as jerky rather than fluid, since each
   // tile's own little bounce landed at a visibly different moment. A single
   // shared curve with no overshoot is what actually reads as "monolithic".
-  const double e = easeOutCubic(tileProgress(i));
+  const double e = curveEval(anim("reflow").curve, tileProgress(i));
   const auto &a = t.natural;
   const auto &b = t.target;
   return LRect{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
@@ -485,7 +486,7 @@ void Overview::updateAnimation() {
             .count();
     if (gapMs > 100.0) {
       m_timeline.compensateStall(gapMs, dur);
-      m_tileClock.compensateStall(gapMs, dur);
+      m_tileClock.compensateStall(gapMs, reflowDur());
       if (m_newCardAnim)
         m_newCard.compensateStall(gapMs, newCardDur());
     }
@@ -1380,10 +1381,8 @@ double Overview::newCardScale() const {
   if (!m_newCardAnim)
     return 1.0;
   const double p = m_newCard.raw(newCardDur());
-  // easeOutBack — a little overshoot so the card "pops" in
-  const double c1 = 1.70158, c3 = c1 + 1.0;
-  const double x = p - 1.0;
-  return 1.0 + c3 * x * x * x + c1 * x * x;
+  // pop curve from the registry ("back" default — a little overshoot)
+  return curveEval(anim("new_card").curve, p);
 }
 
 } // namespace gloview
