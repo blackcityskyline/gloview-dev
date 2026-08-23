@@ -114,6 +114,18 @@ inline void strokeRing(const LRect &lb, double s, const CHyprColor &col,
        .outerRound = outerRoundPx(round, size, roundPow, s)});
 }
 
+// Ring around an ALREADY-PIXEL box (pulse flashes etc.), explicit alpha.
+inline void strokeRingPx(const CBox &b, const CHyprColor &col, float alpha,
+                         int round, float roundPow) {
+  Render::GL::g_pHyprOpenGL->renderBorder(
+      b, Config::CGradientValueData(col),
+      {.round = round,
+       .roundingPower = roundPow,
+       .borderSize = 2,
+       .a = alpha,
+       .outerRound = outerRoundPx(round, 2, roundPow, 1.0)});
+}
+
 inline void safetyBacking(const LRect &lb, double s, Hyprlang::INT col,
                           double alphaMul, int round, float roundPow) {
   const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0),

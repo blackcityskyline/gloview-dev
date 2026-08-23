@@ -193,6 +193,7 @@ public:
   void
   renderStripButtons() const;  // per-card close-all button + drag destination
                                // hint, drawn after the strip's live surfaces
+  void renderPulses(bool strip) const; // swap success rings (grid|strip)
   void renderPreviews() const; // static tiles' chrome (shadow/border/backing),
                                // drawn under the strip
   void
@@ -591,6 +592,17 @@ private:
                                 // windows' places (real layout + overview)
   bool swapWindows(const PHLWINDOW &a,
                    const PHLWINDOW &b); // real-slot swap core (grid+strip)
+  // Success pop after a swap (anim_swap_pulse): window-keyed so rebuilds
+  // between kick and render can't orphan it. Rendered as a ring flash around
+  // wherever the window currently sits (grid tile or strip slot).
+  struct WinPulse {
+    PHLWINDOWREF w;
+    std::chrono::steady_clock::time_point t0;
+  };
+  std::vector<WinPulse> m_pulses;
+  void kickPulse(const PHLWINDOW &w);
+  void drawPulseRing(const CBox &boxPx, int round, float roundPow,
+                     const CHyprColor &col, double p) const;
   void addWorkspace();          // "+" card: create a workspace (animate it in,
                                 // optionally follow)
   void closeWorkspaceWindows(

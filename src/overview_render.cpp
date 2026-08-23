@@ -356,11 +356,13 @@ public:
       break;
     case Phase::Buttons:
       m_owner->renderTileButtons();
-      break; // per-window "✕", on top of the surfaces
+      m_owner->renderPulses(false);
+      break; // per-window "✕" + swap pulses, on top of the surfaces
     case Phase::Mid:
       m_owner->renderStrip();
       break; // strip chrome; surfaces queued after
     case Phase::StripButtons:
+      m_owner->renderPulses(true);
       m_owner->renderStripButtons();
       break; // per-card "✕" + drop-quadrant hint, on top
     case Phase::DragBack:
@@ -492,6 +494,14 @@ void Overview::updateAnimation() {
     }
   }
   m_lastAnimTick = nowTick;
+
+  // prune finished swap pulses (window-keyed; see WinPulse in overview.hpp)
+  const double pulseMs = animMs("swap_pulse", nullptr, 180);
+  std::erase_if(m_pulses, [&pulseMs](const WinPulse &p) {
+    return p.w.expired() || (std::chrono::steady_clock::now() - p.t0) >
+                                std::chrono::duration<double, std::milli>(
+                                    pulseMs);
+  });
 
   const double t = m_timeline.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
@@ -1166,6 +1176,25 @@ void Overview::renderStripButtons() const {
   const bool showClose = m_desktopMode || closeButtonsAlwaysOn();
   const bool dropping =
       m_drag.armed() && m_drag.lifted;
+  // RMB drag carrying a strip window = swap mode (real-slot rings, no zones)
+  const bool rmbSwap =
+      dropping && m_drag.press == Drag::Press::StripWin &&
+      m_drag.button == BTN_RIGHT;
+
+  // RMB swap-drag: ring the SOURCE slot once, wherever it lives.
+  if (rmbSwap && m_drag.idx >= 0 &&
+      m_drag.idx < static_cast<int>(m_strip.size()) &&
+      m_drag.winIdx < static_cast<int>(m_strip[m_drag.idx].wins.size())) {
+    strokeRingPx(pxb(stripWinSlotRect(m_strip[m_drag.idx],
+                                      stripCardAt(m_drag.idx),
+                                      m_drag.winIdx),
+                     s),
+                 argb(cfgColor("select_border", "0xf066ccff"), e),
+                 0.7F * static_cast<float>(e),
+                 clampRound(cfgInt("plugin:gloview:preview_round", 12), 40,
+                            40),
+                 roundPow);
+  }
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
@@ -1173,15 +1202,29 @@ void Overview::renderStripButtons() const {
       continue;
     const LRect card = stripCardAt(i);
 
-    // Destination placement hint: while dragging a window (from the grid or
-    // straight off another card) over THIS card, show one of exactly TWO
-    // scenarios — the whole card (empty workspace), or the card split into
-    // two halves. Split orientation follows the workspace's current tiling:
-    // a wide first window means the tree splits left/right, a tall one
-    // top/bottom; anything deeper than one split still reads as the same two
-    // halves. The hovered half lights up. Still a hint — the real tiling has
-    // the final say once the drop happens.
-    if (dropping && static_cast<int>(i) == m_hoveredStrip) {
+    // Destination hints. LMB drag (insert): exactly TWO scenarios — whole
+    // card (empty ws) or halves by the first window's aspect. RMB drag while
+    // carrying a STRIP window (swap): no insert zones at all — instead the
+    // REAL windows are highlighted where they actually sit: a ring on the
+    // exact hovered slot (the swap partner) plus a ring on the source slot.
+    if (rmbSwap && static_cast<int>(i) == m_hoveredStrip && !it.wins.empty()) {
+      const auto hoverCol =
+          argb(cfgColor("hover_border", "0xf0ffffff"), e);
+      for (size_t j = 0; j < it.wins.size(); ++j) {
+        const auto v = it.wins[j].win.lock();
+        if (!v || v->m_isMapped == false)
+          continue;
+        const LRect sl = stripWinSlotRect(it, card, j);
+        if (!sl.contains(m_drag.x, m_drag.y))
+          continue;
+        strokeRingPx(pxb(sl, s), hoverCol, 0.9F * static_cast<float>(e),
+                     clampRound(cfgInt("plugin:gloview:preview_round", 12),
+                                sl.w, sl.h),
+                     roundPow);
+        break;
+      }
+    } else if (!rmbSwap && dropping &&
+               static_cast<int>(i) == m_hoveredStrip) {
       LRect zone = card;
       if (!it.wins.empty()) {
         const auto &r = it.wins.front().rel;
@@ -1375,6 +1418,76 @@ void Overview::renderCursorOnTop() const {
     return;
   m_cursor.renderOnTop(
       m, argb(cfgColor("backdrop_color", "0x73070a10"), 1.0));
+}
+
+void Overview::kickPulse(const PHLWINDOW &w) {
+  if (!w || !anim("swap_pulse").on)
+    return;
+  std::erase_if(m_pulses, [&w](const WinPulse &p) { return p.w.lock() == w; });
+  m_pulses.push_back(WinPulse{w, std::chrono::steady_clock::now()});
+}
+
+// Active swap pulses. strip=true → ring the window's STRIP slot; false → its
+// GRID tile box. A window present in both gets pulsed on both surfaces.
+void Overview::renderPulses(bool strip) const {
+  if (m_pulses.empty())
+    return;
+  const auto m = m_monitor.lock();
+  if (!m)
+    return;
+  const double s = m->m_scale;
+  const float roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+  const auto col = argb(cfgColor("hover_border", "0xf0ffffff"), 1.0);
+  for (const auto &p : m_pulses) {
+    const auto w = p.w.lock();
+    if (!w)
+      continue;
+    const double el = std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - p.t0)
+                          .count();
+    const double pr =
+        std::clamp(el / animMs("swap_pulse", nullptr, 180), 0.0, 1.0);
+    if (strip) {
+      for (size_t i = 0; i < m_strip.size(); ++i) {
+        const auto &it = m_strip[i];
+        if (it.kind != StripItem::Kind::Ws)
+          continue;
+        for (size_t j = 0; j < it.wins.size(); ++j) {
+          if (it.wins[j].win.lock() != w)
+            continue;
+          const LRect card = stripCardAt(i);
+          const LRect sl = stripWinSlotRect(it, card, j);
+          strokeRingPx(pxb(sl, s), col, static_cast<float>((1.0 - pr) * 0.9),
+                       clampRound(cfgInt("plugin:gloview:preview_round", 12),
+                                  sl.w, sl.h),
+                       roundPow);
+        }
+      }
+    } else {
+      for (size_t i = 0; i < m_tiles.size(); ++i) {
+        if (m_tiles[i].win.lock() != w)
+          continue;
+        const LRect lb =
+            tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
+        drawPulseRing(pxb(lb, s), pxr(cfgInt("plugin:gloview:preview_round", 12), s),
+                      roundPow, col, pr);
+        break;
+      }
+    }
+  }
+}
+
+// Expanding/fading ring flash around a box at pulse progress p (0..1):
+// easeOutBack pushes the outline slightly past the box, then it settles back
+// while fading out.
+void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
+                             const CHyprColor &col, double p) const {
+  const double k = curveEval(Curve::Back, p) * 0.10;
+  const double cx = boxPx.x + boxPx.w / 2.0, cy = boxPx.y + boxPx.h / 2.0;
+  const CBox ring{cx - boxPx.w * (0.5 + k), cy - boxPx.h * (0.5 + k),
+                  boxPx.w * (1.0 + 2.0 * k), boxPx.h * (1.0 + 2.0 * k)};
+  strokeRingPx(ring, col, static_cast<float>((1.0 - p) * 0.9),
+               static_cast<int>(std::max(2.0, round + round * 0.5 * k)), roundPow);
 }
 
 double Overview::newCardScale() const {

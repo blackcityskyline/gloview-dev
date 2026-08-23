@@ -147,6 +147,8 @@ bool Overview::swapWindows(const PHLWINDOW &wa, const PHLWINDOW &wb) {
   g_layoutManager->switchTargets(ta, tb);
   // Rebuild the overview from the swapped real geometry and glide in.
   replayReflow(oldBoxes);
+  kickPulse(wa);
+  kickPulse(wb);
   damage();
   return true;
 }

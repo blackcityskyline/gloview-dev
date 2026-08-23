@@ -421,8 +421,11 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               continue;
             if (!stripWinSlotRect(it, stripCardAt(i), j).contains(lx, ly))
               continue;
-            if (swapWindows(w, v))
+            if (swapWindows(w, v)) {
+              kickPulse(w);
+              kickPulse(v);
               return true;
+            }
             damage(); // partner ineligible (fullscreen etc.) → snap back
             return true;
           }
