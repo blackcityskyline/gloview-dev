@@ -892,7 +892,8 @@ void Overview::rearmanim() const {
   if (!m_active)
     return;
   const double dur = animDuration();
-  const bool animating = !m_tileClock.done(dur) || m_newCardAnim ||
+  const bool animating = secondaryAnimsActive() ||
+                         !m_tileClock.done(dur) || m_newCardAnim ||
                          m_drag.lifted ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0);
@@ -904,7 +905,8 @@ void Overview::rearmanim() const {
 
 void Overview::ensureAnimPump() {
   const bool stillAnimating =
-      m_active && (!m_tileClock.done(reflowDur()) || m_newCardAnim ||
+      m_active && (secondaryAnimsActive() || !m_tileClock.done(reflowDur()) ||
+                   m_newCardAnim ||
                    m_drag.lifted ||
                    (m_opening && m_progress < 1.0) ||
                    (!m_opening && m_progress > 0.0));
@@ -925,8 +927,8 @@ void Overview::ensureAnimPump() {
       std::chrono::milliseconds(8),
       [this](SP<CEventLoopTimer> self, void *) {
         const bool go = m_active && g_pHyprRenderer &&
-                        (!m_tileClock.done(reflowDur()) ||
-                         m_newCardAnim || m_drag.lifted ||
+                        (secondaryAnimsActive() ||
+                         !m_tileClock.done(reflowDur()) || m_newCardAnim || m_drag.lifted ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0));
         if (!go) {

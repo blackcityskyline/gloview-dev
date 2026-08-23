@@ -407,6 +407,16 @@ private:
   };
   std::vector<Ghost> m_ghosts;
   double populateMs() const { return animMs("populate", nullptr, 250); }
+  // True while ANY secondary clock is mid-flight (population/ghosts, strip
+  // scroll). The animation-pump predicates MUST include this: after a card/
+  // digit workspace switch the master timeline sits pinned at 1 and tiles'
+  // clock is done — without these terms the pump never arms, the following
+  // frames commit with EMPTY damage over stale buffers, and the transition
+  // visibly shakes.
+  bool secondaryAnimsActive() const {
+    return !m_populate.done(populateMs()) ||
+           !m_stripTween.done(animMs("strip_step", nullptr, 200));
+  }
   double tileAppear(int i) const; // staggered 0..1 for tile i
   void renderGhosts() const;      // removed-tile fade-out (populate mirror)
   void kickPulse(const PHLWINDOW &w);

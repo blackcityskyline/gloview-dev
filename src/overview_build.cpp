@@ -502,8 +502,10 @@ void Overview::startTileGlide(
     for (auto &t : m_tiles)
       t.appear = 1.0;
   m_tileClock.begin();
-  if (newcomers || !m_ghosts.empty())
+  if (newcomers || !m_ghosts.empty()) {
     m_populate.begin();
+    ensureAnimPump(); // frames must keep coming while population runs
+  }
 }
 
 void Overview::replayReflow(

@@ -1513,6 +1513,7 @@ void Overview::animateStripTo(double from, double to) {
       !m_stripTween.done(a.ms) ? m_stripScroll : from;
   m_stripScrollTarget = to;
   m_stripTween.begin();
+  ensureAnimPump();
 }
 
 void Overview::kickPulse(const PHLWINDOW &w) {
