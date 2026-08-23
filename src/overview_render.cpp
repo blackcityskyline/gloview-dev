@@ -308,15 +308,19 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // or any transient alpha the sampled region is effectively undimmed and
   // flashes bright under the tile. Only fully-settled previews get it;
   // transient ones are covered by the frosted backing instead.
-  // Live blur-behind ONLY on the close glide (verified blur->sharp->blur
-  // fix): the landing preview must already show the real desktop's blur.
-  // At rest / entry / population previews use the session-frozen frost
-  // instead — sampling Hyprland's stateful blur pyramid outside of close
-  // made per-tile dim depend on window count and interleaved foreign frames.
-  // The alpha gate additionally keeps fading ghosts off the live sample.
+  // Blur-behind via the LIVE path (blockBlurOptimization=true): it samples
+  // currentFB at draw time — AFTER our Back phase painted dim + cached blur
+  // — so a preview's transparent pixels see exactly what the surrounding
+  // backdrop shows, always current, never an undimmed/stale xray era. The
+  // historical instability came from partial-damage eras, which the
+  // full-damage guard (renderStage) eliminates while anything animates; at
+  // rest content is static, so limited resamples are identity. Ghosts
+  // (alpha<1) stay off the live sample entirely.
   const bool wantBlur =
-      windowBlurEligible(w) && alpha >= 0.999F && g_overview->closing();
+      windowBlurEligible(w) &&
+      (alpha >= 0.999F || g_overview->closing());
   data.blur = wantBlur;
+  data.blockBlurOptimization = true;
   data.pWindow = w;
   data.clipBox = clipPx;
   data.squishOversized = true;
