@@ -231,6 +231,13 @@ public:
                                  // non-tile windows in hkDamageSurface)
 
   [[nodiscard]] bool active() const { return m_active; }
+  // True during the close glide: the ONLY phase where previews sample the
+  // live monitor blur FB (landing continuity). Everywhere else they use the
+  // session-frozen frost — touching Hyprland's stateful blur pyramid at rest
+  // resurrected per-tile dim mismatches whose shape depended on window count.
+  [[nodiscard]] bool closing() const {
+    return m_active && !m_opening && m_progress > 0.0;
+  }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
