@@ -523,6 +523,11 @@ private:
   // content (e.g. foot text) into the re-drawn FBO on every re-blur.
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false; // false → redraw layers next time
+  // While true, the frozen backdrop source + blur cache are invalidated EVERY
+  // frame until the populate clock settles. A one-shot invalidate right after
+  // a ws switch raced the wallpaper engine's repaint and re-froze the OLD
+  // content for the whole transition.
+  bool m_backdropRecapture = false;
   // Self-contained blur (own GL program): plugin-tunable blur_passes /
   // blur_size / blur_resolution, independent of Hyprland's global
   // decoration:blur:* (which plugins can't override per-call).

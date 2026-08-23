@@ -605,6 +605,16 @@ void Overview::renderStage(eRenderStage stage) {
   updateAnimation();
   if (!m_active)
     return;
+  // Continuous backdrop re-capture across a ws-switch transition (see
+  // m_backdropRecapture): keep sources dirty until population settles.
+  if (m_backdropRecapture) {
+    if (m_populate.done(populateMs()))
+      m_backdropRecapture = false;
+    else {
+      m_backdropDrawn = false;
+      m_blur.valid = false;
+    }
+  }
 
   // Frame trace for the two open bugs (debug_logs=1). One line per animated
   // frame, correlating our animation state with what Hyprland's render path
@@ -672,9 +682,7 @@ void Overview::renderStage(eRenderStage stage) {
       dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
           " tiles=" + std::to_string(m_tiles.size()));
       m_workspace = m->m_activeWorkspace;
-      // Same stale-capture problem as switchToWorkspace (see its comment).
-      m_backdropDrawn = false;
-      m_blur.valid = false;
+      m_backdropRecapture = true; // re-capture until populate settles
       const auto shown = captureCurrentBoxes();
       buildTiles();
       buildStrip();
