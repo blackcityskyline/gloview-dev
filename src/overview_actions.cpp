@@ -284,6 +284,14 @@ void Overview::switchToWorkspace(const StripItem &it) {
   layoutTiles();
   dbg("SWITCH ->" + std::to_string(ws ? ws->m_id : -1) + " tiles=" +
       std::to_string(m_tiles.size()));
+  // The frozen backdrop/blur belong to the PREVIOUS workspace's background.
+  // The wallpaper TEXTURE identity does not change on a ws switch (same
+  // noctalia layer object, repainted content), so the per-frame srcId check
+  // in renderBackdrop() keeps the stale dark capture alive — previews then
+  // snap old->new the instant their population settles and blur-behind
+  // kicks in. Invalidate explicitly; the next Back phase re-captures.
+  m_backdropDrawn = false;
+  m_blur.valid = false;
   // Every new-workspace tile is a newcomer here: staggered fade/scale-in
   // replaces the old one-frame content swap (cards, digits, jump alike).
   for (auto &t : m_tiles)
