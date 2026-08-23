@@ -1218,7 +1218,26 @@ void Overview::renderStripButtons() const {
     // carrying a STRIP window (swap): no insert zones at all — instead the
     // REAL windows are highlighted where they actually sit: a ring on the
     // exact hovered slot (the swap partner) plus a ring on the source slot.
-    if (rmbSwap && static_cast<int>(i) == m_hoveredStrip && !it.wins.empty()) {
+    // partner-ring intent: RMB on any slot, or LMB on a slot of the dragged
+    // window's OWN workspace (intra-tile swap)
+    bool intentRing = false;
+    if (dropping && m_drag.press == Drag::Press::StripWin &&
+        static_cast<int>(i) == m_hoveredStrip && !it.wins.empty() &&
+        m_drag.idx >= 0 && m_drag.winIdx >= 0) {
+      const auto dragW = m_drag.win.lock();
+      for (size_t j = 0; j < it.wins.size(); ++j) {
+        const auto v = it.wins[j].win.lock();
+        if (!v || v == dragW)
+          continue;
+        if (!stripWinSlotRect(it, card, j).contains(m_drag.x, m_drag.y))
+          continue;
+        intentRing =
+            rmbSwap ||
+            (dragW && v->m_workspace == dragW->m_workspace);
+        break;
+      }
+    }
+    if (intentRing && !it.wins.empty()) {
       const auto hoverCol =
           argb(cfgColor("hover_border", "0xf0ffffff"), e);
       for (size_t j = 0; j < it.wins.size(); ++j) {

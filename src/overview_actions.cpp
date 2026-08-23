@@ -54,6 +54,10 @@ bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
 }
 
 void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
+  if (w && w->m_workspace == it.ws.lock()) {
+    damage(); // already there — a "move" would churn the whole layout
+    return;
+  }
   const auto m = m_monitor.lock();
   if (!w || !m) {
     damage();
@@ -170,6 +174,10 @@ void Overview::swapTiles(int a, int b) {
 // target to swap with (empty workspace, or a fullscreen partner with no
 // well-defined slot).
 void Overview::swapOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
+  if (w && w->m_workspace == it.ws.lock()) {
+    damage(); // nothing to swap with across workspaces
+    return;
+  }
   if (!w || it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All) {
     damage();
     return;

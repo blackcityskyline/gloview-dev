@@ -409,12 +409,12 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     m_drag = {};
     if (lifted) {
       if (w) {
-        // Drop onto a SPECIFIC window slot (any card, incl. the source's own
-        // when it holds 2+ previews) → swap exactly these two windows'
-        // tiling slots, BOTH buttons: precise target = exchange places.
-        // Checked before the card-level fallbacks so an exact slot hit always
-        // wins over move / last-focused-swap — this is what makes intra-card
-        // rearrangement possible ("bottom 25% ↔ left 50%").
+        // Drop onto a SPECIFIC window slot → swap the two windows' tiling
+        // slots when: RMB (precise exchange, any card) or the partner sits on
+        // the SAME workspace as the dragged one (intra-tile rearrangement,
+        // "bottom 25% ↔ left 50%"). An LMB hit on a DIFFERENT card's slot
+        // deliberately falls through to the card-level MOVE with its insert
+        // semantics (the ≤2-zone hint contract).
         for (size_t i = 0; i < m_strip.size(); ++i) {
           const auto &it = m_strip[i];
           if (it.kind != StripItem::Kind::Ws)
@@ -425,6 +425,10 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               continue;
             if (!stripWinSlotRect(it, stripCardAt(i), j).contains(lx, ly))
               continue;
+            const bool sameWs =
+                v->m_workspace == w->m_workspace;
+            if (!rmb && !sameWs)
+              break; // LMB cross-card: keep move/insert behavior
             if (swapWindows(w, v)) {
               kickPulse(w);
               kickPulse(v);
@@ -444,17 +448,24 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         }
         // dropped in the main preview area → send it to whichever workspace is
         // currently displayed there (equivalent to dropping it on that card).
-        if (const auto m = m_monitor.lock();
-            m && LRect{0, 0, m->m_size.x, m->m_size.y}.contains(lx, ly)) {
+        // The strip band itself does NOT count: releasing back over any card
+        // (e.g. dragging out toward a slot and returning home) is a CANCELLED
+        // drag — running this fallback there moved the window to its own
+        // workspace, the full-rebuild stutter + border artifact.
+        bool onBand = false;
+        if (const auto m = m_monitor.lock())
+          onBand = stripBand().contains(lx, ly);
+        const auto mm = m_monitor.lock();
+        if (!onBand && mm &&
+            LRect{0, 0, mm->m_size.x, mm->m_size.y}.contains(lx, ly)) {
           for (const auto &it : m_strip) {
-            if (it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All && it.active) {
-              if (rmb) {
+            if (it.kind != StripItem::Kind::Plus &&
+                it.kind != StripItem::Kind::All && it.active) {
+              if (rmb)
                 swapOnWorkspace(w, it);
-                kickPulse(w);
-              } else {
+              else
                 dropOnWorkspace(w, it);
-                kickPulse(w);
-              }
+              kickPulse(w);
               return true;
             }
           }
