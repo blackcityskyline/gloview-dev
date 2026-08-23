@@ -61,6 +61,12 @@ constexpr std::pair<const char*, Config::INTEGER> kIntCfg[] = {
     {"plugin:gloview:blur_size", 8},               // backdrop blur radius in screen px (1..200)
     {"plugin:gloview:blur_resolution", 4},         // backdrop blur buffer = 1/N monitor res (1..32; lower = sharper/cleaner)
     {"plugin:gloview:fullscreen_background", 0},   // 1: a fullscreen mpv window on the displayed workspace becomes the (blurred) backdrop instead of wallpaper (live video); 0 (default): the wallpaper shows and fullscreen windows stay hidden
+    // Step-C experiment (frost underlay for translucent tiles). Default OFF:
+    // in the field it produced sharp-corner seams (rect scissor under rounded
+    // content) and asymmetric darkening (only some tiles pass the eligibility
+    // test). Its entry-blink purpose evaporates under the R2 painter, where
+    // the backdrop is drawn first in the same pass; revisit there.
+    {"plugin:gloview:frost_underlay", 0},
     // --- workspace strip ---
     {"plugin:gloview:strip_height", 150},          // band thickness (perpendicular to its edge)
     {"plugin:gloview:strip_offset", 0},            // inset from the anchored edge (0 = flush, no gap)

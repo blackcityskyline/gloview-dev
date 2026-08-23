@@ -122,9 +122,16 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
   return std::clamp(active * fade, 0.0F, 1.0F);
 }
 
+} // namespace
+
 // Exact replica of IHyprRenderer::shouldBlur(PHLWINDOW) (Renderer.cpp:3310,
 // pinned 0.56.2) — that method is protected, plugins can't call it. Keep in
 // sync if Hyprland changes its eligibility rules.
+//
+// External LINKAGE ON PURPOSE (gloview namespace, NOT anonymous): shared with
+// overview_tiles_render.cpp's frost underlay. An anonymous-namespace copy here
+// leaves that TU's reference UNDEFINED in the final .so (shared libs link
+// with unresolved symbols; it would only blow up at dlopen/call time).
 bool windowBlurEligible(const PHLWINDOW &w) {
   // Defensive against dying/zombie windows: a client segfaulting while the
   // overview opens must not take the session down from here.
@@ -143,8 +150,6 @@ bool windowBlurEligible(const PHLWINDOW &w) {
     return !wls->m_blurRegion.empty();
   return true;
 }
-
-} // namespace
 
 // Render a window's LIVE surface tree scaled into `destPx`, clipped to `clipPx`
 // (both monitor PIXEL coords) via real CSurfacePassElements. No crop rect to
@@ -652,7 +657,13 @@ void Overview::renderStage(eRenderStage stage) {
         " soli=" + std::to_string((bool)sol) +
         " dso=" + std::to_string(rm->m_directScanoutIsActive) +
         " dmg=" + std::to_string(ext.w) + "x" + std::to_string(ext.h) +
-        " rects=" + std::to_string(g_pHyprRenderer->m_renderData.damage.copy().getRects().size()));
+        " rects=" + std::to_string(g_pHyprRenderer->m_renderData.damage.copy().getRects().size()) +
+        " tiles=" + std::to_string(m_tiles.size()) +
+        " strip=" + std::to_string(m_strip.size()) +
+        " ws=" + std::to_string(m_workspace.lock() ? m_workspace.lock()->m_id : -1) +
+        " liveWs=" + std::to_string(m->m_activeWorkspace ? m->m_activeWorkspace->m_id : -1) +
+        " drag=" + std::to_string((int)m_drag.press) + "/" + std::to_string(m_drag.lifted) +
+        "/" + std::to_string(m_drag.idx));
   }
 
   updateHover(); // keep hover fresh even when the pointer is warped, not moved

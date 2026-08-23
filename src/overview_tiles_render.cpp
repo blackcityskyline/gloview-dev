@@ -224,14 +224,11 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
                           ? 1.0F
                           : static_cast<float>(
                                 std::max(1.0 - e, 1.0 - apNow))});
-            // the cached blur carries NO dim — reapply it here so the tile
-            // interior matches the dimmed surroundings exactly
-            g_pHyprOpenGL->renderRect(
-                pxb(lb, s),
-                argb(cfgColor("backdrop_color", "0x73070a10"), 1.0), {});
-            // the cached blur carries NO dim (it is painted once over the
-            // whole backdrop at the blit site) — without this rect a popping
-            // tile shows unlit wallpaper against the dimmed surroundings
+            // the cached blur carries NO dim — reapply it here EXACTLY ONCE so
+            // the tile interior matches the dimmed surroundings to the pixel
+            // (a second stacked dim made eligible translucent tiles visibly
+            // darker than ineligible neighbors — the "one of two terminals
+            // is darker" artifact)
             g_pHyprOpenGL->renderRect(
                 pxb(lb, s),
                 argb(cfgColor("backdrop_color", "0x73070a10"), 1.0), {});
