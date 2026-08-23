@@ -282,6 +282,8 @@ void Overview::switchToWorkspace(const StripItem &it) {
   buildTiles();
   buildStrip();
   layoutTiles();
+  dbg("SWITCH ->" + std::to_string(ws ? ws->m_id : -1) + " tiles=" +
+      std::to_string(m_tiles.size()));
   // Every new-workspace tile is a newcomer here: staggered fade/scale-in
   // replaces the old one-frame content swap (cards, digits, jump alike).
   for (auto &t : m_tiles)

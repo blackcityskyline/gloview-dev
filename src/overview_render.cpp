@@ -251,7 +251,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
       sdata.decorate = false;
       sdata.rounding = roundPx;
       sdata.roundingPower = roundingPower;
-      sdata.blur = windowBlurEligible(w);
+      sdata.blur = windowBlurEligible(w) && alpha >= 0.999F;
       sdata.pWindow = w;
       sdata.clipBox = clipPx;
       sdata.squishOversized = true;
@@ -300,7 +300,12 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // windows or decoration:blur:new_optimizations=0), where the cutout box is
   // read from that global at draw time; CPreBlur runs before any surface each
   // frame and end() resets the field, so the precompute path never sees one.
-  const bool wantBlur = windowBlurEligible(w);
+  // Blur-behind samples the monitor's m_blurFB, which is built BEFORE the
+  // dim/backdrop paint of the CURRENT frame — during population (appear<1)
+  // or any transient alpha the sampled region is effectively undimmed and
+  // flashes bright under the tile. Only fully-settled previews get it;
+  // transient ones are covered by the frosted backing instead.
+  const bool wantBlur = windowBlurEligible(w) && alpha >= 0.999F;
   data.blur = wantBlur;
   data.pWindow = w;
   data.clipBox = clipPx;
@@ -664,6 +669,8 @@ void Overview::renderStage(eRenderStage stage) {
       // reset Tile.appear to 1 and left stale ghosts from the just-started
       // populate — the visible "tiles jerk then settle" on ctrl-jump and on
       // cross-workspace LMB drops.
+      dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
+          " tiles=" + std::to_string(m_tiles.size()));
       m_workspace = m->m_activeWorkspace;
       const auto shown = captureCurrentBoxes();
       buildTiles();
@@ -1528,7 +1535,10 @@ void Overview::renderGhosts() const {
   const auto when = Time::steadyNow();
   const int round = pxr(cfgInt("plugin:gloview:preview_round", 12), scale);
   const float roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
-  const double p = m_populate.raw(populateMs());
+  // Softer than the incoming pop: ghosts are a motion cue, not the main
+  // event — shorter and starting semi-transparent so all->one collapse
+  // reads as survivors dispersing, not as duplicates lingering.
+  const double p = std::min(1.0, m_populate.raw(populateMs()) / 0.6);
   const double eOut = curveEval(anim("populate").curve, p); // 0..1 gone
   for (const auto &g : m_ghosts) {
     const auto w = g.win.lock();
@@ -1540,8 +1550,8 @@ void Overview::renderGhosts() const {
                     g.box.w * k, g.box.h * k};
     const CBox px(box.x * scale, box.y * scale, box.w * scale,
                   box.h * scale);
-    renderWindowLive(w, m, px, px, static_cast<float>(1.0 - eOut), when,
-                     round, roundPow);
+    renderWindowLive(w, m, px, px, static_cast<float>((1.0 - eOut) * 0.65),
+                     when, round, roundPow);
   }
 }
 
