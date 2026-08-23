@@ -495,13 +495,23 @@ void Overview::updateAnimation() {
   }
   m_lastAnimTick = nowTick;
 
-  // prune finished swap pulses (window-keyed; see WinPulse in overview.hpp)
+  // Advance/prune swap pulses. Progress accumulates per animated frame with
+  // the frame delta CAPPED, so a post-drop render hole cannot jump the ring
+  // through its overshoot plateau (the "snaps wide and freezes" artifact).
   const double pulseMs = animMs("swap_pulse", nullptr, 180);
-  std::erase_if(m_pulses, [&pulseMs](const WinPulse &p) {
-    return p.w.expired() || (std::chrono::steady_clock::now() - p.t0) >
-                                std::chrono::duration<double, std::milli>(
-                                    pulseMs);
-  });
+  const auto nowTickP = std::chrono::steady_clock::now();
+  for (auto &p : m_pulses) {
+    if (p.w.expired())
+      continue;
+    const double dt =
+        std::min(34.0,
+                 std::chrono::duration<double, std::milli>(nowTickP - p.last)
+                     .count());
+    p.last = nowTickP;
+    p.p += dt / std::max(1.0, pulseMs);
+  }
+  std::erase_if(m_pulses,
+                [](const WinPulse &p) { return p.w.expired() || p.p >= 1.0; });
 
   const double t = m_timeline.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
@@ -1424,7 +1434,8 @@ void Overview::kickPulse(const PHLWINDOW &w) {
   if (!w || !anim("swap_pulse").on)
     return;
   std::erase_if(m_pulses, [&w](const WinPulse &p) { return p.w.lock() == w; });
-  m_pulses.push_back(WinPulse{w, std::chrono::steady_clock::now()});
+  m_pulses.push_back(
+      WinPulse{w, 0.0, std::chrono::steady_clock::now()});
 }
 
 // Active swap pulses. strip=true → ring the window's STRIP slot; false → its
@@ -1442,11 +1453,7 @@ void Overview::renderPulses(bool strip) const {
     const auto w = p.w.lock();
     if (!w)
       continue;
-    const double el = std::chrono::duration<double, std::milli>(
-                          std::chrono::steady_clock::now() - p.t0)
-                          .count();
-    const double pr =
-        std::clamp(el / animMs("swap_pulse", nullptr, 180), 0.0, 1.0);
+    const double pr = std::clamp(p.p, 0.0, 1.0);
     if (strip) {
       for (size_t i = 0; i < m_strip.size(); ++i) {
         const auto &it = m_strip[i];

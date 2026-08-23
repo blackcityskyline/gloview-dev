@@ -597,7 +597,11 @@ private:
   // wherever the window currently sits (grid tile or strip slot).
   struct WinPulse {
     PHLWINDOWREF w;
-    std::chrono::steady_clock::time_point t0;
+    double p = 0.0; // accumulated FRAME progress, not wall-clock: heavy
+                    // frames (layout recalc right after a drop) must not
+                    // leap it across the easeOutBack plateau — that read as
+                    // the ring snapping wide and freezing
+    std::chrono::steady_clock::time_point last;
   };
   std::vector<WinPulse> m_pulses;
   void kickPulse(const PHLWINDOW &w);
