@@ -660,11 +660,16 @@ void Overview::renderStage(eRenderStage stage) {
     } else if (!showAllWorkspaces()) {
       // Follow along instead of ignoring it: treat it like the user clicked
       // that workspace's card, so the grid/strip stay in sync with what's
-      // really on screen.
+      // really on screen. MUST go through replayReflow: a bare rebuild here
+      // reset Tile.appear to 1 and left stale ghosts from the just-started
+      // populate — the visible "tiles jerk then settle" on ctrl-jump and on
+      // cross-workspace LMB drops.
       m_workspace = m->m_activeWorkspace;
+      const auto shown = captureCurrentBoxes();
       buildTiles();
       buildStrip();
       layoutTiles();
+      startTileGlide(shown);
       // Do NOT invalidate the blur cache here — it depends only on the
       // backdrop SOURCE (frozen wallpaper layers or a live mpv texture), not
       // on which workspace is displayed.  A workspace switch between two
