@@ -125,7 +125,7 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 // Exact replica of IHyprRenderer::shouldBlur(PHLWINDOW) (Renderer.cpp:3310,
 // pinned 0.56.2) — that method is protected, plugins can't call it. Keep in
 // sync if Hyprland changes its eligibility rules.
-static bool windowBlurEligible(const PHLWINDOW &w) {
+[[maybe_unused]] static bool windowBlurEligible(const PHLWINDOW &w) {
   // Defensive against dying/zombie windows: a client segfaulting while the
   // overview opens must not take the session down from here.
   if (!w || !w->m_isMapped || w->isHidden())
@@ -314,19 +314,12 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // or any transient alpha the sampled region is effectively undimmed and
   // flashes bright under the tile. Only fully-settled previews get it;
   // transient ones are covered by the frosted backing instead.
-  // Blur-behind via the LIVE path (blockBlurOptimization=true): it samples
-  // currentFB at draw time — AFTER our Back phase painted dim + cached blur
-  // — so a preview's transparent pixels see exactly what the surrounding
-  // backdrop shows, always current, never an undimmed/stale xray era. The
-  // historical instability came from partial-damage eras, which the
-  // full-damage guard (renderStage) eliminates while anything animates; at
-  // rest content is static, so limited resamples are identity. Ghosts
-  // (alpha<1) stay off the live sample entirely.
-  const bool wantBlur =
-      windowBlurEligible(w) &&
-      (alpha >= 0.999F || g_overview->closing());
-  data.blur = wantBlur;
-  data.blockBlurOptimization = true;
+  // STEP B (bisect): preview surfaces never touch Hyprland's blur machinery.
+  // The live branch baked ghost copies of sibling previews into every
+  // translucent tile's backdrop. Translucent windows temporarily show the
+  // sharp dimmed wallpaper through their transparency; the frost underlay
+  // (steps C/D) will restore the blurred look safely.
+  data.blur = false;
   data.pWindow = w;
   data.clipBox = clipPx;
   data.squishOversized = true;
