@@ -153,7 +153,8 @@ bool Overview::swapWindows(const PHLWINDOW &wa, const PHLWINDOW &wb) {
   replayReflow(oldBoxes);
   kickPulse(wa);
   kickPulse(wb);
-  damage();
+  damage();       // this frame's snapshot may already be taken — schedule
+  ensureAnimPump(); // another promptly so the revealed area repaints at once
   return true;
 }
 
