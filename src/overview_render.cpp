@@ -125,12 +125,10 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 // Exact replica of IHyprRenderer::shouldBlur(PHLWINDOW) (Renderer.cpp:3310,
 // pinned 0.56.2) — that method is protected, plugins can't call it. Keep in
 // sync if Hyprland changes its eligibility rules.
-bool windowBlurEligible(const PHLWINDOW &w); // external linkage: shared
-                                             // with overview_tiles_render.cpp
-bool windowBlurEligible(const PHLWINDOW &w) {
-  // Defensive against dying/zombie windows (a client segfaulting while the
-  // overview opens used to take the whole session down from here).
-  if (!w || !w->m_isMapped || w->isHidden() || !w->wlSurface())
+static bool windowBlurEligible(const PHLWINDOW &w) {
+  // Defensive against dying/zombie windows: a client segfaulting while the
+  // overview opens must not take the session down from here.
+  if (!w || !w->m_isMapped || w->isHidden())
     return false;
   static auto PBLUR = CConfigValue<Config::INTEGER>("decoration:blur:enabled");
   if (!*PBLUR)
@@ -316,14 +314,19 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // or any transient alpha the sampled region is effectively undimmed and
   // flashes bright under the tile. Only fully-settled previews get it;
   // transient ones are covered by the frosted backing instead.
-  // NEVER let preview surfaces touch Hyprland's blur machinery. The live
-  // branch samples currentFB AT DRAW TIME — by then sibling previews drawn
-  // earlier in the pass are already composited into it, so every translucent
-  // window's blur-behind baked its neighbors' ghosts. Eligible translucent
-  // previews get their backdrop look from drawPreviewTile/renderStrip's own
-  // frost layer (cached blur + dim, pixel-identical to the surroundings)
-  // drawn right beneath this surface.
-  data.blur = false;
+  // Blur-behind via the LIVE path (blockBlurOptimization=true): it samples
+  // currentFB at draw time — AFTER our Back phase painted dim + cached blur
+  // — so a preview's transparent pixels see exactly what the surrounding
+  // backdrop shows, always current, never an undimmed/stale xray era. The
+  // historical instability came from partial-damage eras, which the
+  // full-damage guard (renderStage) eliminates while anything animates; at
+  // rest content is static, so limited resamples are identity. Ghosts
+  // (alpha<1) stay off the live sample entirely.
+  const bool wantBlur =
+      windowBlurEligible(w) &&
+      (alpha >= 0.999F || g_overview->closing());
+  data.blur = wantBlur;
+  data.blockBlurOptimization = true;
   data.pWindow = w;
   data.clipBox = clipPx;
   data.squishOversized = true;
@@ -1210,21 +1213,6 @@ void Overview::renderStrip() const {
         if (grabbed)
           strokeRing(wbL, s, argb(cfgColor("hover_border", "0xf0ffffff"), e),
                      2, wRound, roundPow);
-        // Frost underlay for eligible translucent strip thumbnails — same
-        // rationale as drawPreviewTile's always-on frost: the interior must
-        // match the surrounding backdrop, never sample sibling previews.
-        if (const auto sw = it.wins[j].win.lock();
-            sw && windowBlurEligible(sw)) {
-          if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
-            const CBox monPx{0.0, 0.0, m->m_size.x * s, m->m_size.y * s};
-            g_pHyprOpenGL->scissor(pxb(wbL, s));
-            g_pHyprOpenGL->renderTexture(btex, monPx, {.a = 1.0F});
-            g_pHyprOpenGL->renderRect(
-                pxb(wbL, s),
-                argb(cfgColor("backdrop_color", "0x73070a10"), 1.0), {});
-            g_pHyprOpenGL->scissor(nullptr);
-          }
-        }
         // Thin near-invisible backing — see drawPreviewTile's comment
         // (overview_tiles_render.cpp) for the full reasoning: this used to be a
         // flat opaque/semi-opaque tint standing in for "whatever's really
