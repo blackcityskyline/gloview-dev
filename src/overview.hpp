@@ -194,18 +194,6 @@ public:
   renderStripButtons() const;  // per-card close-all button + drag destination
                                // hint, drawn after the strip's live surfaces
   void renderPulses(bool strip) const; // swap success rings (grid|strip)
-  // Overwrite the monitor's m_blurFB (what xray blur-behind samples) with
-  // OUR frozen backdrop look (cached blur + dim, same alphas as the screen
-  // blit). Consumers then see pixel-identical content to the surroundings in
-  // every phase — entry pop, ws switches, close glide.
-  void syncMonitorBlurFB() const;
-  // Any valid tile window: handed to m_renderData.currentWindow in the Back
-  // phase so drawTex()'s shouldUseNewBlurOptimizations() sees a window and
-  // routes preview blur-behind through the monitor m_blurFB (which we own
-  // while up) instead of the unstable live sample. Rendered-back-to-front
-  // pass order guarantees it is set before the first queued surface draws;
-  // CHyprOpenGLImpl::end() clears it, so nothing leaks past the frame.
-  [[nodiscard]] PHLWINDOW backdropAnchorWindow() const;
   void renderPreviews() const; // static tiles' chrome (shadow/border/backing),
                                // drawn under the strip
   void
@@ -243,11 +231,6 @@ public:
                                  // non-tile windows in hkDamageSurface)
 
   [[nodiscard]] bool active() const { return m_active; }
-  // True during the close glide (previews must hand their backdrop over to
-  // the real desktop — see renderWindowLive's blur-behind note).
-  [[nodiscard]] bool closing() const {
-    return m_active && !m_opening && m_progress > 0.0;
-  }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
