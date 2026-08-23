@@ -308,13 +308,14 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // or any transient alpha the sampled region is effectively undimmed and
   // flashes bright under the tile. Only fully-settled previews get it;
   // transient ones are covered by the frosted backing instead.
-  // Real blur-behind (windowBlurEligible mirrors the protected shouldBlur).
-  // Hyprland's own preBlur loop keeps m_blurFB self-consistent with the
-  // dimmed composite, so previews and their surroundings always agree — this
-  // is the verified blur->sharp->blur fix; do not add custom FB ownership
-  // here again (syncMonitorBlurFB regressed it). The alpha gate exists only
-  // so fading ghosts never sample an undimmed region.
-  const bool wantBlur = windowBlurEligible(w) && alpha >= 0.999F;
+  // Live blur-behind ONLY on the close glide (verified blur->sharp->blur
+  // fix): the landing preview must already show the real desktop's blur.
+  // At rest / entry / population previews use the session-frozen frost
+  // instead — sampling Hyprland's stateful blur pyramid outside of close
+  // made per-tile dim depend on window count and interleaved foreign frames.
+  // The alpha gate additionally keeps fading ghosts off the live sample.
+  const bool wantBlur =
+      windowBlurEligible(w) && alpha >= 0.999F && g_overview->closing();
   data.blur = wantBlur;
   data.pWindow = w;
   data.clipBox = clipPx;

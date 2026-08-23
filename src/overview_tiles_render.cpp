@@ -203,7 +203,8 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // frame 1 and the global backdrop then dissolves over it seamlessly.
     const double apNow =
         t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
-    if (e < 0.999 || apNow < 0.999) {
+    const bool closingHold = g_overview->closing(); // frost holds till landing
+    if (e < 0.999 || apNow < 0.999 || closingHold) {
         if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
             const CBox monPx{0.0, 0.0, m->m_size.x * s, m->m_size.y * s};
             // Alpha (1 - e): the backing hands over to the global backdrop
@@ -214,7 +215,10 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
             g_pHyprOpenGL->scissor(pxb(lb, s));
             g_pHyprOpenGL->renderTexture(
                 btex, monPx,
-                {.a = static_cast<float>(std::max(1.0 - e, 1.0 - apNow))});
+                {.a = closingHold
+                          ? 1.0F
+                          : static_cast<float>(
+                                std::max(1.0 - e, 1.0 - apNow))});
             // the cached blur carries NO dim (it is painted once over the
             // whole backdrop at the blit site) — without this rect a popping
             // tile shows unlit wallpaper against the dimmed surroundings
