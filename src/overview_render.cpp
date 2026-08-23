@@ -672,6 +672,9 @@ void Overview::renderStage(eRenderStage stage) {
       dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
           " tiles=" + std::to_string(m_tiles.size()));
       m_workspace = m->m_activeWorkspace;
+      // Same stale-capture problem as switchToWorkspace (see its comment).
+      m_backdropDrawn = false;
+      m_blur.valid = false;
       const auto shown = captureCurrentBoxes();
       buildTiles();
       buildStrip();
