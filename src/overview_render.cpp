@@ -33,7 +33,10 @@
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/render/Texture.hpp>
+#include <hyprland/src/render/pass/ClearPassElement.hpp>
 #include <hyprland/src/render/pass/PassElement.hpp>
+#include <hyprland/src/render/pass/RectPassElement.hpp>
+#include <hyprland/src/render/pass/TexPassElement.hpp>
 #include <hyprland/src/render/pass/RendererHintsPassElement.hpp>
 #include <hyprland/src/render/pass/SurfacePassElement.hpp>
 #include <hyprutils/math/Region.hpp>
@@ -251,7 +254,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
       sdata.decorate = false;
       sdata.rounding = roundPx;
       sdata.roundingPower = roundingPower;
-      sdata.blur = windowBlurEligible(w) && alpha >= 0.999F;
+      sdata.blur = false; // snapshot path never spans a close glide
       sdata.pWindow = w;
       sdata.clipBox = clipPx;
       sdata.squishOversized = true;
@@ -305,8 +308,13 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // or any transient alpha the sampled region is effectively undimmed and
   // flashes bright under the tile. Only fully-settled previews get it;
   // transient ones are covered by the frosted backing instead.
-  const bool wantBlur = windowBlurEligible(w) && alpha >= 0.999F;
-  data.blur = wantBlur;
+  // Blur-behind samples the monitor's m_blurFB — which syncMonitorBlurFB()
+  // overwrites with our frozen backdrop look every frame while the overview
+  // is up. Settled previews therefore show EXACTLY what the surrounding
+  // backdrop shows, in every phase (entry, switches, close); after
+  // deactivation Hyprland rebuilds the FB from the real desktop and the
+  // landing windows carry their own decoration blur seamlessly.
+  data.blur = windowBlurEligible(w) && alpha >= 0.999F;
   data.pWindow = w;
   data.clipBox = clipPx;
   data.squishOversized = true;
@@ -356,6 +364,7 @@ public:
     switch (m_phase) {
     case Phase::Back:
       m_owner->renderBackdrop();
+      m_owner->syncMonitorBlurFB();
       m_owner->renderPreviews(); // main tile chrome (shadow/ring/backing);
                                  // surfaces queued right after
       break;
@@ -605,17 +614,6 @@ void Overview::renderStage(eRenderStage stage) {
   updateAnimation();
   if (!m_active)
     return;
-  // Continuous backdrop re-capture across a ws-switch transition (see
-  // m_backdropRecapture): keep sources dirty until population settles.
-  if (m_backdropRecapture) {
-    if (m_populate.done(populateMs()))
-      m_backdropRecapture = false;
-    else {
-      m_backdropDrawn = false;
-      m_blur.valid = false;
-    }
-  }
-
   // Frame trace for the two open bugs (debug_logs=1). One line per animated
   // frame, correlating our animation state with what Hyprland's render path
   // was doing at LAST_MOMENT time:
@@ -682,7 +680,6 @@ void Overview::renderStage(eRenderStage stage) {
       dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
           " tiles=" + std::to_string(m_tiles.size()));
       m_workspace = m->m_activeWorkspace;
-      m_backdropRecapture = true; // re-capture until populate settles
       const auto shown = captureCurrentBoxes();
       buildTiles();
       buildStrip();
@@ -1520,6 +1517,63 @@ void Overview::renderCursorOnTop() const {
     return;
   m_cursor.renderOnTop(
       m, argb(cfgColor("backdrop_color", "0x73070a10"), 1.0));
+}
+
+// Copy our cached blur + dim into the MONITOR's blur FB using the exact
+// alphas renderBackdrop just painted, so any consumer of that FB (xray
+// blur-behind behind translucent previews) sees the same pixels as the
+// surrounding backdrop. Without this the FB held an undimmed / wrong-
+// workspace sample built from partial damage: transient gates flashed
+// bright, and post-switch tiles snapped to the new wallpaper.
+void Overview::syncMonitorBlurFB() const {
+  const auto m = m_monitor.lock();
+  if (!m || !blurEnabled())
+    return;
+  const auto tex = backdropBlurTexture();
+  if (!tex || !tex->ok())
+    return;
+  const auto BFB = m->resources()->m_blurFB;
+  if (!BFB || !BFB->isAllocated())
+    return;
+
+  // Mirror CHyprOpenGLImpl::preBlurForCurrentMonitor's draw pattern so the
+  // FB content/orientation match what xray sampling expects.
+  const float k = static_cast<float>(eased());
+  const float kk = m_opening ? k : std::pow(k, 0.45F);
+  const auto dimCol =
+      argb(cfgColor("backdrop_color", "0x73070a10"), eased());
+
+  const auto SAVEDMODIF = g_pHyprRenderer->m_renderData.renderModif;
+  g_pHyprRenderer->m_renderData.renderModif = {};
+  const auto oldFB = g_pHyprRenderer->m_renderData.currentFB;
+  GLint oldVp[4];
+  glGetIntegerv(GL_VIEWPORT, oldVp);
+
+  BFB->bind();
+  g_pHyprRenderer->m_renderData.currentFB = BFB;
+
+  g_pHyprRenderer->draw(CClearPassElement::SClearData{CHyprColor(0, 0, 0, 0)});
+  g_pHyprRenderer->pushMonitorTransformEnabled(true);
+
+  CTexPassElement::SRenderData td;
+  td.tex = tex;
+  td.box = CBox{0, 0, m->m_transformedSize.x, m->m_transformedSize.y};
+  td.a = kk;
+  const CRegion dmgT{td.box};
+  g_pHyprRenderer->draw(td, dmgT);
+
+  CRectPassElement::SRectData rd;
+  rd.box = td.box;
+  rd.color = dimCol;
+  const CRegion dmgR{rd.box};
+  g_pHyprRenderer->draw(rd, dmgR);
+
+  g_pHyprRenderer->popMonitorTransformEnabled();
+  g_pHyprRenderer->m_renderData.renderModif = SAVEDMODIF;
+  g_pHyprRenderer->m_renderData.currentFB = oldFB;
+  if (oldFB)
+    oldFB->bind();
+  g_pHyprOpenGL->setViewport(oldVp[0], oldVp[1], oldVp[2], oldVp[3]);
 }
 
 void Overview::animateStripTo(double from, double to) {

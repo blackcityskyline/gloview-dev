@@ -194,6 +194,11 @@ public:
   renderStripButtons() const;  // per-card close-all button + drag destination
                                // hint, drawn after the strip's live surfaces
   void renderPulses(bool strip) const; // swap success rings (grid|strip)
+  // Overwrite the monitor's m_blurFB (what xray blur-behind samples) with
+  // OUR frozen backdrop look (cached blur + dim, same alphas as the screen
+  // blit). Consumers then see pixel-identical content to the surroundings in
+  // every phase — entry pop, ws switches, close glide.
+  void syncMonitorBlurFB() const;
   void renderPreviews() const; // static tiles' chrome (shadow/border/backing),
                                // drawn under the strip
   void
@@ -231,6 +236,11 @@ public:
                                  // non-tile windows in hkDamageSurface)
 
   [[nodiscard]] bool active() const { return m_active; }
+  // True during the close glide (previews must hand their backdrop over to
+  // the real desktop — see renderWindowLive's blur-behind note).
+  [[nodiscard]] bool closing() const {
+    return m_active && !m_opening && m_progress > 0.0;
+  }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
@@ -523,11 +533,6 @@ private:
   // content (e.g. foot text) into the re-drawn FBO on every re-blur.
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false; // false → redraw layers next time
-  // While true, the frozen backdrop source + blur cache are invalidated EVERY
-  // frame until the populate clock settles. A one-shot invalidate right after
-  // a ws switch raced the wallpaper engine's repaint and re-froze the OLD
-  // content for the whole transition.
-  bool m_backdropRecapture = false;
   // Self-contained blur (own GL program): plugin-tunable blur_passes /
   // blur_size / blur_resolution, independent of Hyprland's global
   // decoration:blur:* (which plugins can't override per-call).

@@ -785,6 +785,11 @@ bool Overview::isTileWindow(const PHLWINDOW &w) const {
 }
 
 void Overview::deactivate() {
+  // Hand the monitor blur FB back to Hyprland: mark dirty so preRender
+  // rebuilds it from the real desktop on the first post-overview frame
+  // (otherwise settled translucent windows would sample our stale capture).
+  if (const auto mm = m_monitor.lock())
+    mm->m_blurFBDirty = true;
   restoreLayers(); // safety net: normally close() already restored; harmless if
                    // empty
   restoreFill(); // drop the fill-small override so real windows render normally
