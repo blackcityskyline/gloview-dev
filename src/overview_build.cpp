@@ -485,21 +485,18 @@ void Overview::startTileGlide(
       t.appear = matched ? 1.0 : 0.0;
       newcomers |= !matched;
     }
-    // ghosts: tiles the rebuild removed fade/scale out where they were.
-    // ONLY for tiles whose window is actually going away (unmapped/hidden by
-    // a close) — a window that merely left the LIST (all->one re-population,
-    // expo collapse) still exists right behind the overview and a fading
-    // duplicate reads as a stale artifact, not as motion.
+    // ghosts: EVERY tile the rebuild removed fades/scales out where it was —
+    // including all->one collapse, where the disappearing half of the grid
+    // must animate out, not vanish one frame. (Windows are still alive
+    // behind the opaque backdrop; the soft translucent render keeps it
+    // reading as dispersal.)
     m_ghosts.clear();
     for (const auto &[oldWin, oldBox] : oldBoxes) {
       bool kept = false;
       for (auto &t : m_tiles)
         if (t.win.lock() == oldWin) { kept = true; break; }
-      if (kept)
-        continue;
-      if (oldWin && oldWin->m_isMapped && !oldWin->isHidden())
-        continue; // alive elsewhere → no ghost, survivors carry the motion
-      m_ghosts.push_back(Ghost{oldWin, oldBox});
+      if (!kept)
+        m_ghosts.push_back(Ghost{oldWin, oldBox});
     }
   } else
     for (auto &t : m_tiles)

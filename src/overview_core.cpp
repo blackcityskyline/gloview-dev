@@ -1024,7 +1024,9 @@ void Overview::dbg(const std::string &msg) const {
   // Exists because a dead config path silently produced an empty log while
   // hyprctl getoption insisted the flag was 1 — with the bootstrap we either
   // see the frames or see the gate value lying, never silence.
-  static int bootstrap = 1500; // TEMP while bugs A/B open
+  static int bootstrap = 200000; // TEMP: file-config debug_logs never reaches
+                                 // the V2 registry on hyprctl reload, so the
+                                 // shake-hunt trace must bypass the gate
   const int gate = cfgInt("plugin:gloview:debug_logs", 0);
   if (gate != 0)
     bootstrap = -1; // flag works — stop spending the free lines
