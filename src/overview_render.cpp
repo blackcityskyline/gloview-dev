@@ -125,7 +125,7 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 // Exact replica of IHyprRenderer::shouldBlur(PHLWINDOW) (Renderer.cpp:3310,
 // pinned 0.56.2) — that method is protected, plugins can't call it. Keep in
 // sync if Hyprland changes its eligibility rules.
-[[maybe_unused]] static bool windowBlurEligible(const PHLWINDOW &w) {
+bool windowBlurEligible(const PHLWINDOW &w) {
   // Defensive against dying/zombie windows: a client segfaulting while the
   // overview opens must not take the session down from here.
   if (!w || !w->m_isMapped || w->isHidden())
