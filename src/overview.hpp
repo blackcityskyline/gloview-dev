@@ -257,6 +257,9 @@ private:
     bool parked = false; // canvas mode: target is user-placed — rebuilds and
                          // syncs must not move it (only the tile's own drag)
     std::string labelText; // what `label` was rendered from (cache key)
+    double appear = 1.0;   // 0..1 population progress: 0 = brand-new to the
+                           // grid this rebuild (fades/scales in over
+                           // populate); ghosts cover the reverse direction
     SP<Render::ITexture> label; // cached window title, shown on hover
   };
 
@@ -395,6 +398,17 @@ private:
   double m_stripScrollFrom = 0.0;
   Tween m_stripTween;
   void animateStripTo(double from, double to);
+  // Population (populate leaf): drives Tile.appear for newcomers and the
+  // ghost fade-out for tiles removed by a rebuild.
+  Tween m_populate;
+  struct Ghost {
+    PHLWINDOWREF win;
+    LRect box; // monitor-local logical, frozen at removal
+  };
+  std::vector<Ghost> m_ghosts;
+  double populateMs() const { return animMs("populate", nullptr, 250); }
+  double tileAppear(int i) const; // staggered 0..1 for tile i
+  void renderGhosts() const;      // removed-tile fade-out (populate mirror)
   void kickPulse(const PHLWINDOW &w);
 
   // plugin:gloview:close_trigger == "doubleclick": a plain click on a tile

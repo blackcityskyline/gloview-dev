@@ -463,6 +463,20 @@ double Overview::tileProgress(int i) const {
   return std::clamp((base - start) / span, 0.0, 1.0);
 }
 
+double Overview::tileAppear(int i) const {
+  // Same tight stagger as the position glide, on the populate clock.
+  const int n = static_cast<int>(m_tiles.size());
+  if (n <= 1)
+    return curveEval(anim("populate").curve,
+                     m_populate.raw(populateMs()));
+  const double base = m_populate.raw(populateMs());
+  const double spread = std::min(0.08, 0.015 * n);
+  const double start = spread * (static_cast<double>(i) / (n - 1));
+  const double span = std::max(0.001, 1.0 - spread);
+  return curveEval(anim("populate").curve,
+                   std::clamp((base - start) / span, 0.0, 1.0));
+}
+
 LRect Overview::currentBox(const Tile &t, int i) const {
   // Plain smooth deceleration instead of easeOutBack's overshoot/"pop" — the
   // bounce is a nice touch in isolation but combined with the (now much
@@ -472,8 +486,16 @@ LRect Overview::currentBox(const Tile &t, int i) const {
   const double e = curveEval(anim("reflow").curve, tileProgress(i));
   const auto &a = t.natural;
   const auto &b = t.target;
-  return LRect{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
-               lerp(a.h, b.h, e)};
+  LRect r{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
+          lerp(a.h, b.h, e)};
+  // population scale: a brand-new tile grows from its slot center
+  const double ap = t.appear < 1.0 ? tileAppear(i) : 1.0;
+  if (ap < 1.0) {
+    const double k = 0.85 + 0.15 * ap;
+    const double cx = r.x + r.w / 2.0, cy = r.y + r.h / 2.0;
+    r = LRect{cx - r.w * k / 2.0, cy - r.h * k / 2.0, r.w * k, r.h * k};
+  }
+  return r;
 }
 
 void Overview::updateAnimation() {
@@ -503,6 +525,9 @@ void Overview::updateAnimation() {
                   m_stripTween.raw(animMs("strip_step", nullptr, 200))));
   else
     m_stripScroll = m_stripScrollTarget;
+
+  if (m_populate.done(populateMs()) && !m_ghosts.empty())
+    m_ghosts.clear();
 
   // Advance/prune swap pulses. Progress accumulates per animated frame with
   // the frame delta CAPPED, so a post-drop render hole cannot jump the ring
@@ -667,6 +692,7 @@ void Overview::renderStage(eRenderStage stage) {
   // surface, see the Phase comment).
   auto &pass = g_pHyprRenderer->m_renderPass;
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::Back));
+  renderGhosts();
   renderMainWindows();
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::Buttons));
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::Mid));
@@ -1483,6 +1509,35 @@ void Overview::kickPulse(const PHLWINDOW &w) {
   std::erase_if(m_pulses, [&w](const WinPulse &p) { return p.w.lock() == w; });
   m_pulses.push_back(
       WinPulse{w, 0.0, std::chrono::steady_clock::now()});
+}
+
+// Removed-by-rebuild tiles fading/scaling out where they were (all→one,
+// close-window). Same populate clock as Tile.appear — the mirror direction.
+void Overview::renderGhosts() const {
+  if (m_ghosts.empty() || m_populate.done(populateMs()))
+    return;
+  const auto m = m_monitor.lock();
+  if (!m)
+    return;
+  const double scale = m->m_scale;
+  const auto when = Time::steadyNow();
+  const int round = pxr(cfgInt("plugin:gloview:preview_round", 12), scale);
+  const float roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+  const double p = m_populate.raw(populateMs());
+  const double eOut = curveEval(anim("populate").curve, p); // 0..1 gone
+  for (const auto &g : m_ghosts) {
+    const auto w = g.win.lock();
+    if (!w || !w->m_isMapped || w->isHidden())
+      continue;
+    const double k = 1.0 - 0.15 * eOut; // shrink toward its own center
+    const double cx = g.box.x + g.box.w / 2.0, cy = g.box.y + g.box.h / 2.0;
+    const LRect box{cx - g.box.w * k / 2.0, cy - g.box.h * k / 2.0,
+                    g.box.w * k, g.box.h * k};
+    const CBox px(box.x * scale, box.y * scale, box.w * scale,
+                  box.h * scale);
+    renderWindowLive(w, m, px, px, static_cast<float>(1.0 - eOut), when,
+                     round, roundPow);
+  }
 }
 
 // Active swap pulses. strip=true → ring the window's STRIP slot; false → its

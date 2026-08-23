@@ -363,7 +363,11 @@ void Overview::renderMainWindows() const {
             continue;
         const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
         const CBox  px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
-        renderWindowLive(w, m, px, px, 1.0F, when, round, roundPow);
+        const double ap = m_tiles[i].appear < 1.0
+                              ? tileAppear(static_cast<int>(i))
+                              : 1.0;
+        renderWindowLive(w, m, px, px, static_cast<float>(ap), when, round,
+                         roundPow);
     }
 }
 

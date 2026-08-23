@@ -277,11 +277,16 @@ void Overview::switchToWorkspace(const StripItem &it) {
   // Rebuild around the displayed workspace and keep the overview visually
   // settled; clicking strip cards should not replay the opening animation.
   m_hovered = m_hoveredStrip = -1;
-  const auto shown = captureCurrentBoxes(); // settle instantly: shown -> new slots
+  captureCurrentBoxes(); // ghosts fade where the old workspace's tiles were
   buildTiles();
   buildStrip();
   layoutTiles();
-  startTileGlide(shown);
+  // Every new-workspace tile is a newcomer here: staggered fade/scale-in
+  // replaces the old one-frame content swap (cards, digits, jump alike).
+  for (auto &t : m_tiles)
+    t.appear = 0.0;
+  m_ghosts.clear();
+  m_populate.begin();
   m_tileClock.pinEnd(reflowDur());
   m_progress = 1.0;
   m_opening = true;
