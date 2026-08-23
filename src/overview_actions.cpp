@@ -127,39 +127,38 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
 // both spaces — so dragging a tile from one workspace onto a tile from another
 // in the all-workspaces (expo) grid works the same as a same-workspace swap.
 // Only fullscreen windows (no well-defined tiled slot to trade) are excluded.
+// Swap two REAL windows' tiling slots (same- or cross-workspace). Shared by
+// the grid drag (swapTiles) and the strip RMB slot-to-slot drop. True if the
+// swap happened. ITarget::swap() recalculates both spaces it touches, so no
+// manual recalculate() is needed afterward.
+bool Overview::swapWindows(const PHLWINDOW &wa, const PHLWINDOW &wb) {
+  if (!wa || !wb || wa == wb ||
+      Fullscreen::controller()->isFullscreen(wa) ||
+      Fullscreen::controller()->isFullscreen(wb))
+    return false;
+  const auto ta = wa->layoutTarget();
+  const auto tb = wb->layoutTarget();
+  if (!g_layoutManager || !ta || !tb)
+    return false;
+
+  // capture where every tile sits NOW so the previews glide from their current
+  // spots into the post-swap slots (same tail as dropOnWorkspace).
+  auto oldBoxes = captureCurrentBoxes();
+  g_layoutManager->switchTargets(ta, tb);
+  // Rebuild the overview from the swapped real geometry and glide in.
+  replayReflow(oldBoxes);
+  damage();
+  return true;
+}
+
 void Overview::swapTiles(int a, int b) {
   if (a < 0 || b < 0 || a == b || a >= static_cast<int>(m_tiles.size()) ||
       b >= static_cast<int>(m_tiles.size())) {
     damage();
     return;
   }
-  const auto wa = m_tiles[a].win.lock();
-  const auto wb = m_tiles[b].win.lock();
-  if (!wa || !wb || wa == wb || Fullscreen::controller()->isFullscreen(wa) ||
-      Fullscreen::controller()->isFullscreen(wb)) {
+  if (!swapWindows(m_tiles[a].win.lock(), m_tiles[b].win.lock()))
     damage();
-    return;
-  }
-  const auto ta = wa->layoutTarget();
-  const auto tb = wb->layoutTarget();
-  if (!g_layoutManager || !ta || !tb) {
-    damage();
-    return;
-  }
-
-  // capture where every tile sits NOW so the previews glide from their current
-  // spots into the post-swap slots (same tail as dropOnWorkspace).
-  auto oldBoxes = captureCurrentBoxes();
-
-  // Real swap. ITarget::swap() already recalculates both spaces it touches
-  // (same-space or cross-space), so no manual recalculate() call is needed here
-  // afterward.
-  g_layoutManager->switchTargets(ta, tb);
-
-  // Rebuild the overview from the swapped real geometry and glide the tiles in.
-  // Tiles render live, so there is nothing to recapture.
-  replayReflow(oldBoxes);
-  damage();
 }
 
 // RMB-drop-on-a-strip-card counterpart to dropOnWorkspace (task #8): instead of

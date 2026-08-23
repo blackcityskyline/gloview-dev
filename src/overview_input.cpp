@@ -406,6 +406,28 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const bool lifted = m_drag.lifted;
     m_drag = {};
     if (lifted) {
+      if (w && rmb) {
+        // RMB onto a SPECIFIC window slot (any card, incl. the source's own
+        // when it holds 2+ previews) → swap exactly these two windows'
+        // tiling slots. Checked before the card-level fallbacks so an exact
+        // slot hit always wins over "swap with card's last-focused".
+        for (size_t i = 0; i < m_strip.size(); ++i) {
+          const auto &it = m_strip[i];
+          if (it.kind != StripItem::Kind::Ws)
+            continue;
+          for (size_t j = 0; j < it.wins.size(); ++j) {
+            const auto v = it.wins[j].win.lock();
+            if (!v || v == w || !v->m_isMapped || v->isHidden())
+              continue;
+            if (!stripWinSlotRect(it, stripCardAt(i), j).contains(lx, ly))
+              continue;
+            if (swapWindows(w, v))
+              return true;
+            damage(); // partner ineligible (fullscreen etc.) → snap back
+            return true;
+          }
+        }
+      }
       if (w) {
         // dropped onto a DIFFERENT card → move it there, same as a grid-tile
         // drop (RMB: swap with that workspace's window instead — task #8)
