@@ -589,6 +589,8 @@ private:
                             // window instead of moving it
   void swapTiles(int a, int b); // drag a preview onto another → swap the two
                                 // windows' places (real layout + overview)
+  bool swapWindows(const PHLWINDOW &a,
+                   const PHLWINDOW &b); // real-slot swap core (grid+strip)
   void addWorkspace();          // "+" card: create a workspace (animate it in,
                                 // optionally follow)
   void closeWorkspaceWindows(
