@@ -199,6 +199,13 @@ public:
   // blit). Consumers then see pixel-identical content to the surroundings in
   // every phase — entry pop, ws switches, close glide.
   void syncMonitorBlurFB() const;
+  // Any valid tile window: handed to m_renderData.currentWindow in the Back
+  // phase so drawTex()'s shouldUseNewBlurOptimizations() sees a window and
+  // routes preview blur-behind through the monitor m_blurFB (which we own
+  // while up) instead of the unstable live sample. Rendered-back-to-front
+  // pass order guarantees it is set before the first queued surface draws;
+  // CHyprOpenGLImpl::end() clears it, so nothing leaks past the frame.
+  [[nodiscard]] PHLWINDOW backdropAnchorWindow() const;
   void renderPreviews() const; // static tiles' chrome (shadow/border/backing),
                                // drawn under the strip
   void

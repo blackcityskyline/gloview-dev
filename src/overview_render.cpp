@@ -308,13 +308,17 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // or any transient alpha the sampled region is effectively undimmed and
   // flashes bright under the tile. Only fully-settled previews get it;
   // transient ones are covered by the frosted backing instead.
-  // Blur-behind samples the monitor's m_blurFB — which syncMonitorBlurFB()
-  // overwrites with our frozen backdrop look every frame while the overview
-  // is up. Settled previews therefore show EXACTLY what the surrounding
-  // backdrop shows, in every phase (entry, switches, close); after
-  // deactivation Hyprland rebuilds the FB from the real desktop and the
-  // landing windows carry their own decoration blur seamlessly.
-  data.blur = windowBlurEligible(w) && alpha >= 0.999F;
+  // Blur-behind MUST take the XRAY path: data.xray routes the draw to the
+  // monitor's m_blurFB — which syncMonitorBlurFB() overwrites with our
+  // frozen backdrop look every Back phase. Without .xray the element falls
+  // to blurMainFramebuffer(), a LIVE damage-limited sample of currentFB
+  // whose content/era depends on interleaved foreign frames — the source of
+  // every dim-flash and blur->sharp->blur variant. After deactivation
+  // Hyprland rebuilds the FB from the real desktop and landing windows
+  // carry their own decoration blur seamlessly.
+  const bool wantBlur = windowBlurEligible(w) && alpha >= 0.999F;
+  data.blur = wantBlur;
+  data.blockBlurOptimization = false; // never the damage-limited live sample
   data.pWindow = w;
   data.clipBox = clipPx;
   data.squishOversized = true;
@@ -365,6 +369,10 @@ public:
     case Phase::Back:
       m_owner->renderBackdrop();
       m_owner->syncMonitorBlurFB();
+      // Route every queued preview's blur-behind through the FB we just
+      // wrote (see backdropAnchorWindow / drawTex in ElementRenderer.cpp).
+      if (const auto anchor = m_owner->backdropAnchorWindow())
+        g_pHyprRenderer->m_renderData.currentWindow = anchor;
       m_owner->renderPreviews(); // main tile chrome (shadow/ring/backing);
                                  // surfaces queued right after
       break;
