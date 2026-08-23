@@ -100,7 +100,31 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `padding_top` | int (px) | `40` | Extra gap between the strip and the previews |
 | `padding_bottom` | int (px) | `70` | Bottom outer margin |
 | `max_scale` | float | `1.0` | Never enlarge a preview past real size × this |
-| `duration` | int (ms) | `360` | Open/close animation length |
+| `duration` | int (ms) | `360` | Legacy shared animation length — followed by every `<leaf>_ms` left at `-1` |
+
+### Animations
+
+One master switch plus a registry of leaves, mirroring Hyprland's own
+animation model. Every leaf expands to three options: `<leaf>_enabled` (0/1),
+`<leaf>_ms` (-1 = follow `duration`; otherwise its own length), and
+`<leaf>_curve` (`linear` / `easeout` / `easeinout` / `back`). Setting
+`animations_enabled = 0` makes the ENTIRE plugin instant — open/close, glides,
+pulses, everything — through a single choke point.
+
+| Leaf | Default ms | Default curve | What it drives |
+|---|---|---|---|
+| `open` | via duration | easeout | entry reveal (chrome + tiles) |
+| `close` | via duration | easeout | exit collapse |
+| `reflow` | via duration | easeout | tile glide on drops/swaps/sync/close-home |
+| `new_card` | via duration | back | "+" card pop-in |
+| `swap_pulse` | 180 | back | success ring after swaps/moves |
+| `strip_step` | 200 | easeinout | animated strip scroll per workspace step |
+| `populate` | 250 | easeout | staggered tile population + ghost fade-out (all↔one, ws switch, window close) |
+
+```lua
+animations_enabled = 1,
+-- populate_ms = 250, populate_curve = "easeout", populate_enabled = 1, ...
+```
 | `preview_round` | int (px) | `12` | Corner radius for every window-shaped preview — main grid tiles AND strip card previews (with their borders/shadows) — clamped down automatically on the smaller strip thumbnails |
 | `preview_round_power` | float | `2.0` | Corner curve exponent (`2` = circular, higher = squarer "squircle"), applied consistently to the same set of elements as `preview_round` |
 | `strip_preview_round` | — | — | **Deprecated**, no longer read — strip window previews now share `preview_round`/`preview_round_power` |
