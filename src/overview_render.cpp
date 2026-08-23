@@ -128,15 +128,21 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 bool windowBlurEligible(const PHLWINDOW &w); // external linkage: shared
                                              // with overview_tiles_render.cpp
 bool windowBlurEligible(const PHLWINDOW &w) {
+  // Defensive against dying/zombie windows (a client segfaulting while the
+  // overview opens used to take the whole session down from here).
+  if (!w || !w->m_isMapped || w->isHidden() || !w->wlSurface())
+    return false;
   static auto PBLUR = CConfigValue<Config::INTEGER>("decoration:blur:enabled");
   if (!*PBLUR)
+    return false;
+  const auto wls = w->wlSurface();
+  if (!wls)
     return false;
   if (w->m_ruleApplicator->noBlur().valueOrDefault() ||
       w->m_ruleApplicator->RGBX().valueOrDefault() || w->opaque())
     return false;
-  const auto surface = w->wlSurface();
-  if (surface && surface->m_hasBackgroundEffect)
-    return !surface->m_blurRegion.empty();
+  if (wls->m_hasBackgroundEffect)
+    return !wls->m_blurRegion.empty();
   return true;
 }
 
