@@ -326,13 +326,6 @@ Hyprlang::INT Overview::cfgColor(const char *base, const char *fallback) const {
                        parseHexColor(fallback, 0xffffffffLL));
 }
 
-PHLWINDOW Overview::backdropAnchorWindow() const {
-  for (const auto &t : m_tiles)
-    if (const auto w = t.win.lock())
-      return w;
-  return {};
-}
-
 SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
                                            const CHyprColor &col, int size) {
   auto &c = m_labelCache[key];
