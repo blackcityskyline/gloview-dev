@@ -385,7 +385,17 @@ private:
   // deactivate()/hardClose() can release every one.
   std::vector<PHLWORKSPACEREF> m_newWorkspaces;
   double m_stripScroll = 0.0; // strip group scroll offset along its main axis
+                                 // (the ANIMATED value — consumers only read this)
   double m_stripScrollMax = 0.0; // max scroll (0 when the cards fit the band)
+  // AN5: target-chase for strip scrolling. buildStrip/stepWorkspace set a new
+  // TARGET; animateStripScroll() eases m_stripScroll toward it each animated
+  // frame (strip_step leaf). Axis-free: the offset is always along the band's
+  // main axis.
+  double m_stripScrollTarget = 0.0;
+  double m_stripScrollFrom = 0.0;
+  Tween m_stripTween;
+  void animateStripTo(double from, double to);
+  void kickPulse(const PHLWINDOW &w);
 
   // plugin:gloview:close_trigger == "doubleclick": a plain click on a tile
   // normally activates it IMMEDIATELY (focusAndClose), which leaves no room to
@@ -617,7 +627,6 @@ private:
     std::chrono::steady_clock::time_point last;
   };
   std::vector<WinPulse> m_pulses;
-  void kickPulse(const PHLWINDOW &w);
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
                      const CHyprColor &col, double p) const;
   void addWorkspace();          // "+" card: create a workspace (animate it in,
