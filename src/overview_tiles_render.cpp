@@ -209,7 +209,8 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // pixel-identical to the surrounding backdrop, independent of window
     // count/class. Non-eligible ones keep the legacy transient-only rule.
     const bool frostAlways =
-        w && windowBlurEligible(w);
+        cfgInt("plugin:gloview:frost_underlay", 1) != 0 && w &&
+        windowBlurEligible(w);
     if (frostAlways || e < 0.999 || apNow < 0.999) {
         if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
             const CBox monPx{0.0, 0.0, m->m_size.x * s, m->m_size.y * s};
