@@ -723,6 +723,20 @@ void Overview::renderStage(eRenderStage stage) {
   renderAboveLayers(); // opted-in layer surfaces (e.g. the live-input HUD) sit
                        // on top of the overview
 
+  // While ANY of our clocks runs, keep forcing full-monitor frames: foreign
+  // half-damage frames (the real workspace-slide animation schedules them)
+  // otherwise interleave and CPreBlur rebuilds only half of m_blurFB —
+  // xray previews then sample two different eras split by a straight line
+  // (the "tile divided in half, one side brighter" artifact).
+  {
+    const bool busy = secondaryAnimsActive() ||
+                      !m_tileClock.done(reflowDur()) || m_newCardAnim ||
+                      m_drag.lifted || !m_pulses.empty() ||
+                      (m_opening ? m_progress < 1.0 : m_progress > 0.0);
+    if (busy && m != nullptr)
+      m->m_forceFullFrames = std::max(m->m_forceFullFrames, 1);
+  }
+
   // Final close frame: the overlay (opaque previews at natural positions) is
   // now queued, covering the windows shouldRenderWindow suppressed earlier this
   // frame. Flip off NOW, after the pass is built, so the NEXT frame renders the
