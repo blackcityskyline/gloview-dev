@@ -963,6 +963,13 @@ bool Overview::snapshotMode() const {
   return cfgStr("plugin:gloview:preview_mode", "live") == "snapshot";
 }
 
+// R1 (v5): the A/B switch between the legacy queue route and the immediate
+// painter leaf. Read live, so flipping it mid-session is a full rollback
+// path without a rebuild.
+bool Overview::immediateSurfaces() const {
+  return cfgInt("plugin:gloview:immediate_surfaces", 0) != 0;
+}
+
 void Overview::updateSnapshots() {
   if (!snapshotMode())
     return;

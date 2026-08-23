@@ -152,18 +152,26 @@ bool windowBlurEligible(const PHLWINDOW &w) {
 }
 
 // Render a window's LIVE surface tree scaled into `destPx`, clipped to `clipPx`
-// (both monitor PIXEL coords) via real CSurfacePassElements. No crop rect to
-// drift, so immune to snapshots' stale/mis-cropped tiles; works on hidden
-// workspaces. `roundPx` (destination-pixel-space corner radius) and
-// `roundingPower` let the caller match whatever rounding the surrounding chrome
-// (border ring / backing) uses. External linkage (regular namespace-scope, not
-// anonymous): shared with overview_tiles_render.cpp
-// (renderMainWindows/renderDragWindow), which forward-declares this exact
-// signature rather than duplicating the ~70-line body.
+// (both monitor PIXEL coords). No crop rect to drift, so immune to snapshots'
+// stale/mis-cropped tiles; works on hidden workspaces. `roundPx`
+// (destination-pixel-space corner radius) and `roundingPower` let the caller
+// match whatever rounding the surrounding chrome (border ring / backing) uses.
+// External linkage (regular namespace-scope, not anonymous): shared with
+// overview_tiles_render.cpp (renderMainWindows/renderDragWindow), which
+// forward-declares this exact signature rather than duplicating the body.
+//
+// Two execution routes behind identical SRenderData setup (R1, REFACTORING.md
+// v5): the legacy route queues real CSurfacePassElements into the render pass
+// (only legal at BUILD time); the immediate route executes each surface
+// synchronously via IHyprRenderer::draw() (Renderer.cpp:859) — same
+// preDrawSurface/drawSurface machinery (alpha modifiers, UV/small corrections,
+// presentFeedback frame callbacks, blend, async-buffer tracking) without
+// touching the pass list, so it is also legal at EXECUTION time from inside
+// our own pass element.
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx = 0,
-                      float roundingPower = 2.0F) {
+                      float roundingPower = 2.0F, bool execCtx = false) {
   if (!w || !mon || !w->m_isMapped || !w->wlSurface() ||
       !w->wlSurface()->resource())
     return;
@@ -211,12 +219,33 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
        std::any(scaleMod)});
   modif.enabled = true;
 
-  g_pHyprRenderer->m_renderPass.add(makeUnique<CRendererHintsPassElement>(
-      CRendererHintsPassElement::SData{.renderModif = modif}));
-  Hyprutils::Utils::CScopeGuard reset([] {
-    g_pHyprRenderer->m_renderPass.add(
-        makeUnique<CRendererHintsPassElement>(CRendererHintsPassElement::SData{
-            .renderModif = Render::SRenderModifData{}}));
+  // Route selection. The immediate route requires BOTH the A/B flag and an
+  // execution-time call site (execCtx): at BUILD time an immediate draw would
+  // land UNDER the queued standard elements (wallpaper layers execute later
+  // and paint over it), so build-time callers always take the queue route.
+  // The immediate route runs while CRenderPass::render is iterating the pass
+  // element vector — m_renderPass.add() there is a reallocation under a live
+  // range-for, so the translate+scale modif is set directly on m_renderData
+  // (exactly what drawHints does for the queued route,
+  // ElementRenderer.cpp:190-194) and restored after the last surface.
+  const bool immediate =
+      execCtx && g_overview && g_overview->immediateSurfaces();
+  auto &renderPass = g_pHyprRenderer->m_renderPass;
+  Render::SRenderModifData savedModif;
+  if (immediate) {
+    savedModif = g_pHyprRenderer->m_renderData.renderModif;
+    g_pHyprRenderer->m_renderData.renderModif = modif;
+  } else {
+    renderPass.add(makeUnique<CRendererHintsPassElement>(
+        CRendererHintsPassElement::SData{.renderModif = modif}));
+  }
+  Hyprutils::Utils::CScopeGuard reset([&] {
+    if (immediate)
+      g_pHyprRenderer->m_renderData.renderModif = savedModif;
+    else
+      renderPass.add(makeUnique<CRendererHintsPassElement>(
+          CRendererHintsPassElement::SData{
+              .renderModif = Render::SRenderModifData{}}));
   });
 
   // NOTE: damageWindow(w) used to be called here for every window on every
@@ -270,7 +299,10 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
       sdata.clipBox = clipPx;
       sdata.squishOversized = true;
       sdata.surfaceCounter = 0;
-      g_pHyprRenderer->m_renderPass.add(makeUnique<CSurfacePassElement>(sdata));
+      if (immediate)
+        g_pHyprRenderer->draw(sdata, g_pHyprRenderer->m_renderData.damage);
+      else
+        renderPass.add(makeUnique<CSurfacePassElement>(sdata));
       return;
     }
     // no captured texture yet (window appeared this frame) → fall through to
@@ -331,7 +363,8 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   data.surfaceCounter = 0;
 
   w->wlSurface()->resource()->breadthfirst(
-      [&data, &w](SP<CWLSurfaceResource> s, const Vector2D &offset, void *) {
+      [&data, &w, immediate,
+       &renderPass](SP<CWLSurfaceResource> s, const Vector2D &offset, void *) {
         if (!s || !s->m_current.texture || s->m_current.size.x < 1 ||
             s->m_current.size.y < 1)
           return;
@@ -339,8 +372,10 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
         data.texture = s->m_current.texture;
         data.surface = s;
         data.mainSurface = s == w->wlSurface()->resource();
-        g_pHyprRenderer->m_renderPass.add(
-            makeUnique<CSurfacePassElement>(data));
+        if (immediate)
+          g_pHyprRenderer->draw(data, g_pHyprRenderer->m_renderData.damage);
+        else
+          renderPass.add(makeUnique<CSurfacePassElement>(data));
         data.surfaceCounter++;
       },
       nullptr);
@@ -383,7 +418,14 @@ public:
       break; // per-window "✕" + swap pulses, on top of the surfaces
     case Phase::Mid:
       m_owner->renderStrip();
-      break; // strip chrome; surfaces queued after
+      // R1: with the immediate flag the strip thumbnails draw RIGHT HERE,
+      // inside this phase's execution — same z-position as the queued
+      // elements would occupy (after band/card chrome, before StripButtons).
+      // The flag gate is what keeps the queue route (and its legal BUILD-time
+      // m_renderPass.add) from ever running in this EXECUTION context.
+      if (m_owner->immediateSurfaces())
+        m_owner->renderStripWindows(true /* execCtx */);
+      break; // strip chrome (+ immediate thumbnails); surfaces queued after
     case Phase::StripButtons:
       m_owner->renderPulses(true);
       m_owner->renderStripButtons();
@@ -731,7 +773,11 @@ void Overview::renderStage(eRenderStage stage) {
   renderMainWindows();
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::Buttons));
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::Mid));
-  renderStripWindows();
+  // Strip thumbnails are drawn by EXACTLY ONE route per frame: BUILD-time
+  // queue here (default), or EXECUTION-time immediate from Phase::Mid when
+  // immediate_surfaces is on. Both land at the same z-position.
+  if (!immediateSurfaces())
+    renderStripWindows();
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::StripButtons));
   const bool draggingTile = draggedTile() >= 0;
   const bool draggingStripWin =
@@ -1378,9 +1424,11 @@ void Overview::renderStripButtons() const {
   }
 }
 
-// Queues the LIVE surfaces for every strip card, layered above the BACK chrome
-// (card backings) but under the FRONT chrome (drag tile, cursor).
-void Overview::renderStripWindows() const {
+// Strip card window previews. BUILD time (default): queues the LIVE surfaces
+// above the Mid chrome but below StripButtons. EXECUTION time (execCtx, R1):
+// called from Phase::Mid after renderStrip(); with immediate_surfaces on, each
+// preview is drawn synchronously at this exact z-position instead.
+void Overview::renderStripWindows(bool execCtx) const {
   const auto m = m_monitor.lock();
   if (!m || m_strip.empty())
     return;
@@ -1423,9 +1471,8 @@ void Overview::renderStripWindows() const {
                         slot.h * scale);
       const CBox cardPx(card.x * scale, card.y * scale, card.w * scale,
                         card.h * scale);
-      renderWindowLive(w, m, slotPx, cardPx,
-                       static_cast<float>(e), when, round,
-                       roundPow);
+      renderWindowLive(w, m, slotPx, cardPx, static_cast<float>(e), when,
+                       round, roundPow, execCtx);
     }
   }
 }
