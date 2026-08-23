@@ -201,7 +201,9 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // Sample OUR cached fullscreen blur into the tile box instead — the same
     // source the settled backdrop blits — so the tile reads identically from
     // frame 1 and the global backdrop then dissolves over it seamlessly.
-    if (e < 0.999) {
+    const double apNow =
+        t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
+    if (e < 0.999 || apNow < 0.999) {
         if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
             const CBox monPx{0.0, 0.0, m->m_size.x * s, m->m_size.y * s};
             // Alpha (1 - e): the backing hands over to the global backdrop
@@ -210,8 +212,9 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
             // snapped darker the moment the backing stopped at e >= 0.999 —
             // the one-frame "dim step" at animation end.
             g_pHyprOpenGL->scissor(pxb(lb, s));
-            g_pHyprOpenGL->renderTexture(btex, monPx,
-                                         {.a = static_cast<float>(1.0 - e)});
+            g_pHyprOpenGL->renderTexture(
+                btex, monPx,
+                {.a = static_cast<float>(std::max(1.0 - e, 1.0 - apNow))});
             g_pHyprOpenGL->scissor(nullptr);
         }
     }
