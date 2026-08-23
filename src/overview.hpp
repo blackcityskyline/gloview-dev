@@ -256,6 +256,7 @@ private:
     LRect target;  // monitor-local logical: grid slot
     bool parked = false; // canvas mode: target is user-placed — rebuilds and
                          // syncs must not move it (only the tile's own drag)
+    std::string labelText; // what `label` was rendered from (cache key)
     SP<Render::ITexture> label; // cached window title, shown on hover
   };
 
@@ -320,6 +321,18 @@ private:
                                   // (exit_on_switch)
   std::vector<Tile> m_tiles;
   std::vector<StripItem> m_strip;
+  // Text->texture cache for tile/strip labels. Tiles and StripItems are
+  // RECREATED on every rebuild (each drop/swap/sync), so caching on them
+  // re-rasterized every label every drop — the drag&drop stutter. Keyed by
+  // the owning window/workspace pointer with mark-and-sweep per build pass
+  // (explicit lifecycle, per AGENTS).
+  struct LabelTex {
+    std::string text;
+    SP<Render::ITexture> tex;
+  };
+  std::unordered_map<void *, LabelTex> m_labelCache;
+  SP<Render::ITexture> cachedLabel(void *key, const std::string &text,
+                                   const CHyprColor &col, int size);
   // layer surfaces (bars/popups) we faded out while up, with their pre-hide
   // alpha goal, so deactivate() restores them exactly — even if config changed
   // meanwhile.

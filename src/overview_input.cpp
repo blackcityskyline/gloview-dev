@@ -408,11 +408,13 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const bool lifted = m_drag.lifted;
     m_drag = {};
     if (lifted) {
-      if (w && rmb) {
-        // RMB onto a SPECIFIC window slot (any card, incl. the source's own
+      if (w) {
+        // Drop onto a SPECIFIC window slot (any card, incl. the source's own
         // when it holds 2+ previews) → swap exactly these two windows'
-        // tiling slots. Checked before the card-level fallbacks so an exact
-        // slot hit always wins over "swap with card's last-focused".
+        // tiling slots, BOTH buttons: precise target = exchange places.
+        // Checked before the card-level fallbacks so an exact slot hit always
+        // wins over move / last-focused-swap — this is what makes intra-card
+        // rearrangement possible ("bottom 25% ↔ left 50%").
         for (size_t i = 0; i < m_strip.size(); ++i) {
           const auto &it = m_strip[i];
           if (it.kind != StripItem::Kind::Ws)

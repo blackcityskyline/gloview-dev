@@ -326,6 +326,15 @@ Hyprlang::INT Overview::cfgColor(const char *base, const char *fallback) const {
                        parseHexColor(fallback, 0xffffffffLL));
 }
 
+SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
+                                           const CHyprColor &col, int size) {
+  auto &c = m_labelCache[key];
+  if ((!c.tex || c.text != text) && g_pHyprRenderer)
+    c = LabelTex{text, g_pHyprRenderer->renderText(text, col, size, false, "",
+                                                   0, size >= 15 ? 700 : 600)};
+  return c.tex;
+}
+
 // ---- animation registry (AN1) ----------------------------------------------
 
 Overview::AnimCfg Overview::anim(const char *leaf) const {

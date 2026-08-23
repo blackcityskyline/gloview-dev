@@ -90,8 +90,7 @@ void Overview::buildTiles() {
         text = w->m_class;
       if (text.size() > 80)
         text = text.substr(0, 79) + "…";
-      t.label =
-          g_pHyprRenderer->renderText(text, lblCol, 15, false, "", 0, 700);
+      t.label = cachedLabel(w.get(), text, lblCol, 15);
     }
     // pre-render the "✕" (or configured) glyph once per icon (rendering text
     // mid-pass is unsafe); re-rendered whenever close_button_icon changes so it
@@ -255,8 +254,7 @@ void Overview::buildStrip() {
       if (it.kind == StripItem::Kind::Plus)
         continue;
       if (it.kind == StripItem::Kind::All) {
-        it.label = g_pHyprRenderer->renderText("All workspaces", lblCol, 13,
-                                               false, "", 0, 600);
+        it.label = cachedLabel((void *)-2, "All workspaces", lblCol, 13);
         continue;
       }
       const auto ws = it.ws.lock();
@@ -267,7 +265,8 @@ void Overview::buildStrip() {
           });
       const std::string text = numeric ? ("Workspace " + nm) : nm;
       it.label =
-          g_pHyprRenderer->renderText(text, lblCol, 13, false, "", 0, 600);
+          cachedLabel(ws ? (void *)ws.get() : (void *)(intptr_t)it.id, text,
+                      lblCol, 13);
     }
   }
 
