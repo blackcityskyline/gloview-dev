@@ -471,16 +471,37 @@ Overview::captureCurrentBoxes(PHLWINDOW exclude) const {
 // the tile clock. The next frames glide into the fresh targets.
 void Overview::startTileGlide(
     const std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes) {
-  if (!oldBoxes.empty())
+  bool newcomers = false;
+  if (!oldBoxes.empty()) {
     for (auto &t : m_tiles) {
       t.natural = t.target;
+      bool matched = false;
       for (const auto &[oldWin, oldBox] : oldBoxes)
         if (oldWin == t.win.lock()) {
           t.natural = oldBox;
+          matched = true;
           break;
         }
+      t.appear = matched ? 1.0 : 0.0;
+      newcomers |= !matched;
     }
+    // ghosts: tiles the rebuild REMOVED fade/scale out where they were
+    m_ghosts.clear();
+    for (const auto &[oldWin, oldBox] : oldBoxes) {
+      bool kept = false;
+      for (auto &t : m_tiles)
+        if (t.win.lock() == oldWin) { kept = true; break; }
+      if (!kept && !m_populate.done(1.0))
+        m_ghosts.push_back(Ghost{oldWin, oldBox});
+      else if (!kept)
+        m_ghosts.push_back(Ghost{oldWin, oldBox});
+    }
+  } else
+    for (auto &t : m_tiles)
+      t.appear = 1.0;
   m_tileClock.begin();
+  if (newcomers || !m_ghosts.empty())
+    m_populate.begin();
 }
 
 void Overview::replayReflow(
