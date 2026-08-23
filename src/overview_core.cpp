@@ -326,6 +326,31 @@ Hyprlang::INT Overview::cfgColor(const char *base, const char *fallback) const {
                        parseHexColor(fallback, 0xffffffffLL));
 }
 
+// ---- animation registry (AN1) ----------------------------------------------
+
+Overview::AnimCfg Overview::anim(const char *leaf) const {
+  static const std::string P = "plugin:gloview:";
+  AnimCfg a;
+  a.on = cfgInt("plugin:gloview:animations_enabled", 1) != 0 &&
+         cfgInt((P + leaf + "_enabled").c_str(), 1) != 0;
+  a.ms = cfgInt((P + leaf + "_ms").c_str(), -1); // -1 = follow fallback knob
+  a.curve = curveFromName(cfgStr((P + leaf + "_curve").c_str(), "easeout"));
+  return a;
+}
+
+double Overview::animMs(const char *leaf, const char *msFallbackKey,
+                        int msFallback) const {
+  const auto a = anim(leaf);
+  if (!a.on)
+    return 1.0; // master or leaf off: clocks complete within one frame
+  if (a.ms >= 0)
+    return std::max(1.0, static_cast<double>(a.ms));
+  // _ms left at the sentinel (-1) → follow this leaf's legacy knob
+  return std::max(
+      1.0, static_cast<double>(msFallbackKey ? cfgInt(msFallbackKey, msFallback)
+                                             : msFallback));
+}
+
 Overview::Anchor Overview::stripAnchor() const {
   std::string a = cfgStr("plugin:gloview:anchor", "");
   if (a.empty()) // back-compat: the old top|bottom knob
@@ -870,7 +895,7 @@ void Overview::rearmanim() const {
 
 void Overview::ensureAnimPump() {
   const bool stillAnimating =
-      m_active && (!m_tileClock.done(animDuration()) || m_newCardAnim ||
+      m_active && (!m_tileClock.done(reflowDur()) || m_newCardAnim ||
                    m_drag.lifted ||
                    (m_opening && m_progress < 1.0) ||
                    (!m_opening && m_progress > 0.0));
@@ -891,7 +916,7 @@ void Overview::ensureAnimPump() {
       std::chrono::milliseconds(8),
       [this](SP<CEventLoopTimer> self, void *) {
         const bool go = m_active && g_pHyprRenderer &&
-                        (!m_tileClock.done(animDuration()) ||
+                        (!m_tileClock.done(reflowDur()) ||
                          m_newCardAnim || m_drag.lifted ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0));

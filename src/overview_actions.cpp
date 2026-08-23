@@ -273,7 +273,7 @@ void Overview::switchToWorkspace(const StripItem &it) {
   buildStrip();
   layoutTiles();
   startTileGlide(shown);
-  m_tileClock.pinEnd(animDuration());
+  m_tileClock.pinEnd(reflowDur());
   m_progress = 1.0;
   m_opening = true;
   m_timeline.pinEnd(animDuration()); // keep the overview visually settled

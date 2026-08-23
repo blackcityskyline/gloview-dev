@@ -240,6 +240,20 @@ APICALL EXPORT std::string PLUGIN_API_VERSION() {
     return HYPRLAND_API_VERSION;
 }
 
+// Animation leaves (AN1): each expands to <leaf>_enabled/_ms/_curve. _ms
+// sentinel -1 = "follow the legacy `duration` option" so existing single-knob
+// configs keep working. Curves: linear | easeout | easeinout | back.
+struct AnimLeaf { const char* leaf; int msDefault; const char* curveDefault; };
+constexpr AnimLeaf kAnimLeaves[] = {
+    {"open",       -1,  "easeout"},   // chrome + tile reveal on entry
+    {"close",      -1,  "easeout"},   // collapse/exit
+    {"reflow",     -1,  "easeout"},   // tile glide (drop/sync/swap/close-home)
+    {"new_card",   -1,  "back"},      // "+" card pop-in
+    {"swap_pulse", 180, "back"},      // success pop after a window swap
+    {"strip_step", 200, "easeinout"}, // animated strip scroll per ws step
+    {"populate",   250, "easeout"},   // all<->one tile population/dispersal
+};
+
 APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     g_handle = handle;
 
@@ -249,6 +263,14 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         addFloat(name, def);
     for (const auto& [name, def] : kStrCfg)
         addStr(name, def);
+
+    addInt("plugin:gloview:animations_enabled", 1); // master switch: gates EVERY animation
+    for (const auto& L : kAnimLeaves) {
+        const std::string p = std::string("plugin:gloview:") + L.leaf;
+        addInt((p + "_enabled").c_str(), 1);
+        addInt((p + "_ms").c_str(), L.msDefault);
+        addStr((p + "_curve").c_str(), L.curveDefault);
+    }
 
     g_overviewOwned = std::make_unique<gloview::Overview>(handle);
     g_overview      = g_overviewOwned.get();
