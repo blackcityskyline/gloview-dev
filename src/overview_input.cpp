@@ -313,8 +313,10 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       m_drag = {};
       // dropped onto a workspace card → move the window there (RMB: swap
       // instead — task #8, mirrors the strip-window-drag drop branch below)
-      if (dropOnStripCard(w, lx, ly, -1))
+      if (dropOnStripCard(w, lx, ly, -1)) {
+        kickPulse(w); // success ring: pops on its NEW strip card slot
         return true;
+      }
       // grid mode: dropped onto (or near) another preview → swap the two
       // windows' places. Nearest-tile-within-tolerance rather than exact
       // containment: the natural drop point often lands in the gap between
@@ -434,18 +436,23 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       if (w) {
         // dropped onto a DIFFERENT card → move it there, same as a grid-tile
         // drop (RMB: swap with that workspace's window instead — task #8)
-        if (dropOnStripCard(w, lx, ly, stripItem))
+        if (dropOnStripCard(w, lx, ly, stripItem)) {
+          kickPulse(w);
           return true;
+        }
         // dropped in the main preview area → send it to whichever workspace is
         // currently displayed there (equivalent to dropping it on that card).
         if (const auto m = m_monitor.lock();
             m && LRect{0, 0, m->m_size.x, m->m_size.y}.contains(lx, ly)) {
           for (const auto &it : m_strip) {
             if (it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All && it.active) {
-              if (rmb)
+              if (rmb) {
                 swapOnWorkspace(w, it);
-              else
+                kickPulse(w);
+              } else {
                 dropOnWorkspace(w, it);
+                kickPulse(w);
+              }
               return true;
             }
           }
