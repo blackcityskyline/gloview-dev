@@ -290,8 +290,7 @@ void Overview::switchToWorkspace(const StripItem &it) {
   // in renderBackdrop() keeps the stale dark capture alive — previews then
   // snap old->new the instant their population settles and blur-behind
   // kicks in. Invalidate explicitly; the next Back phase re-captures.
-  m_backdropDrawn = false;
-  m_blur.valid = false;
+  m_backdropRecapture = true; // re-capture every frame until populate ends
   // Every new-workspace tile is a newcomer here: staggered fade/scale-in
   // replaces the old one-frame content swap (cards, digits, jump alike).
   for (auto &t : m_tiles)
