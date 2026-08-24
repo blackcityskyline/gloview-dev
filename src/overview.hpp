@@ -38,32 +38,9 @@ class CEventLoopTimer;
 
 namespace gloview {
 
-// Easing curves selectable per animation leaf from the config
-// (plugin:gloview:<leaf>_curve). Values mirror the CSS-ish names users know.
-enum class Curve : int { Linear, EaseOut, EaseInOut, Back };
-
-inline double curveEval(Curve c, double t) {
-  t = std::clamp(t, 0.0, 1.0);
-  switch (c) {
-  case Curve::Linear: return t;
-  case Curve::EaseInOut:
-    return t < 0.5 ? 4.0 * t * t * t : 1.0 - std::pow(-2.0 * t + 2.0, 3.0) / 2.0;
-  case Curve::Back: { // easeOutBack — small overshoot, for pops only
-    const double c1 = 1.70158, c3 = c1 + 1.0;
-    return 1.0 + c3 * std::pow(t - 1.0, 3.0) + c1 * std::pow(t - 1.0, 2.0);
-  }
-  case Curve::EaseOut: break;
-  }
-  const double inv = 1.0 - t;
-  return 1.0 - inv * inv * inv; // easeOutCubic — the historical default
-}
-
-inline Curve curveFromName(const std::string &s) {
-  if (s == "linear") return Curve::Linear;
-  if (s == "easeinout") return Curve::EaseInOut;
-  if (s == "back") return Curve::Back;
-  return Curve::EaseOut; // "easeout" + anything unparsable
-}
+// Animation curves are resolved through the registry (anim/curves.hpp):
+// leaves carry a curve NAME from the config, native built-ins and
+// Lua-registered functions (hl.plugin.gloview.curve) live in one namespace.
 
 // Monotonic timeline anchor for the overview's hand-driven animation clocks.
 // Durations live at the call sites (the `duration` config must be picked up
@@ -149,7 +126,7 @@ inline ConfigRegistry g_config;
 //   └───────────────────────────────────────────────┘
 //
 // The whole thing is drawn compositor-side from windows' own LIVE surfaces over
-// a blurred backdrop (queued CSurfacePassElements, not snapshots); real windows
+// a blurred backdrop (window content drawn immediately by the painter); real windows
 // are hidden while it is up. Layout math lives in layout.hpp so it can be
 // tweaked independently.
 class Overview {
@@ -209,7 +186,7 @@ public:
   void renderDragWindow() const; // the picked-up tile's live surface
   void renderCursorOnTop()
       const; // hardware or software cursor over our overlay (sees HW/SW split)
-  // Re-arm the animation loop. Front-phase damage+scheduleFrame alone raced
+  // Re-arm the animation loop. Build-time damage+scheduleFrame alone raced
   // with Hyprland's per-frame damage snapshot and still produced 2-3 partial
   // frames; the authoritative re-arm is an EVENT-LOOP timer (rearmanim's
   // pump) that ticks strictly BETWEEN frames, where a fresh full-monitor
@@ -561,7 +538,7 @@ private:
   struct AnimCfg {
     bool on = false;
     int ms = 1;
-    Curve curve = Curve::EaseOut;
+    std::string curve = "easeout";
   };
   AnimCfg anim(const char *leaf) const;
   // Effective duration for a leaf: 1ms when master/leaf disabled (every clock

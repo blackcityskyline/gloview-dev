@@ -12,6 +12,7 @@
 
 #include "gl_util.hpp"
 #include "../overview.hpp"
+#include "../anim/curves.hpp"
 #include "window_content.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -321,7 +322,7 @@ void Overview::renderGhosts() const {
   const int round    = pxr(cfgInt("plugin:gloview:preview_round", 12), scale);
   const float roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
   const double p     = std::min(1.0, m_populate.raw(populateMs()) / 0.6);
-  const double eOut  = curveEval(anim("populate").curve, p); // 0..1 gone
+  const double eOut  = curves::eval(anim("populate").curve, p); // 0..1 gone
   for (const auto &g : m_ghosts) {
     const auto w = g.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())

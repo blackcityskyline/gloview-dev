@@ -16,6 +16,7 @@ extern "C" {
 #include <lua.h>
 }
 
+#include "anim/curves.hpp"
 #include "overview.hpp"
 
 inline HANDLE                             g_handle = nullptr;
@@ -269,6 +270,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     for (const auto& [name, def] : kStrCfg)
         addStr(name, def);
 
+    gloview::curves::registerBuiltins();
+
     addInt("plugin:gloview:animations_enabled", 1); // master switch: gates EVERY animation
     for (const auto& L : kAnimLeaves) {
         const std::string p = std::string("plugin:gloview:") + L.leaf;
@@ -314,11 +317,15 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                   }})),
          ...);
 
-        if (isLua)
+        if (isLua) {
             ((kActions[Is].lua &&
               HyprlandAPI::addLuaFunction(handle, "gloview", kActions[Is].lua,
                                           &luaInvoke<Is>)),
              ...);
+            // hl.plugin.gloview.curve(name, fn): custom animation curves
+            HyprlandAPI::addLuaFunction(handle, "gloview", "curve",
+                                        &gloview::curves::luaRegister);
+        }
     }(std::make_index_sequence<kActions.size()>{});
 
     HyprlandAPI::reloadConfig();
