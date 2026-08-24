@@ -893,6 +893,23 @@ void Overview::damage() const {
     g_pHyprRenderer->damageMonitor(m);
 }
 
+// Close-completion teardown, called from the painter's EXECUTION tail
+// (Phase::Front). The queue-era placement — right after the pass was BUILT —
+// erased m_tiles/m_strip before the pass executed, which the queue route
+// survived (queued surface elements carry copied data) but the immediate
+// route cannot: the landing frame's content simply wasn't drawn and the real
+// desktop flashed through opaque tiles. Here the whole frame has already
+// painted with an intact Model; m_active=false still lands before the NEXT
+// frame's shouldRenderWindow decision, so the handoff semantics are
+// unchanged.
+void Overview::finishPendingDeactivate() {
+  if (!m_pendingDeactivate)
+    return;
+  m_pendingDeactivate = false;
+  dbg("handoff: final overlay frame painted, deactivating");
+  deactivate();
+}
+
 void Overview::rearmanim() const {
   if (!m_active)
     return;

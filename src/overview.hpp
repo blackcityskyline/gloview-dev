@@ -199,9 +199,17 @@ public:
                                // hint, drawn after the strip's live surfaces
   void renderPulses(bool strip) const; // swap success rings (grid|strip)
   void renderPreviews() const; // static tiles' chrome (shadow/border/backing),
-                               // drawn under the strip
+                                // drawn under the strip
   void
-  renderMainWindows() const; // live window surfaces for the main-area tiles
+  renderMainWindows(bool execCtx = false) const; // live window surfaces for the
+                                                  // main-area tiles; execCtx=true
+                                                  // when called from pass
+                                                  // EXECUTION (Phase::Back) —
+                                                  // enables the immediate leaf
+  void renderGhosts(bool execCtx = false) const; // removed-tile fade-out
+                                                 // (populate mirror), drawn
+                                                 // UNDER the mains; execCtx
+                                                 // like renderMainWindows
   void renderTileButtons()
       const; // per-window "✕", drawn after the tiles' live surfaces
   void
@@ -217,6 +225,13 @@ public:
   void rearmanim() const;
   void ensureAnimPump();               // (re)arm the between-frames ticker
   SP<CEventLoopTimer> m_animPump;      // null when no animation is running
+  // Close-completion teardown, run from the painter's EXECUTION tail (after
+  // the cursor): the immediate route reads m_tiles/m_strip while the pass
+  // draws, so the Model must stay intact until everything has painted. Still
+  // strictly before the next frame's shouldRenderWindow decision — the
+  // handoff semantics (real windows reappear on the frame AFTER the final
+  // overlay frame) are unchanged.
+  void finishPendingDeactivate();
   bool isAboveLayer(const std::string &ns) const;
   void renderAboveLayers() const; // re-render opted-in TOP/OVERLAY layer
                                   // surfaces on top of the overview
@@ -433,7 +448,6 @@ private:
            !m_stripTween.done(animMs("strip_step", nullptr, 200));
   }
   double tileAppear(int i) const; // staggered 0..1 for tile i
-  void renderGhosts() const;      // removed-tile fade-out (populate mirror)
   void kickPulse(const PHLWINDOW &w);
 
   // plugin:gloview:close_trigger == "doubleclick": a plain click on a tile
