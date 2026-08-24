@@ -67,11 +67,10 @@ constexpr std::pair<const char*, Config::INTEGER> kIntCfg[] = {
     // output is identical by construction; this is the A/B switch for the
     // migration (default off = the legacy queue route). Removed at R3.
     {"plugin:gloview:immediate_surfaces", 0},
-    // Step-C experiment (frost underlay for translucent tiles). Default OFF:
-    // in the field it produced sharp-corner seams (rect scissor under rounded
-    // content) and asymmetric darkening (only some tiles pass the eligibility
-    // test). Its entry-blink purpose evaporates under the R2 painter, where
-    // the backdrop is drawn first in the same pass; revisit there.
+    // DEPRECATED, no-op: the transition frost's alphas were corrected (blur
+    // constant, dim tracks the global fade), which makes an always-on variant
+    // pixel-identical to the plain backdrop at rest. Kept registered so old
+    // configs setting it don't error.
     {"plugin:gloview:frost_underlay", 0},
     // --- workspace strip ---
     {"plugin:gloview:strip_height", 150},          // band thickness (perpendicular to its edge)

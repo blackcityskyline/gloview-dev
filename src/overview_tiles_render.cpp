@@ -30,6 +30,7 @@
 #include <hyprland/src/render/Texture.hpp>
 #include <hyprland/src/render/pass/PassElement.hpp>
 #include <hyprland/src/render/pass/SurfacePassElement.hpp>
+#include <hyprland/src/render/pass/TexPassElement.hpp>
 #include <hyprland/src/render/pass/RendererHintsPassElement.hpp>
 #include <hyprland/src/protocols/core/Compositor.hpp>
 #include <hyprland/src/desktop/view/WLSurface.hpp>
@@ -202,38 +203,56 @@ void Overview::drawPreviewTile(size_t i, const LRect& slot, bool lift) const {
     // Sample OUR cached fullscreen blur into the tile box instead — the same
     // source the settled backdrop blits — so the tile reads identically from
     // frame 1 and the global backdrop then dissolves over it seamlessly.
+    // Transition frost: while the global backdrop is still fading (entry) or
+    // the tile is popping in (population), a translucent tile's see-through
+    // pixels blend against the SHARP desktop under the semi-transparent
+    // backdrop — a visible dip toward sharp and a switch from the real
+    // desktop's blur-behind. The frost is a LOCAL REDRAW OF THE SETTLED
+    // BACKDROP, constrained to the tile: the cached blur at CONSTANT alpha
+    // (any fade re-opens a window for the sharp component: compositing
+    // backdrop-blur e and frost (1-e) over currentFB leaves C*e*(1-e)
+    // sharp leakage — the "blur dips to half strength mid-flight" artifact)
+    // plus the dim rect tracking the GLOBAL dim alpha e, so the interior's
+    // dim equals the surroundings' dim in every frame (the old constant-1.0
+    // dim made a darker region travel with the moving tile and jump by a
+    // full dim step at the e >= 0.999 boundary). Both draws are ROUNDED like
+    // the content (a rect scissor left ghost sharp corners) and the blit is
+    // UV-mapped to the tile's own region of the monitor-sized blur texture
+    // (a plain renderTexture would stretch the whole texture into the box).
+    // At e >= 0.999 the block stops — by then frost and backdrop are
+    // pixel-identical, so the boundary is invisible.
     const double apNow =
         t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
-    // STEP C: eligible translucent tiles carry the frost underlay for their
-    // WHOLE session — interior becomes pixel-identical to the surrounding
-    // backdrop (cached blur + dim), independent of sibling previews.
-    const bool frostAlways = w && windowBlurEligible(w) &&
-        cfgInt("plugin:gloview:frost_underlay", 1) != 0;
-    if (frostAlways || e < 0.999 || apNow < 0.999) {
-        if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
-            const CBox monPx{0.0, 0.0, m->m_size.x * s, m->m_size.y * s};
-            // Alpha (1 - e): the backing hands over to the global backdrop
-            // CONTINUOUSLY. A fixed 1.0 made the tile region brighter than
-            // its surroundings while active (extra un-dimmed blur layer) and
-            // snapped darker the moment the backing stopped at e >= 0.999 —
-            // the one-frame "dim step" at animation end.
-            g_pHyprOpenGL->scissor(pxb(lb, s));
-            g_pHyprOpenGL->renderTexture(
-                btex, monPx,
-                {.a = frostAlways
-                          ? 1.0F
-                          : static_cast<float>(
-                                std::max(1.0 - e, 1.0 - apNow))});
-            // the cached blur carries NO dim — reapply it here EXACTLY ONCE so
-            // the tile interior matches the dimmed surroundings to the pixel
-            // (a second stacked dim made eligible translucent tiles visibly
-            // darker than ineligible neighbors — the "one of two terminals
-            // is darker" artifact)
-            g_pHyprOpenGL->renderRect(
-                pxb(lb, s),
-                argb(cfgColor("backdrop_color", "0x73070a10"), 1.0), {});
-            g_pHyprOpenGL->scissor(nullptr);
-        }
+    // plugin:gloview:frost_underlay is DEPRECATED and a no-op: with the
+    // corrected alphas the frost equals the backdrop at rest, so an
+    // always-on variant changes nothing.
+    if (e < 0.999 || apNow < 0.999) {
+      if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
+        const double pxW = static_cast<double>(m->m_pixelSize.x);
+        const double pxH = static_cast<double>(m->m_pixelSize.y);
+        const CBox  lbPx = pxb(lb, s);
+        CTexPassElement::SRenderData td{};
+        td.tex           = btex;
+        td.box           = lbPx;
+        td.a             = 1.0F;
+        td.round         = pxr(round, s);
+        td.roundingPower = roundPow;
+        td.allowCustomUV = true;
+        auto &uvTL = g_pHyprRenderer->m_renderData.primarySurfaceUVTopLeft;
+        auto &uvBR = g_pHyprRenderer->m_renderData.primarySurfaceUVBottomRight;
+        uvTL = Vector2D{lbPx.x / pxW, lbPx.y / pxH};
+        uvBR = Vector2D{(lbPx.x + lbPx.width) / pxW,
+                        (lbPx.y + lbPx.height) / pxH};
+        g_pHyprRenderer->draw(td, g_pHyprRenderer->m_renderData.damage);
+        uvTL = Vector2D{-1.0, -1.0};
+        uvBR = Vector2D{-1.0, -1.0};
+        // the frost covers the global dim drawn earlier — re-apply it at the
+        // global alpha so the interior's dim tracks the surroundings exactly
+        g_pHyprOpenGL->renderRect(
+            lbPx, argb(cfgColor("backdrop_color", "0x73070a10"),
+                       static_cast<float>(e)),
+            {.round = pxr(round, s), .roundingPower = roundPow});
+      }
     }
     safetyBacking(lb, s, cfgColor("backing_color", "0xff14181f"), 0.08, round,
                   roundPow);
