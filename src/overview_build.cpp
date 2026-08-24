@@ -1,5 +1,5 @@
 #include "overview.hpp"
-#include "overlay_gl.hpp"
+#include "render/gl_util.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -8,32 +8,15 @@
 #include <set>
 #include <utility>
 
-#include <hyprland/src/Compositor.hpp>
-#include <hyprland/src/debug/log/Logger.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/desktop/history/WindowHistoryTracker.hpp>
-#include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/desktop/view/LayerSurface.hpp>
 #include <hyprland/src/desktop/view/WLSurface.hpp>
 #include <hyprland/src/desktop/view/Window.hpp>
-#include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/helpers/Color.hpp>
-#include <hyprland/src/helpers/time/Time.hpp>
-#include <hyprland/src/layout/LayoutManager.hpp>
-#include <hyprland/src/layout/space/Space.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
-#include <hyprland/src/pointer/PointerManager.hpp>
-#include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
-#include <hyprland/src/managers/eventLoop/EventLoopTimer.hpp>
-#include <hyprland/src/managers/input/InputManager.hpp>
-#include <hyprland/src/protocols/core/Compositor.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/render/Renderer.hpp>
-#include <hyprland/src/render/Texture.hpp>
-#include <hyprland/src/render/pass/PassElement.hpp>
-#include <hyprland/src/render/pass/RendererHintsPassElement.hpp>
-#include <hyprland/src/render/pass/SurfacePassElement.hpp>
 #include <hyprland/src/state/WorkspaceState.hpp>
 #include <hyprutils/utils/ScopeGuard.hpp>
 

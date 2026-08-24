@@ -8,35 +8,21 @@
 #include <numeric>
 #include <utility>
 
-#include <hyprland/src/Compositor.hpp>
-#include <hyprland/src/config/ConfigValue.hpp>
-#include <hyprland/src/config/shared/complex/ComplexDataTypes.hpp>
 #include <hyprland/src/debug/log/Logger.hpp>
 #include <hyprland/src/desktop/Workspace.hpp>
-#include <hyprland/src/desktop/history/WindowHistoryTracker.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
-#include <hyprland/src/desktop/view/LayerSurface.hpp>
 #include <hyprland/src/desktop/view/WLSurface.hpp>
 #include <hyprland/src/desktop/view/Window.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/helpers/Color.hpp>
-#include <hyprland/src/helpers/time/Time.hpp>
-#include <hyprland/src/layout/LayoutManager.hpp>
-#include <hyprland/src/layout/space/Space.hpp>
-#include <hyprland/src/layout/target/Target.hpp>
-#include <hyprland/src/pointer/PointerManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopTimer.hpp>
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
-#include <hyprland/src/protocols/core/Compositor.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/render/Texture.hpp>
 #include <hyprland/src/render/pass/ClearPassElement.hpp>
-#include <hyprland/src/render/pass/PassElement.hpp>
-#include <hyprland/src/render/pass/RendererHintsPassElement.hpp>
-#include <hyprland/src/render/pass/SurfacePassElement.hpp>
 #include <hyprland/src/render/pass/TexPassElement.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
 #include <hyprutils/utils/ScopeGuard.hpp>
@@ -978,13 +964,6 @@ void Overview::ensureAnimPump() {
 // cleared wholesale on teardown (deactivate/hardClose).
 bool Overview::snapshotMode() const {
   return cfgStr("plugin:gloview:preview_mode", "live") == "snapshot";
-}
-
-// R1 (v5): the A/B switch between the legacy queue route and the immediate
-// painter leaf. Read live, so flipping it mid-session is a full rollback
-// path without a rebuild.
-bool Overview::immediateSurfaces() const {
-  return cfgInt("plugin:gloview:immediate_surfaces", 0) != 0;
 }
 
 void Overview::updateSnapshots() {

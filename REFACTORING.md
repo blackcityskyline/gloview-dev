@@ -123,6 +123,47 @@ PainterPass::draw (EXECUTION): z-слоты выше. Пост-условие: b
   НЕСУЩЕСТВУЮЩИЙ символ (nm: `U gloview::windowBlurEligible` в готовом .so).
   Вынесен в gloview-scope: T-символ, сборка без warning.
 
+## A1 (после R3) — реестр кривых + Lua-кривые: развязка ядра и анимаций
+
+Принцип: Clocks = чистое линейное время (Tween.raw), лист = данные
+{enabled, ms, curve-id} (AN1), шейпинг = одна точка. Захардкожен только
+Curve enum — его заменяет реестр:
+
+    src/anim/curves.{hpp,cpp}   (файлы появятся в R3-сплите)
+      evalCurve(id, t)                 — единственная точка шейпинга
+      реестр: имя → native fn | lua ref (luaL_ref)
+
+- Конфиг не меняется: <leaf>_curve уже строка; реестр резолвит больше имён.
+- Нативные кривые — указатели функций (linear/easeout/easeinout/back/...).
+- Lua: gloview.curve("name", function(t) return ... end) — регистратор через
+  addLuaFunction, eval = lua_rawgeti + pcall (~µs, единицы вызовов/кадр).
+- Безопасность: pcall-ошибка/nil/NaN → linear + однократный dbg. Результат
+  НЕ клампится (overshoot легален).
+- Запреты: никакого шейпинга в painter/paint; никаких кривых внутри Tween;
+  keyframe-DSL не нужен (Lua-функция покрывает любую форму).
+
+## R3 — ВЫПОЛНЕН: один PainterPass + сплит src/render/, src/anim/
+
+- Очередь поверхностей и флаг immediate_surfaces УДАЛЕНЫ: весь контент
+  (грид, ghost'ы, стрип-миниатюры, драг, aboveLayers) рисуется немедленно
+  через лист window_content.cpp; шесть фаз COverlayPass заменены одним
+  PainterPass (painter.cpp) с фиксированными z-слотами Z0..Z5 + tail
+  (rearm + teardown). Правило порядка: «сидящее ПОВЕРХ контента рисуется
+  ПОСЛЕ него» — единственное правило вместо фазовой машины.
+- renderStage = чистый BUILD: clocks → hover/sync/snapshots → ws-follow →
+  один PainterPass → forceFullFrames. Прекрасный след F-трейса сохранён;
+  PRE-probe замороженного Bug A удалён (протокол остался в CANDIDATES.md).
+- Мёртвый код не перенесён: windowBlurEligible (осиротел после переработки
+  frost), Overview::closing(), миграционные execCtx/immediateSurfaces,
+  hints-элементы, COverlayPass. Stale-комментарий «0.55.4» → 0.56.2.
+- Структура: render/{painter,backdrop,window_content(.hpp),tile_view,
+  strip_view,fx,gl_util.hpp} + anim/clocks.cpp (eased/animDuration/
+  tileProgress/tileAppear/currentBox/updateAnimation/newCardScale/
+  animateStripTo — единственный домен, трогающий время). A1 добавит сюда
+  реестр кривых.
+- Порядок Z4/Z5: above-layers теперь ПОД курсором (в queue-эпоху HUD
+  очередью попадал над SW-курсором случайно; курсор сверху — корректно).
+
 ## Журнал сессий
 
 - 2026-08-23: v5 спека записана; контракты верифицированы по pinned HLsrc 0.56.2.
@@ -171,6 +212,18 @@ PainterPass::draw (EXECUTION): z-слоты выше. Пост-условие: b
   монитора; пересмотреть forceFullFrames-чёрч при драге.
 - hyprctl getoption читает V2-значения плагина — штатный способ проверки
   живых параметров.
+- 2026-08-23 (ночь): R2 закоммичен (8433f55) + переработка frost (4b5fa8d).
+  Гейт R2 пройден (пиксель-паритет A/B, население, драги). Найден и починен
+  регресс финального кадра: teardown переехал в хвост painter'а
+  (finishPendingDeactivate, Phase::Front) — queue-маршрут переживал очистку
+  Model на build-времени за счёт копий данных в элементах, immediate — нет.
+  Frost переписан как ЛОКАЛЬНАЯ ПЕРЕРИСОВКА финального фона (blit кэш-блюра
+  @1.0 через UV sub-rect + dim @глобальной e, оба скруглённые квадры без
+  scissor) — сняло семейство «dim скачет/плавает + ghost-углы + провал блюра
+  10→5-6→10»: старые альфы были инвертированы (blit (1-e) давал sharp-утечку
+  C·e·(1-e), dim 1.0 — двойной-dim и скачок на границе e≥0.999).
+  frost_underlay → deprecated no-op. По итогам живого теста юзера: «всё
+  последовательно и слитно».
 
 Не-рендерная логика (input/keys/actions/build/core/layout) не трогается.
 Структура файлов решается на R3 (возможен src/render/painter.cpp + view-файлы);

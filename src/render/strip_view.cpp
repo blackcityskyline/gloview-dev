@@ -1,0 +1,337 @@
+#include <algorithm>
+#include <cmath>
+
+#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/helpers/Color.hpp>
+#include <hyprland/src/render/OpenGL.hpp>
+#include <hyprland/src/render/Renderer.hpp>
+
+#include "gl_util.hpp"
+#include "../overview.hpp"
+#include "window_content.hpp"
+
+using Render::GL::g_pHyprOpenGL;
+
+namespace gloview {
+
+namespace {
+
+CBox box(const LRect &r) { return CBox{r.x, r.y, r.w, r.h}; }
+
+} // namespace
+
+// Z2: the workspace strip — translucent band, card frames/backings, "+"/"All"
+// glyphs, per-slot backings and workspace labels. Card thumbnails are drawn
+// right after this (renderStripWindows), hints/✕ after those
+// (renderStripButtons) — everything that sits ON TOP of a thumbnail comes
+// later in the painter, so no opaque window content can cover it.
+void Overview::renderStrip() const {
+  const auto m = m_monitor.lock();
+  if (!m || m_strip.empty())
+    return;
+  const double e = eased();
+  if (e <= 0.01)
+    return;
+  const double s =
+      m->m_scale; // logical→pixel; Hyprland's renderRect wants pixel coords
+  const int   previewRound = cfgInt("plugin:gloview:preview_round", 12);
+  const float roundPow     = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+
+  // Translucent band behind the cards (kept faint per request). The band
+  // never uses native blur: it would sample currentFB, which can hold a
+  // solitary fullscreen window (the workspace-switch fast path bypasses
+  // shouldRenderWindow), leaking window content into the band. The backdrop
+  // already provides the blur behind the strip — a flat band color is
+  // sufficient.
+  const auto bandCol = argb(cfgColor("strip_band_color", "0x24ffffff"), e);
+  const LRect bandR  = stripBand();
+  const Vector2D slide  = stripSlide(e);  // slide the whole strip in from its edge
+  const Vector2D scroll = stripScroll();  // scroll the card group along the band
+  g_pHyprOpenGL->renderRect(
+      pxb(CBox(bandR.x + slide.x, bandR.y + slide.y, bandR.w, bandR.h), s),
+      bandCol, {});
+
+  const int  cardRound = cfgInt("plugin:gloview:strip_card_round", 10);
+  const auto cardBg    = argb(cfgColor("strip_card_color", "0x3a0e131c"), e);
+  const auto activeBg  = argb(cfgColor("strip_active_color", "0x4d1c2c44"), e);
+  const auto activeLine = argb(cfgColor("strip_active_border", "0xf0ffffff"), e);
+  const auto hoverLine  = argb(cfgColor("strip_hover_border", "0x80ffffff"), e);
+  const auto plusCol    = argb(cfgColor("strip_plus_color", "0xd0eef4ff"), e);
+  const auto allCol     = argb(cfgColor("strip_all_color", "0xd0eef4ff"), e);
+  // Expo indicator: when all-workspaces is active, the "All" card (if present)
+  // lights up active-style; otherwise outline every real card for feedback.
+  const bool allWs       = showAllWorkspaces();
+  const bool allCardShown = cfgInt("plugin:gloview:strip_all_card", 0) != 0;
+
+  for (size_t i = 0; i < m_strip.size(); ++i) {
+    const auto &it = m_strip[i];
+    const bool hover = static_cast<int>(i) == m_hoveredStrip;
+    LRect card = it.card;
+    card.x += slide.x + scroll.x; // follow the strip slide-in and scroll
+    card.y += slide.y + scroll.y;
+    if (m_newCardAnim && it.id == m_newCardId &&
+        it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All) {
+      const double f = newCardScale(); // pop-in: scale up from the card center
+      const double cx = card.cx(), cy = card.cy();
+      card = LRect{cx - card.w * f / 2.0, cy - card.h * f / 2.0, card.w * f,
+                   card.h * f};
+    }
+    const CBox c = box(card);
+
+    // border frame underlay: one rounded rect grown by the line width, so the
+    // card body on top leaves a clean ring (four thin strips would blob at
+    // the corners).
+    const bool actLike =
+        it.active || (allWs && allCardShown && it.kind == StripItem::Kind::All);
+    const bool expoRing =
+        allWs && !allCardShown && it.kind != StripItem::Kind::Plus;
+    const bool ring = actLike || expoRing;
+    if (ring || hover) {
+      const auto &lc = ring ? activeLine : hoverLine;
+      const double t = actLike ? 2.5 : 2.0;
+      g_pHyprOpenGL->renderRect(
+          pxb(CBox(c.x - t, c.y - t, c.w + 2 * t, c.h + 2 * t), s), lc,
+          {.round = pxr(cardRound + t, s), .roundingPower = roundPow});
+    }
+
+    g_pHyprOpenGL->renderRect(
+        pxb(c, s), actLike ? activeBg : cardBg,
+        {.round = pxr(cardRound, s), .roundingPower = roundPow});
+
+    if (it.kind == StripItem::Kind::Plus) {
+      // centered plus glyph
+      const double t = std::max(2.0, card.h * 0.04);
+      const double L = std::min(card.w, card.h) * 0.34;
+      const double cx = card.cx(), cy = card.cy();
+      g_pHyprOpenGL->renderRect(pxb(CBox(cx - L / 2, cy - t / 2, L, t), s),
+                                plusCol, {.round = pxr(t / 2, s)});
+      g_pHyprOpenGL->renderRect(pxb(CBox(cx - t / 2, cy - L / 2, t, L), s),
+                                plusCol, {.round = pxr(t / 2, s)});
+    } else if (it.kind == StripItem::Kind::All) {
+      // 2x2 grid-of-squares glyph = "all windows / every workspace"
+      const double pad = std::min(card.w, card.h) * 0.26;
+      const double gw = card.w - 2 * pad, gh = card.h - 2 * pad;
+      const double cg = std::max(2.0, std::min(card.w, card.h) * 0.07);
+      const double cw = std::max(2.0, (gw - cg) / 2.0),
+                   ch = std::max(2.0, (gh - cg) / 2.0);
+      const double gx = card.x + pad, gy = card.y + pad;
+      for (int r = 0; r < 2; ++r)
+        for (int col = 0; col < 2; ++col)
+          g_pHyprOpenGL->renderRect(
+              pxb(CBox(gx + col * (cw + cg), gy + r * (ch + cg), cw, ch), s),
+              allCol, {.round = pxr(2, s)});
+    } else {
+      // Thin near-invisible backing per window slot: the thumbnail may carry
+      // transparency, so without it the translucent card band over the
+      // blurred backdrop bleeds through. NOT a decorative tint — see the
+      // chrome-kernel comment in gl_util.hpp.
+      for (size_t j = 0; j < it.wins.size(); ++j) {
+        const auto &sw = it.wins[j];
+        const auto w = sw.win.lock();
+        if (!w || !w->m_isMapped || w->isHidden())
+          continue;
+        const LRect wbL = stripWinSlotRect(it, card, j);
+        const int wRound = clampRound(previewRound, wbL.w, wbL.h);
+        // Grab indicator: a bright highlight around the exact slot currently
+        // pressed, before it's lifted into a floating drag — static (not a
+        // pulse) so it doesn't force repainting while the mouse sits still.
+        const bool grabbed = static_cast<int>(i) == m_drag.idx &&
+                             static_cast<int>(j) == m_drag.winIdx &&
+                             !(m_drag.press == Drag::Press::StripWin);
+        if (grabbed)
+          strokeRing(wbL, s, argb(cfgColor("hover_border", "0xf0ffffff"), e),
+                     2, wRound, roundPow);
+        safetyBacking(wbL, s, cfgColor("backing_color", "0xff14181f"),
+                      0.08 * e, wRound, roundPow);
+      }
+    }
+
+    // workspace label, centered above the card
+    if (it.label && it.label->m_size.x > 0) {
+      double lw = it.label->m_size.x;
+      double lh = it.label->m_size.y;
+      const double maxLw = card.w + 24.0;
+      if (lw > maxLw) {
+        const double k = maxLw / lw;
+        lw *= k;
+        lh *= k;
+      }
+      // labelH (26) is reserved above every card by buildStrip (both layouts).
+      const double labelBand = 26.0;
+      const double lx = card.cx() - lw / 2.0;
+      const double ly = card.y - labelBand + (labelBand - lh) / 2.0;
+      const float la =
+          it.active ? static_cast<float>(e) : static_cast<float>(e) * 0.75F;
+      g_pHyprOpenGL->renderTexture(it.label, pxb(CBox(lx, ly, lw, lh), s),
+                                   {.a = la});
+    }
+  }
+}
+
+// Z2: the strip cards' live thumbnails — same slide-in + scroll offsets as
+// renderStrip so they travel with their cards. The window being dragged is
+// skipped here (it floats in Z3).
+void Overview::renderStripWindows() const {
+  const auto m = m_monitor.lock();
+  if (!m || m_strip.empty())
+    return;
+  const double e = eased();
+  if (e <= 0.01)
+    return;
+  const Vector2D slide  = stripSlide(e);
+  const Vector2D scroll = stripScroll();
+  const double scale = m->m_scale;
+  const auto when    = Time::steadyNow();
+  const int previewRound = cfgInt("plugin:gloview:preview_round", 12);
+  const float roundPow   = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+
+  for (size_t i = 0; i < m_strip.size(); ++i) {
+    const auto &it = m_strip[i];
+    if (it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All)
+      continue;
+    LRect card = it.card;
+    card.x += slide.x + scroll.x;
+    card.y += slide.y + scroll.y;
+    for (size_t j = 0; j < it.wins.size(); ++j) {
+      if (m_drag.press == Drag::Press::StripWin &&
+          static_cast<int>(i) == m_drag.idx &&
+          static_cast<int>(j) == m_drag.winIdx)
+        continue; // being dragged as a floating preview right now
+      const auto w = it.wins[j].win.lock();
+      if (!w || !w->m_isMapped || w->isHidden())
+        continue;
+      // window slot inside the card, from its tiled goal position (logical)
+      const LRect slot = stripWinSlotRect(it, card, j);
+      const int round = pxr(clampRound(previewRound, slot.w, slot.h), scale);
+      // renderWindowLive works in monitor PIXEL coords; the card chrome is
+      // pre-scaled to pixels too (pxb), so surface and backing coincide at
+      // any monitor scale.
+      const CBox slotPx(slot.x * scale, slot.y * scale, slot.w * scale,
+                        slot.h * scale);
+      const CBox cardPx(card.x * scale, card.y * scale, card.w * scale,
+                        card.h * scale);
+      renderWindowLive(w, m, slotPx, cardPx, static_cast<float>(e), when,
+                       round, roundPow);
+    }
+  }
+}
+
+// Z2: per-card "close every window on this workspace" ✕ + the drag
+// destination hints — everything that sits ON TOP of the thumbnails, hence
+// after renderStripWindows in the painter.
+void Overview::renderStripButtons() const {
+  const auto m = m_monitor.lock();
+  if (!m || m_strip.empty())
+    return;
+  const double e = eased();
+  if (e <= 0.01)
+    return;
+  const double s = m->m_scale;
+  const int cardRound = cfgInt("plugin:gloview:strip_card_round", 10);
+  const float roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+  const bool showClose = m_desktopMode || closeButtonsAlwaysOn();
+  const bool dropping = m_drag.armed() && m_drag.lifted;
+  // Carrying a STRIP window: hovering an exact slot means swap intent —
+  // real-slot rings for ANY button (both swap on slot drop); insert-zone
+  // hints only apply away from slots.
+  const bool rmbSwap = dropping && m_drag.press == Drag::Press::StripWin;
+
+  // RMB swap-drag: ring the SOURCE slot once, wherever it lives.
+  if (rmbSwap && m_drag.idx >= 0 &&
+      m_drag.idx < static_cast<int>(m_strip.size()) &&
+      m_drag.winIdx < static_cast<int>(m_strip[m_drag.idx].wins.size())) {
+    strokeRingPx(pxb(stripWinSlotRect(m_strip[m_drag.idx],
+                                      stripCardAt(m_drag.idx),
+                                      m_drag.winIdx),
+                     s),
+                 argb(cfgColor("select_border", "0xf066ccff"), e),
+                 0.7F * static_cast<float>(e),
+                 clampRound(cfgInt("plugin:gloview:preview_round", 12), 40, 40),
+                 roundPow);
+  }
+
+  for (size_t i = 0; i < m_strip.size(); ++i) {
+    const auto &it = m_strip[i];
+    if (it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All)
+      continue;
+    const LRect card = stripCardAt(i);
+
+    // Destination hints. LMB drag (insert): exactly TWO scenarios — whole
+    // card (empty ws) or halves by the first window's aspect. RMB drag while
+    // carrying a STRIP window (swap): no insert zones at all — instead the
+    // REAL windows are highlighted where they actually sit: a ring on the
+    // exact hovered slot (the swap partner) plus a ring on the source slot.
+    bool intentRing = false;
+    if (dropping && m_drag.press == Drag::Press::StripWin &&
+        static_cast<int>(i) == m_hoveredStrip && !it.wins.empty() &&
+        m_drag.idx >= 0 && m_drag.winIdx >= 0) {
+      const auto dragW = m_drag.win.lock();
+      for (size_t j = 0; j < it.wins.size(); ++j) {
+        const auto v = it.wins[j].win.lock();
+        if (!v || v == dragW)
+          continue;
+        if (!stripWinSlotRect(it, card, j).contains(m_drag.x, m_drag.y))
+          continue;
+        intentRing = rmbSwap ||
+                     (dragW && v->m_workspace == dragW->m_workspace);
+        break;
+      }
+    }
+    if (intentRing && !it.wins.empty()) {
+      const auto hoverCol = argb(cfgColor("hover_border", "0xf0ffffff"), e);
+      for (size_t j = 0; j < it.wins.size(); ++j) {
+        const auto v = it.wins[j].win.lock();
+        if (!v || !v->m_isMapped)
+          continue;
+        const LRect sl = stripWinSlotRect(it, card, j);
+        if (!sl.contains(m_drag.x, m_drag.y))
+          continue;
+        strokeRingPx(pxb(sl, s), hoverCol, 0.9F * static_cast<float>(e),
+                     clampRound(cfgInt("plugin:gloview:preview_round", 12),
+                                sl.w, sl.h),
+                     roundPow);
+        break;
+      }
+    } else if (!rmbSwap && dropping &&
+               static_cast<int>(i) == m_hoveredStrip) {
+      LRect zone = card;
+      if (!it.wins.empty()) {
+        const auto &r = it.wins.front().rel;
+        if (r.w * card.w >= r.h * card.h) // wide → left/right halves
+          zone = (m_drag.x < card.cx())
+                     ? LRect{card.x, card.y, card.w / 2.0, card.h}
+                     : LRect{card.cx(), card.y, card.w / 2.0, card.h};
+        else // tall → top/bottom halves
+          zone = (m_drag.y < card.cy())
+                     ? LRect{card.x, card.y, card.w, card.h / 2.0}
+                     : LRect{card.x, card.cy(), card.w, card.h / 2.0};
+      }
+      g_pHyprOpenGL->renderRect(
+          pxb(zone, s), argb(cfgColor("drop_hint_color", "0x38ffffff"), e),
+          {.round = pxr(cardRound / 2, s), .roundingPower = roundPow});
+    }
+
+    // "close every window on this workspace" — the visible counterpart to
+    // the middle-click shortcut. Stays a plain circle (default
+    // roundingPower) regardless of preview_round_power — a "squircle" close
+    // button would look broken at non-default curve exponents.
+    if (showClose) {
+      const LRect br = closeButtonRect(card);
+      const double rad = br.w / 2.0;
+      g_pHyprOpenGL->renderRect(
+          pxb(box(br), s),
+          argb(cfgColor("close_button_color", "0xe6e23b3b"), e),
+          {.round = pxr(rad, s)});
+      if (m_closeGlyph && m_closeGlyph->m_size.x > 0) {
+        const double gw = m_closeGlyph->m_size.x * 0.62,
+                     gh = m_closeGlyph->m_size.y * 0.62;
+        g_pHyprOpenGL->renderTexture(
+            m_closeGlyph,
+            pxb(CBox(br.cx() - gw / 2.0, br.cy() - gh / 2.0, gw, gh), s),
+            {.a = static_cast<float>(e)});
+      }
+    }
+  }
+}
+
+} // namespace gloview

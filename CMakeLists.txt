@@ -25,14 +25,19 @@ add_library(gloview SHARED
   src/main.cpp
   src/overview_core.cpp
   src/overview_build.cpp
-  src/overview_render.cpp
-  src/overview_tiles_render.cpp
   src/overview_input.cpp
   src/overview_keys.cpp
   src/overview_actions.cpp
   src/layout.cpp
   src/cursor.cpp
   src/blur.cpp
+  src/anim/clocks.cpp
+  src/render/painter.cpp
+  src/render/backdrop.cpp
+  src/render/window_content.cpp
+  src/render/tile_view.cpp
+  src/render/strip_view.cpp
+  src/render/fx.cpp
 )
 set_target_properties(gloview PROPERTIES PREFIX "")  # produce gloview.so, not libgloview.so
 
