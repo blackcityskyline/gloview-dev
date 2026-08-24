@@ -1,6 +1,6 @@
-#include "config/config.hpp"
-#include "debug/log.hpp"
-#include "overview.hpp"
+#include "../config/config.hpp"
+#include "../debug/log.hpp"
+#include "../overview.hpp"
 
 #include <algorithm>
 #include <cctype>
