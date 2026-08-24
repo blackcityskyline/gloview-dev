@@ -95,8 +95,13 @@ void Overview::renderStrip() const {
           {.round = pxr(cardRound + t, s), .roundingPower = roundPow});
     }
 
+    // The "All" card skips the active FILL: its 2x2 glyph shares the accent
+    // color with the ring/fill in single-accent themes, and an accent-filled
+    // body turned the whole card into one blob. Active reads via the thick
+    // ring alone; the glyph sits on the dark body, clear of the ring.
+    const bool allSkipFill = actLike && it.kind == model::StripItem::Kind::All;
     g_pHyprOpenGL->renderRect(
-        pxb(c, s), actLike ? activeBg : cardBg,
+        pxb(c, s), (actLike && !allSkipFill) ? activeBg : cardBg,
         {.round = pxr(cardRound, s), .roundingPower = roundPow});
 
     if (it.kind == model::StripItem::Kind::Plus) {
