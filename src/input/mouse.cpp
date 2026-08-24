@@ -105,7 +105,7 @@ int Overview::stripItemAt(double lx, double ly) const {
 }
 
 int Overview::draggedTile() const {
-  return (m_drag.press == Drag::Press::Tile && m_drag.lifted &&
+  return (m_drag.press == model::Drag::Press::Tile && m_drag.lifted &&
           m_drag.idx < static_cast<int>(m_tiles.size()))
              ? m_drag.idx
              : -1;
@@ -132,7 +132,7 @@ void Overview::updateHover() {
       m_drag.x = lx;
       m_drag.y = ly;
       m_hoveredStrip = stripItemAt(lx, ly); // card under the cursor, if any
-      m_hovered = (m_drag.press == Drag::Press::Tile)
+      m_hovered = (m_drag.press == model::Drag::Press::Tile)
                       ? m_drag.idx
                       : -1; // -1 while dragging a strip window, which is correct
       damage();
@@ -179,7 +179,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
 
   if (e.state == WL_POINTER_BUTTON_STATE_PRESSED) {
     m_drag = {};
-    m_drag.press = Drag::Press::Empty;
+    m_drag.press = model::Drag::Press::Empty;
     m_drag.button = e.button;
 
     // middle-click a workspace card → close every window on it (handled fully
@@ -187,7 +187,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // onKey).
     if (e.button == BTN_MIDDLE) {
       const int idx = stripItemAt(lx, ly);
-      if (idx >= 0 && m_strip[idx].kind != StripItem::Kind::Plus && m_strip[idx].kind != StripItem::Kind::All)
+      if (idx >= 0 && m_strip[idx].kind != model::StripItem::Kind::Plus && m_strip[idx].kind != model::StripItem::Kind::All)
         closeWorkspaceWindows(m_strip[idx]);
       return true; // swallow; middle is never a switch/drag/dismiss
     }
@@ -203,7 +203,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         const LRect br = closeButtonRect(lb);
         if (br.contains(lx, ly)) {
           m_drag.press =
-              Drag::Press::Consumed; // the release must treat it as handled
+              model::Drag::Press::Consumed; // the release must treat it as handled
           closeTileWindow(static_cast<int>(i));
           return true;
         }
@@ -215,12 +215,12 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // above (task 8).
     if (m_desktopMode || closeButtonsAlwaysOn()) {
       for (size_t i = 0; i < m_strip.size(); ++i) {
-        if (m_strip[i].kind == StripItem::Kind::Plus || m_strip[i].kind == StripItem::Kind::All)
+        if (m_strip[i].kind == model::StripItem::Kind::Plus || m_strip[i].kind == model::StripItem::Kind::All)
           continue;
         const LRect c = stripCardAt(i);
         const LRect br = closeButtonRect(c);
         if (br.contains(lx, ly)) {
-          m_drag.press = Drag::Press::Consumed;
+          m_drag.press = model::Drag::Press::Consumed;
           closeWorkspaceWindows(m_strip[i]);
           return true;
         }
@@ -237,14 +237,14 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       if (!c.contains(lx, ly))
         continue;
       auto &it = m_strip[i];
-      if (it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All) {
+      if (it.kind != model::StripItem::Kind::Plus && it.kind != model::StripItem::Kind::All) {
         for (size_t j = 0; j < it.wins.size(); ++j) {
           const auto w = it.wins[j].win.lock();
           if (!w || !w->m_isMapped || w->isHidden())
             continue;
           const LRect wb = stripWinSlotRect(it, c, j);
           if (wb.contains(lx, ly)) {
-            m_drag.press   = Drag::Press::StripWin;
+            m_drag.press   = model::Drag::Press::StripWin;
             m_drag.idx     = static_cast<int>(i);
             m_drag.winIdx  = static_cast<int>(j);
             m_drag.win     = w;
@@ -256,10 +256,10 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           }
         }
       }
-      m_drag.press = Drag::Press::StripCard;
-      if (it.kind == StripItem::Kind::All)
+      m_drag.press = model::Drag::Press::StripCard;
+      if (it.kind == model::StripItem::Kind::All)
         toggleAllWorkspaces();
-      else if (it.kind == StripItem::Kind::Plus)
+      else if (it.kind == model::StripItem::Kind::Plus)
         addWorkspace();
       else
         switchToWorkspace(it);
@@ -267,7 +267,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     }
     // window tile → arm a drag candidate; click vs drag decided on release
     if (const int hit = tileAt(lx, ly); hit >= 0) {
-      m_drag.press = Drag::Press::Tile;
+      m_drag.press = model::Drag::Press::Tile;
       m_drag.idx = hit;
       const LRect b = currentBox(m_tiles[hit], hit);
       m_drag.pressX = m_drag.x = lx;
@@ -277,7 +277,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       return true;
     }
     // empty space
-    m_drag.press = Drag::Press::Empty;
+    m_drag.press = model::Drag::Press::Empty;
     return true;
   }
 
@@ -286,12 +286,12 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     return true; // middle was fully handled on press
 
   switch (m_drag.press) {
-  case Drag::Press::StripCard:
-  case Drag::Press::Consumed: { // switch / ✕ already handled on press
+  case model::Drag::Press::StripCard:
+  case model::Drag::Press::Consumed: { // switch / ✕ already handled on press
     m_drag = {};
     return true;
   }
-  case Drag::Press::Tile: {
+  case model::Drag::Press::Tile: {
     const int press = m_drag.idx;
     const auto w = m_tiles[press].win.lock();
     const double grabDX = m_drag.grabDX, grabDY = m_drag.grabDY;
@@ -387,7 +387,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     return true;
   }
 
-  case Drag::Press::StripWin: {
+  case model::Drag::Press::StripWin: {
     const int stripItem = m_drag.idx;
     const auto w = m_drag.win.lock();
     const bool rmb = m_drag.button == BTN_RIGHT;
@@ -403,7 +403,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         // semantics (the ≤2-zone hint contract).
         for (size_t i = 0; i < m_strip.size(); ++i) {
           const auto &it = m_strip[i];
-          if (it.kind != StripItem::Kind::Ws)
+          if (it.kind != model::StripItem::Kind::Ws)
             continue;
           for (size_t j = 0; j < it.wins.size(); ++j) {
             const auto v = it.wins[j].win.lock();
@@ -445,8 +445,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         if (!onBand && mm &&
             LRect{0, 0, mm->m_size.x, mm->m_size.y}.contains(lx, ly)) {
           for (const auto &it : m_strip) {
-            if (it.kind != StripItem::Kind::Plus &&
-                it.kind != StripItem::Kind::All && it.active) {
+            if (it.kind != model::StripItem::Kind::Plus &&
+                it.kind != model::StripItem::Kind::All && it.active) {
               if (rmb)
                 swapOnWorkspace(w, it);
               else
@@ -464,7 +464,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // the card
     if (w) {
       for (auto &it : m_strip)
-        if (it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All && it.ws.lock() == w->m_workspace) {
+        if (it.kind != model::StripItem::Kind::Plus && it.kind != model::StripItem::Kind::All && it.ws.lock() == w->m_workspace) {
           switchToWorkspace(it);
           break;
         }

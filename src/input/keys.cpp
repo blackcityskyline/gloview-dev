@@ -152,7 +152,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
         m_newCard.begin();
         m_newCardAnim = true;
       }
-      StripItem it;
+      model::StripItem it;
       it.ws = ws;
       switchToWorkspace(it);
       if (m) {

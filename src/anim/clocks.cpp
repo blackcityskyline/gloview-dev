@@ -8,17 +8,33 @@
 
 namespace gloview {
 
+using AnimCfg = anim::AnimCfg; // return-type lookup for Overview::anim hits class scope first
+
 namespace {
 double lerp(double a, double b, double t) { return a + (b - a) * t; }
 } // namespace
 
 // ---- animation clocks -------------------------------------------------------
+// Leaf resolution (config -> {enabled, ms, curve}) lives here too: the clock
+// readers and the registry lookup are one domain.
 // The Clocks store: every value here is PURE TIME — linear progress shaped by
 // the animation registry's curves. Nothing in this file touches pixels, and
 // nothing in the painter shapes time itself: the painter reads the values
 // these functions produce. Durations are re-read from config on every call so
 // changes apply to in-flight animations; the Tween only owns its start point
 // (plus stall compensation — wall-time inside a render hole never counts).
+
+AnimCfg Overview::anim(const char *leaf) const {
+  anim::AnimCfg a;
+  a.on = cfg::anim.enabled != 0;
+  if (const auto *e = cfg::anim.leafEnabled(leaf); e && *e == 0)
+    a.on = false;
+  if (const auto *ms = cfg::anim.leafMs(leaf))
+    a.ms = ms->get(); // -1 = follow the legacy duration knob
+  if (const auto *c = cfg::anim.leafCurve(leaf))
+    a.curve = c->get();
+  return a;
+}
 
 double Overview::eased() const {
   // Chrome reveal/collapse curve follows its own leaf: open while entering,
@@ -66,7 +82,7 @@ double Overview::tileAppear(int i) const {
                    std::clamp((base - start) / span, 0.0, 1.0));
 }
 
-LRect Overview::currentBox(const Tile &t, int i) const {
+LRect Overview::currentBox(const model::Tile &t, int i) const {
   // Plain smooth deceleration: easeOutBack's per-tile bounce landed at
   // visibly different moments and read as jerky; one shared curve with no
   // overshoot reads as "monolithic".
@@ -132,7 +148,7 @@ void Overview::updateAnimation() {
     p.p += dt / std::max(1.0, pulseMs);
   }
   std::erase_if(m_pulses,
-                [](const WinPulse &p) { return p.w.expired() || p.p >= 1.0; });
+                [](const model::WinPulse &p) { return p.w.expired() || p.p >= 1.0; });
 
   const double t = m_timeline.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
@@ -148,6 +164,18 @@ void Overview::updateAnimation() {
     m_progress = 0.0;
     m_pendingDeactivate = true;
   }
+}
+
+double Overview::animMs(const char *leaf) const {
+  if (cfg::anim.enabled == 0)
+    return 1.0; // master off: clocks complete within one frame
+  if (const auto *e = cfg::anim.leafEnabled(leaf); e && *e == 0)
+    return 1.0; // leaf off
+  const int ms = cfg::anim.leafMs(leaf)->get();
+  if (ms >= 0)
+    return std::max(1.0, static_cast<double>(ms));
+  // _ms left at the sentinel (-1) → follow the legacy duration knob
+  return std::max(1.0, static_cast<double>(cfg::anim.duration));
 }
 
 double Overview::newCardScale() const {

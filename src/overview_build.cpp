@@ -47,7 +47,7 @@ void Overview::buildTiles() {
     if (!tileBelongs(w, m, ws))
       continue;
 
-    Tile t;
+    model::Tile t;
     t.win = w;
     if (const auto it = priorTargets.find(w); it != priorTargets.end()) {
       t.target = it->second.first;
@@ -131,7 +131,7 @@ void Overview::buildStrip() {
     if (ws->m_isSpecialWorkspace) {
       if (showSpecial &&
           wsHasWindows(ws)) { // a scratchpad is only meaningful when populated
-        StripItem it;
+        model::StripItem it;
         it.ws = ws;
         it.id = ws->m_id;
         it.active = (ws == cur);
@@ -147,7 +147,7 @@ void Overview::buildStrip() {
   // special-workspace cards (if any) were pushed straight into m_strip above
   // and don't participate in numeric id ordering below; stash them aside and
   // re-append after.
-  std::vector<StripItem> specialCards;
+  std::vector<model::StripItem> specialCards;
   specialCards.swap(m_strip);
 
   std::set<int> idsToShow;
@@ -188,14 +188,14 @@ void Overview::buildStrip() {
   // sits at the strip's leading edge; skipped wherever cards are treated as
   // workspaces (see the Kind::All guards).
   if (cfg::strip.all_card != 0) {
-    StripItem all;
-    all.kind = StripItem::Kind::All;
+    model::StripItem all;
+    all.kind = model::StripItem::Kind::All;
     all.id = 0;
     m_strip.push_back(std::move(all));
   }
 
   for (const int id : idsToShow) {
-    StripItem it;
+    model::StripItem it;
     it.id = id;
     const auto found = real.find(id);
     if (found == real.end()) {
@@ -212,7 +212,7 @@ void Overview::buildStrip() {
         continue;
       const auto p = w->positionAnimation()->goal();
       const auto s = w->sizeAnimation()->goal();
-      StripWin sw;
+      model::StripWin sw;
       sw.win = w;
       sw.rel = LRect{(p.x - m->m_position.x) / m->m_size.x,
                      (p.y - m->m_position.y) / m->m_size.y, s.x / m->m_size.x,
@@ -226,8 +226,8 @@ void Overview::buildStrip() {
     m_strip.push_back(std::move(sc));
 
   // trailing "+" card to create a new workspace
-  StripItem plus;
-  plus.kind = StripItem::Kind::Plus;
+  model::StripItem plus;
+  plus.kind = model::StripItem::Kind::Plus;
   plus.id = 0;
   m_strip.push_back(std::move(plus));
 
@@ -236,9 +236,9 @@ void Overview::buildStrip() {
     g_pHyprOpenGL->makeEGLCurrent();
     const auto lblCol = cfg::colors.label.get();
     for (auto &it : m_strip) {
-      if (it.kind == StripItem::Kind::Plus)
+      if (it.kind == model::StripItem::Kind::Plus)
         continue;
-      if (it.kind == StripItem::Kind::All) {
+      if (it.kind == model::StripItem::Kind::All) {
         it.label = cachedLabel((void *)-2, "All workspaces", lblCol, 13);
         continue;
       }
@@ -353,7 +353,7 @@ LRect Overview::stripCardAt(size_t i) const {
 // A strip window's on-screen slot rect given the CARD rect it sits in (already
 // scroll/slide-adjusted by the caller — shared by rendering and hit-testing so
 // both always agree on where a given window's preview actually is).
-LRect Overview::stripWinSlotRect(const StripItem &it, const LRect &card,
+LRect Overview::stripWinSlotRect(const model::StripItem &it, const LRect &card,
                                  size_t j) const {
   if (j >= it.wins.size())
     return LRect{0, 0, 0, 0};
@@ -481,7 +481,7 @@ void Overview::startTileGlide(
       for (auto &t : m_tiles)
         if (t.win.lock() == oldWin) { kept = true; break; }
       if (!kept)
-        m_ghosts.push_back(Ghost{oldWin, oldBox});
+        m_ghosts.push_back(model::Ghost{oldWin, oldBox});
     }
   } else
     for (auto &t : m_tiles)

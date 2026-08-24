@@ -23,7 +23,7 @@ pkg_search_module(LUA REQUIRED lua lua5.4 lua-5.4 lua54 luajit)
 
 add_library(gloview SHARED
   src/main.cpp
-  src/overview_core.cpp
+  src/session/session.cpp
   src/overview_build.cpp
   src/input/mouse.cpp
   src/input/keys.cpp
