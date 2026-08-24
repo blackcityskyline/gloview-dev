@@ -411,6 +411,13 @@ public:
       m_owner->renderBackdrop();
       m_owner->renderPreviews(); // main tile chrome (shadow/ring/backing);
                                  // surfaces queued right after
+      // R2: with the immediate flag the grid content draws RIGHT HERE, right
+      // after its chrome — same z-position (and ghost-under-tile order) as the
+      // queued elements would occupy between Back and Buttons.
+      if (m_owner->immediateSurfaces()) {
+        m_owner->renderGhosts(true /* execCtx */);
+        m_owner->renderMainWindows(true /* execCtx */);
+      }
       break;
     case Phase::Buttons:
       m_owner->renderTileButtons();
@@ -443,6 +450,9 @@ public:
       // to damage), scissored all drawing to that region, and presented a
       // freshly-allocated mostly-black buffer. The "black flash" frames.
       m_owner->rearmanim();
+      // Close-completion teardown lives at the painter's tail: the immediate
+      // route reads the Model while drawing, so it must still be intact here.
+      m_owner->finishPendingDeactivate();
       break;
     }
     return {};
@@ -769,8 +779,13 @@ void Overview::renderStage(eRenderStage stage) {
   // surface, see the Phase comment).
   auto &pass = g_pHyprRenderer->m_renderPass;
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::Back));
-  renderGhosts();
-  renderMainWindows();
+  // Grid content (ghosts under mains) is drawn by EXACTLY ONE route per
+  // frame: BUILD-time queue here (default), or EXECUTION-time immediate from
+  // Phase::Back when immediate_surfaces is on (R2). Same z either way.
+  if (!immediateSurfaces()) {
+    renderGhosts();
+    renderMainWindows();
+  }
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::Buttons));
   pass.add(makeUnique<COverlayPass>(this, COverlayPass::Phase::Mid));
   // Strip thumbnails are drawn by EXACTLY ONE route per frame: BUILD-time
@@ -806,38 +821,11 @@ void Overview::renderStage(eRenderStage stage) {
       m->m_forceFullFrames = std::max(m->m_forceFullFrames, 1);
   }
 
-  // Final close frame: the overlay (opaque previews at natural positions) is
-  // now queued, covering the windows shouldRenderWindow suppressed earlier this
-  // frame. Flip off NOW, after the pass is built, so the NEXT frame renders the
-  // real windows — pixel-perfect handoff, no transparent gap. The queued
-  // surfaces already captured their data; the deferred chrome callbacks no-op
-  // at progress 0. deactivate() damages the next frame.
-  if (m_pendingDeactivate) {
-    m_pendingDeactivate = false;
-    dbg("handoff: final overlay frame queued, deactivating");
-    deactivate();
-    return;
-  }
-
-  // Keep repainting every frame only while something is actually animating
-  // (open/close glide, post-drop reflow, "+" pop-in, an in-progress drag) or a
-  // recapture tick is pending. Once things settle, stop forcing a full-monitor
-  // damage every single frame — event-driven damage (mouse move, click, key
-  // press, hover/selection change; all of those paths already call damage()
-  // themselves) repaints on any real change just fine. This used to
-  // unconditionally damage() here, which pinned the compositor at a continuous
-  // full-monitor redraw (plus live-blur recompute over the whole backdrop/strip
-  // every single frame) for the ENTIRE time the overview was open, even sitting
-  // idle — this was the dominant cause of the high CPU/GPU load while the
-  // overview is up. The trade-off: if something OUTSIDE gloview damages only a
-  // small sub-region while we're idle (e.g. a background client repainting),
-  // that partial redraw could in principle show a blur edge seam at its border
-  // instead of always being masked by our own full-frame repaint; in practice
-  // this is far rarer than the constant-redraw cost it replaces.
-  // m_altTabbing is deliberately NOT part of this: it lasts the whole alt-tab
-  // session, and every actual change (a tab step, hover/selection change,
-  // click) already calls damage() itself (stepAltTab, moveSelection,
-  // updateHover, …), so nothing needs a per-frame poke on top of that.
+  // Final close frame: the overlay (opaque previews at natural positions) has
+  // just been built, covering the windows shouldRenderWindow suppressed earlier
+  // this frame. The teardown itself runs from the painter's EXECUTION tail
+  // (finishPendingDeactivate, Phase::Front) — after everything has drawn with
+  // an intact Model. deactivate() damages the next frame.
 }
 
 
@@ -1610,7 +1598,8 @@ void Overview::kickPulse(const PHLWINDOW &w) {
 
 // Removed-by-rebuild tiles fading/scaling out where they were (all→one,
 // close-window). Same populate clock as Tile.appear — the mirror direction.
-void Overview::renderGhosts() const {
+// execCtx: see renderMainWindows.
+void Overview::renderGhosts(bool execCtx) const {
   if (m_ghosts.empty() || m_populate.done(populateMs()))
     return;
   const auto m = m_monitor.lock();
@@ -1636,7 +1625,7 @@ void Overview::renderGhosts() const {
     const CBox px(box.x * scale, box.y * scale, box.w * scale,
                   box.h * scale);
     renderWindowLive(w, m, px, px, static_cast<float>((1.0 - eOut) * 0.65),
-                     when, round, roundPow);
+                     when, round, roundPow, execCtx);
   }
 }
 

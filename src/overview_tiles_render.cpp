@@ -360,9 +360,12 @@ void Overview::renderTileButtons() const {
         glDisable(GL_BLEND);
 }
 
-// Queues the LIVE surfaces for the main-area tiles (except the dragged one), above their
-// chrome (the Back phase) and under the strip. Mirrors renderStripWindows.
-void Overview::renderMainWindows() const {
+// Main-area tile previews. BUILD time (default): queues the LIVE surfaces
+// above the Back chrome and under Buttons. EXECUTION time (execCtx, R2):
+// called from Phase::Back right after the chrome; with immediate_surfaces on,
+// each preview is drawn synchronously at this exact z-position instead.
+// Mirrors renderStripWindows.
+void Overview::renderMainWindows(bool execCtx) const {
     const auto m = m_monitor.lock();
     if (!m)
         return;
@@ -388,7 +391,7 @@ void Overview::renderMainWindows() const {
         // sees ALPHA<1, CANDISABLEBLEND breaks) — every grid rebuild then
         // flickered dim/bright. Population is expressed by the box scale in
         // currentBox() alone.
-        renderWindowLive(w, m, px, px, 1.0F, when, round, roundPow);
+        renderWindowLive(w, m, px, px, 1.0F, when, round, roundPow, execCtx);
     }
 }
 
