@@ -170,6 +170,33 @@ Curve enum — его заменяет реестр:
 - Порядок Z4/Z5: above-layers теперь ПОД курсором (в queue-эпоху HUD
   очередью попадал над SW-курсором случайно; курсор сверху — корректно).
 
+## C1/D1 — ВЫПОЛНЕНЫ: config-схема и debug как модули
+
+config/config.{hpp,cpp}: опции сгруппированы по доменам (grid/strip/look/
+colors/blur/anim/keys/behavior/layer/debug), каждая — типизированный live-
+хэндл через V2-values. Скрытые пофреймовые издержки убраны: hash-lookup со
+временной строкой на каждый cfgInt и re-parse hex на каждый cfgColor —
+теперь разыменование указателя + кэш распарсенного цвета (re-parse только
+при смене литерала). Схема-таблица = single source of record.
+
+СЕССИОНАЛЬНАЯ МИНА (найдена по coredump, закрыта): CIntValue/CStringValue
+хранят имя как const char*; .c_str() временного std::string виснет сразу
+после смерти временного → commence() абортит на мусорном имени при
+регистрации → детерминированный краш сессии при загрузке плагина. Ключи в
+схеме — ТОЛЬКО литералы; ловушка задокументирована у таблицы.
+
+debug/log.{hpp,cpp}: гейт, файл /tmp/gloview.log, бутстрап-окно после
+загрузки — модуль, не методы сессии.
+
+## S1/M1/I1 — ВЫПОЛНЕНЫ: полная иерархия каталогов
+
+session/session.cpp (lifecycle+hooks), input/{mouse,keys}.cpp,
+actions/actions.cpp, build/build.cpp, model/model.hpp (Tile/StripWin/
+StripItem/LabelTex/Ghost/WinPulse/Drag — чистые данные), anim/clocks.hpp
+(Tween+AnimCfg), render/backdrop.hpp (BlurCache). overview.hpp — тонкий
+владелец трёх хранилищ + декларации. Правило слоёв: main → домены →
+примитивы → платформа; painter только читает.
+
 ## Журнал сессий
 
 - 2026-08-24: R3 закоммичен (918f979: PainterPass + сплит + чистка include,
