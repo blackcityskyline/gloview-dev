@@ -29,6 +29,9 @@ class CGradientValueData; // general:col.active_border / inactive_border's real
                           // type
 }
 
+#include "anim/clocks.hpp"
+#include "model/model.hpp"
+#include "render/backdrop.hpp"
 #include "blur.hpp"
 #include "cursor.hpp"
 #include "layout.hpp"
@@ -41,61 +44,6 @@ namespace gloview {
 // Animation curves are resolved through the registry (anim/curves.hpp):
 // leaves carry a curve NAME from the config, native built-ins and
 // Lua-registered functions (hl.plugin.gloview.curve) live in one namespace.
-
-// Monotonic timeline anchor for the overview's hand-driven animation clocks.
-// Durations live at the call sites (the `duration` config must be picked up
-// live even mid-animation), the tween only owns WHEN the clock started plus
-// the raw 0..1 math — and the two historical idioms that were previously
-// spelled as timestamp arithmetic:
-//   seek(frac, dur)  — "continue from raw progress frac" (was: back-date the
-//                      start timestamp so now-start == frac*dur)
-//   pinEnd(dur)      — "chrome settled, ride at 1.0" (was: subtract a full
-//                      duration from the start timestamp)
-struct Tween {
-  std::chrono::steady_clock::time_point start{};
-  mutable double last = 0.0; // last value raw() returned — the anchor stall
-                             // compensation rewinds to
-
-  // A fresh run starts at 0 AND resets `last`: the stall guard rewinds to
-  // `last`, so keeping a previous run's value (typically 1.0 after an idle
-  // period) would make the very first post-begin frame snap the clock to its
-  // end — the "close lands instantly while the strip is still collapsing" bug.
-  void begin() {
-    start = clock::now();
-    last = 0.0;
-  }
-  // Discard any wall-time that passed while the compositor was not producing
-  // frames (damage-chain stalls, VFR, system hiccups): re-anchor at the LAST
-  // KNOWN pre-gap value — re-anchoring at the current raw would be a no-op,
-  // by now it already includes the hole. Without this a multi-frame render
-  // hole silently fast-forwards the whole animation (the open transition
-  // "skipped to the end" whenever the frame chain broke right after open()).
-  void compensateStall(double gapMs, double durMs) {
-    if (gapMs > 100.0)
-      seek(last, durMs);
-  }
-  void seek(double frac, double durMs) {
-    const auto ms = std::chrono::duration_cast<clock::duration>(
-        std::chrono::duration<double, std::milli>{std::clamp(frac, 0.0, 1.0) *
-                                                  std::max(1.0, durMs)});
-    start = clock::now() - ms;
-    last = std::clamp(frac, 0.0, 1.0);
-  }
-  void pinEnd(double durMs) { seek(1.0, durMs); }
-  bool done(double durMs) const { return raw(durMs) >= 1.0; }
-  // Linear 0..1, clamped; refreshes `last`.
-  double raw(double durMs) const {
-    last = std::clamp(
-        std::chrono::duration<double, std::milli>(clock::now() - start)
-                .count() /
-            std::max(1.0, durMs),
-        0.0, 1.0);
-    return last;
-  }
-
-private:
-  using clock = std::chrono::steady_clock;
-};
 
 // macOS Mission Control-style overview for Hyprland.
 //
@@ -220,46 +168,6 @@ public:
                         // by renderWindowLive too)
 
 private:
-  struct Tile {
-    PHLWINDOWREF win;
-    LRect natural; // monitor-local logical: real place (goal); animation start
-    LRect target;  // monitor-local logical: grid slot
-    bool parked = false; // canvas mode: target is user-placed — rebuilds and
-                         // syncs must not move it (only the tile's own drag)
-    std::string labelText; // what `label` was rendered from (cache key)
-    double appear = 1.0;   // 0..1 population progress: 0 = brand-new to the
-                           // grid this rebuild (fades/scales in over
-                           // populate); ghosts cover the reverse direction
-    SP<Render::ITexture> label; // cached window title, shown on hover
-  };
-
-  struct StripWin {
-    PHLWINDOWREF win;
-    LRect
-        rel; // 0..1 within the monitor: the window's tiled slot in the card.
-             // The card preview renders the window's LIVE surface into this
-             // slot (renderStripWindows), so no snapshot/crop state is needed.
-  };
-
-  struct StripItem {
-    enum class Kind : int { Ws, Plus, All }; // All = leading expo-toggle card
-    PHLWORKSPACEREF ws;
-    int id = 0;
-    bool active = false;
-    Kind kind = Kind::Ws;
-    // A placeholder card for a numeric workspace ID that has no real
-    // PHLWORKSPACE object yet (Hyprland only keeps workspace objects that were
-    // actually created/visited, so an empty never-visited workspace simply
-    // doesn't exist to iterate — strip_empty_mode "show"/"neighbors" synthesize
-    // these so the strip can still display them). `ws` stays unset;
-    // clicking/dropping on it creates the real workspace at exactly `id`, same
-    // as "+" but at a specific number instead of the lowest free one.
-    bool virtualWs = false;
-    LRect card; // monitor-local logical
-    std::vector<StripWin> wins;
-    SP<Render::ITexture> label; // cached rendered workspace name
-  };
-
   HANDLE m_handle = nullptr;
   bool m_active = false;
   bool m_opening = false;
@@ -275,13 +183,13 @@ private:
   // decision sees m_active=false and renders the real windows cleanly.
   bool m_pendingDeactivate = false;
   double m_progress = 0.0;
-  Tween m_timeline; // master open/close clock (direction via m_opening);
+  anim::Tween m_timeline; // master open/close clock (direction via m_opening);
                     // drives the CHROME only (backdrop/strip/buttons)
   mutable std::chrono::steady_clock::time_point m_lastAnimTick{};
   // Tiles ride their OWN clock, never m_progress: any layout change (open,
   // drop reflow, sync, desktop flip, close) is just "retarget + restart".
   // natural = where the tile is shown now, target = where it must land.
-  Tween m_tileClock;
+  anim::Tween m_tileClock;
   // Set every tile's natural to the box it is being shown at RIGHT NOW
   // (`oldBoxes` — captured before a rebuild) and restart the clock: the next
   // frames glide them into the fresh targets. Empty oldBoxes = start from the
@@ -292,18 +200,10 @@ private:
   PHLWORKSPACEREF m_workspace;    // workspace shown in the main area
   PHLWORKSPACEREF m_liveWsAtOpen; // monitor's live active workspace when opened
                                   // (exit_on_switch)
-  std::vector<Tile> m_tiles;
-  std::vector<StripItem> m_strip;
-  // Text->texture cache for tile/strip labels. Tiles and StripItems are
-  // RECREATED on every rebuild (each drop/swap/sync), so caching on them
-  // re-rasterized every label every drop — the drag&drop stutter. Keyed by
-  // the owning window/workspace pointer with mark-and-sweep per build pass
-  // (explicit lifecycle, per AGENTS).
-  struct LabelTex {
-    std::string text;
-    SP<Render::ITexture> tex;
-  };
-  std::unordered_map<void *, LabelTex> m_labelCache;
+  std::vector<model::Tile> m_tiles;
+  std::vector<model::StripItem> m_strip;
+  // Text->texture cache for tile/strip labels — see model::LabelTex.
+  std::unordered_map<void *, model::LabelTex> m_labelCache;
   SP<Render::ITexture> cachedLabel(void *key, const std::string &text,
                                    const CHyprColor &col, int size);
   // layer surfaces (bars/popups) we faded out while up, with their pre-hide
@@ -349,7 +249,7 @@ private:
   // center.
   int m_newCardId = 0; // workspace id of the animating card (0 = none)
   bool m_newCardAnim = false;
-  Tween m_newCard; // "+" card pop-in clock (easeOutBack in newCardScale)
+  anim::Tween m_newCard; // "+" card pop-in clock (easeOutBack in newCardScale)
   // freshly created ("+" or the direct number-key jump) workspaces, held
   // persistent until close so none of them get reaped while empty. A single
   // slot here used to leak every workspace but the last one created in a
@@ -366,16 +266,12 @@ private:
   // main axis.
   double m_stripScrollTarget = 0.0;
   double m_stripScrollFrom = 0.0;
-  Tween m_stripTween;
+  anim::Tween m_stripTween;
   void animateStripTo(double from, double to);
   // Population (populate leaf): drives Tile.appear for newcomers and the
   // ghost fade-out for tiles removed by a rebuild.
-  Tween m_populate;
-  struct Ghost {
-    PHLWINDOWREF win;
-    LRect box; // monitor-local logical, frozen at removal
-  };
-  std::vector<Ghost> m_ghosts;
+  anim::Tween m_populate;
+  std::vector<model::Ghost> m_ghosts;
   double populateMs() const { return animMs("populate"); }
   // True while ANY secondary clock is mid-flight (population/ghosts, strip
   // scroll). The animation-pump predicates MUST include this: after a card/
@@ -406,27 +302,7 @@ private:
   // outcome. One value instead of the old eleven scattered members — a stale
   // half-armed drag can no longer exist across sessions (open() just resets
   // it), and release logic switches on `press` instead of decoding sentinels.
-  struct Drag {
-    enum class Press : int {
-      Tile,      // pressed on a main-grid tile: idx = m_tiles index
-      StripWin,  // pressed on a strip card's window slot: idx = m_strip index,
-                 // winIdx = index into its wins, win = the window
-      StripCard, // pressed elsewhere on a strip card — switch already happened
-                 // on press; release must do nothing
-      Empty,     // empty space → close on release unless consumed
-      Consumed,  // press fully handled on the spot (e.g. a ✕ button)
-    };
-    Press press = Press::Empty;
-    int idx = -1, winIdx = -1;
-    PHLWINDOWREF win;
-    int button = 0;
-    double pressX = 0, pressY = 0;   // monitor-local press point
-    double grabDX = 0, grabDY = 0;   // cursor offset inside the grabbed box
-    double x = 0, y = 0;             // current cursor, kept fresh by updateHover
-    bool lifted = false;             // moved past the threshold → a real drag
-    bool armed() const { return press == Press::Tile || press == Press::StripWin; }
-  };
-  Drag m_drag;
+  model::Drag m_drag;
 
 
   // Alt-Tab session: armed by altTabInvoke() on open, released when the
@@ -462,28 +338,7 @@ private:
   // switches (same wallpaper ⇒ no re-blur, no brightness shift) while still
   // catching genuine source changes nothing else marks dirty. A live video
   // source skips the cache every frame by design.
-  struct BlurCache {
-    SP<Render::IFramebuffer> fb;
-    const void *srcId = nullptr;
-    // The filter recipe the fb was rendered with. Part of the cache KEY
-    // (compared every frame together with srcId): without it, changing
-    // blur_passes/blur_size/blur_resolution/blur_strength mid-session would
-    // keep showing a texture baked with the old params until reopen.
-    int passes = 0, sizePx = 0, resolution = 0;
-    float strength = -1.0F;
-    bool valid = false;
-    [[nodiscard]] bool matches(const void *id, int p, int s, int r,
-                               float st) const {
-      return valid && srcId == id && passes == p && sizePx == s &&
-             resolution == r && strength == st;
-    }
-    void invalidate() { valid = false; }
-    void drop() { // full teardown: free the FBO too (open / unload)
-      invalidate();
-      fb.reset();
-    }
-  };
-  mutable BlurCache m_blur;
+  mutable render::BlurCache m_blur;
   // Full-res FBO holding the freshly-rendered desktop background (wallpaper
   // layers) when there's no direct texture source to blur.  Drawn once per
   // overview session (at open / on layer-surface commits only) so workspace
@@ -505,16 +360,9 @@ private:
   std::string cursorMode() const;
 
   // ---- animation registry (AN1) -----------------------------------------
-  // Every animation is a config "leaf": <leaf>_enabled / <leaf>_ms /
-  // <leaf>_curve (see the kAnimCfg table in main.cpp), under one master
-  // switch animations_enabled that gates EVERYTHING. _ms = -1 means "follow
-  // the legacy `duration` option", preserving single-knob configs.
-  struct AnimCfg {
-    bool on = false;
-    int ms = 1;
-    std::string curve = "easeout";
-  };
-  AnimCfg anim(const char *leaf) const;
+  // Resolve one animation leaf's config (see anim/clocks.hpp for the
+  // snapshot type, config.cpp for the schema, anim/curves.hpp for curves).
+  anim::AnimCfg anim(const char *leaf) const;
   // Effective duration for a leaf: 1ms when master/leaf disabled (every clock
   // then completes within one frame — the whole plugin goes static without
   // any per-site branching), else <leaf>_ms or its fallback.
@@ -573,7 +421,7 @@ private:
   }
   double tileProgress(int i) const; // staggered raw progress for tile i
   LRect
-  currentBox(const Tile &t,
+  currentBox(const model::Tile &t,
              int i) const; // lerped natural->target, staggered + overshoot
   LRect
   tileContentBox(size_t i,
@@ -584,39 +432,28 @@ private:
   void
   drawPreviewTile(size_t i, const LRect &slot,
                   bool lift) const; // tile chrome (shadow/border/backing/title)
-  void switchToWorkspace(const StripItem &it);
-  void dropOnWorkspace(const PHLWINDOW &w, const StripItem &it);
+  void switchToWorkspace(const model::StripItem &it);
+  void dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
   // Shared tail of both drag-release paths (grid tile / strip window): if the
   // point sits on a workspace card other than skipItem, move w there — or swap
   // it with that card's last-focused window on an RMB drop. True if consumed.
   bool dropOnStripCard(const PHLWINDOW &w, double lx, double ly, int skipItem);
   void swapOnWorkspace(
       const PHLWINDOW &w,
-      const StripItem &it); // RMB-drop-on-card counterpart to dropOnWorkspace:
+      const model::StripItem &it); // RMB-drop-on-card counterpart to dropOnWorkspace:
                             // swaps w with the target workspace's last-focused
                             // window instead of moving it
   void swapTiles(int a, int b); // drag a preview onto another → swap the two
                                 // windows' places (real layout + overview)
   bool swapWindows(const PHLWINDOW &a,
                    const PHLWINDOW &b); // real-slot swap core (grid+strip)
-  // Success pop after a swap (anim_swap_pulse): window-keyed so rebuilds
-  // between kick and render can't orphan it. Rendered as a ring flash around
-  // wherever the window currently sits (grid tile or strip slot).
-  struct WinPulse {
-    PHLWINDOWREF w;
-    double p = 0.0; // accumulated FRAME progress, not wall-clock: heavy
-                    // frames (layout recalc right after a drop) must not
-                    // leap it across the easeOutBack plateau — that read as
-                    // the ring snapping wide and freezing
-    std::chrono::steady_clock::time_point last;
-  };
-  std::vector<WinPulse> m_pulses;
+  std::vector<model::WinPulse> m_pulses;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
                      const CHyprColor &col, double p) const;
   void addWorkspace();          // "+" card: create a workspace (animate it in,
                                 // optionally follow)
   void closeWorkspaceWindows(
-      const StripItem
+      const model::StripItem
           &it); // middle-click a card: send-close every window on it
   void setDesktopMode(
       bool on); // flip grid<->canvas while open, gliding the previews (purely
@@ -640,7 +477,7 @@ private:
   // strip-card window drag (picking up and moving a window straight off the
   // strip)
   LRect
-  stripWinSlotRect(const StripItem &it, const LRect &card,
+  stripWinSlotRect(const model::StripItem &it, const LRect &card,
                    size_t j) const; // a strip window's on-screen slot rect
   LRect dragStripBox()
       const; // the picked-up strip window's floating box at the cursor

@@ -71,7 +71,7 @@ void Overview::renderStrip() const {
     card.x += slide.x + scroll.x; // follow the strip slide-in and scroll
     card.y += slide.y + scroll.y;
     if (m_newCardAnim && it.id == m_newCardId &&
-        it.kind != StripItem::Kind::Plus && it.kind != StripItem::Kind::All) {
+        it.kind != model::StripItem::Kind::Plus && it.kind != model::StripItem::Kind::All) {
       const double f = newCardScale(); // pop-in: scale up from the card center
       const double cx = card.cx(), cy = card.cy();
       card = LRect{cx - card.w * f / 2.0, cy - card.h * f / 2.0, card.w * f,
@@ -83,9 +83,9 @@ void Overview::renderStrip() const {
     // card body on top leaves a clean ring (four thin strips would blob at
     // the corners).
     const bool actLike =
-        it.active || (allWs && allCardShown && it.kind == StripItem::Kind::All);
+        it.active || (allWs && allCardShown && it.kind == model::StripItem::Kind::All);
     const bool expoRing =
-        allWs && !allCardShown && it.kind != StripItem::Kind::Plus;
+        allWs && !allCardShown && it.kind != model::StripItem::Kind::Plus;
     const bool ring = actLike || expoRing;
     if (ring || hover) {
       const auto &lc = ring ? activeLine : hoverLine;
@@ -99,7 +99,7 @@ void Overview::renderStrip() const {
         pxb(c, s), actLike ? activeBg : cardBg,
         {.round = pxr(cardRound, s), .roundingPower = roundPow});
 
-    if (it.kind == StripItem::Kind::Plus) {
+    if (it.kind == model::StripItem::Kind::Plus) {
       // centered plus glyph
       const double t = std::max(2.0, card.h * 0.04);
       const double L = std::min(card.w, card.h) * 0.34;
@@ -108,7 +108,7 @@ void Overview::renderStrip() const {
                                 plusCol, {.round = pxr(t / 2, s)});
       g_pHyprOpenGL->renderRect(pxb(CBox(cx - t / 2, cy - L / 2, t, L), s),
                                 plusCol, {.round = pxr(t / 2, s)});
-    } else if (it.kind == StripItem::Kind::All) {
+    } else if (it.kind == model::StripItem::Kind::All) {
       // 2x2 grid-of-squares glyph = "all windows / every workspace"
       const double pad = std::min(card.w, card.h) * 0.26;
       const double gw = card.w - 2 * pad, gh = card.h - 2 * pad;
@@ -138,7 +138,7 @@ void Overview::renderStrip() const {
         // pulse) so it doesn't force repainting while the mouse sits still.
         const bool grabbed = static_cast<int>(i) == m_drag.idx &&
                              static_cast<int>(j) == m_drag.winIdx &&
-                             !(m_drag.press == Drag::Press::StripWin);
+                             !(m_drag.press == model::Drag::Press::StripWin);
         if (grabbed)
           strokeRing(wbL, s, cfg::colors.hover_border.get(e),
                      2, wRound, roundPow);
@@ -188,13 +188,13 @@ void Overview::renderStripWindows() const {
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
-    if (it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All)
+    if (it.kind == model::StripItem::Kind::Plus || it.kind == model::StripItem::Kind::All)
       continue;
     LRect card = it.card;
     card.x += slide.x + scroll.x;
     card.y += slide.y + scroll.y;
     for (size_t j = 0; j < it.wins.size(); ++j) {
-      if (m_drag.press == Drag::Press::StripWin &&
+      if (m_drag.press == model::Drag::Press::StripWin &&
           static_cast<int>(i) == m_drag.idx &&
           static_cast<int>(j) == m_drag.winIdx)
         continue; // being dragged as a floating preview right now
@@ -235,7 +235,7 @@ void Overview::renderStripButtons() const {
   // Carrying a STRIP window: hovering an exact slot means swap intent —
   // real-slot rings for ANY button (both swap on slot drop); insert-zone
   // hints only apply away from slots.
-  const bool rmbSwap = dropping && m_drag.press == Drag::Press::StripWin;
+  const bool rmbSwap = dropping && m_drag.press == model::Drag::Press::StripWin;
 
   // RMB swap-drag: ring the SOURCE slot once, wherever it lives.
   if (rmbSwap && m_drag.idx >= 0 &&
@@ -253,7 +253,7 @@ void Overview::renderStripButtons() const {
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
-    if (it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All)
+    if (it.kind == model::StripItem::Kind::Plus || it.kind == model::StripItem::Kind::All)
       continue;
     const LRect card = stripCardAt(i);
 
@@ -263,7 +263,7 @@ void Overview::renderStripButtons() const {
     // REAL windows are highlighted where they actually sit: a ring on the
     // exact hovered slot (the swap partner) plus a ring on the source slot.
     bool intentRing = false;
-    if (dropping && m_drag.press == Drag::Press::StripWin &&
+    if (dropping && m_drag.press == model::Drag::Press::StripWin &&
         static_cast<int>(i) == m_hoveredStrip && !it.wins.empty() &&
         m_drag.idx >= 0 && m_drag.winIdx >= 0) {
       const auto dragW = m_drag.win.lock();

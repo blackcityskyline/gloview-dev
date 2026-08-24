@@ -63,7 +63,7 @@ void Overview::renderDragTile() const {
     drawPreviewTile(static_cast<size_t>(dragIdx), dragBox(), true); // chrome; content right after
     return;
   }
-  if (m_drag.press == Drag::Press::StripWin && !m_drag.win.expired())
+  if (m_drag.press == model::Drag::Press::StripWin && !m_drag.win.expired())
     drawDragStripChrome();
 }
 
@@ -122,7 +122,7 @@ void Overview::renderDragWindow() const {
                      round, cfg::look.preview_round_power);
     return;
   }
-  if (m_drag.press == Drag::Press::StripWin) {
+  if (m_drag.press == model::Drag::Press::StripWin) {
     const auto w = m_drag.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       return;
@@ -143,8 +143,8 @@ void Overview::renderDragWindow() const {
 void Overview::kickPulse(const PHLWINDOW &w) {
   if (!w || !anim("swap_pulse").on)
     return;
-  std::erase_if(m_pulses, [&w](const WinPulse &p) { return p.w.lock() == w; });
-  m_pulses.push_back(WinPulse{w, 0.0, std::chrono::steady_clock::now()});
+  std::erase_if(m_pulses, [&w](const model::WinPulse &p) { return p.w.lock() == w; });
+  m_pulses.push_back(model::WinPulse{w, 0.0, std::chrono::steady_clock::now()});
 }
 
 // Active swap pulses. strip=true → ring the window's STRIP slot; false → its
@@ -167,7 +167,7 @@ void Overview::renderPulses(bool strip) const {
     if (strip) {
       for (size_t i = 0; i < m_strip.size(); ++i) {
         const auto &it = m_strip[i];
-        if (it.kind != StripItem::Kind::Ws)
+        if (it.kind != model::StripItem::Kind::Ws)
           continue;
         for (size_t j = 0; j < it.wins.size(); ++j) {
           if (it.wins[j].win.lock() != w)

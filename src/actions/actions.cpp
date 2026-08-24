@@ -35,7 +35,7 @@ bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
   return true;
 }
 
-void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
+void Overview::dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   if (w && w->m_workspace == it.ws.lock()) {
     damage(); // already there — a "move" would churn the whole layout
     return;
@@ -47,7 +47,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
   }
 
   PHLWORKSPACE target;
-  if (it.kind == StripItem::Kind::Plus) {
+  if (it.kind == model::StripItem::Kind::Plus) {
     int id = 1;
     while (State::workspaceState()->query().id(id).run())
       ++id;
@@ -86,7 +86,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
   // switch_on_drop: follow the window to its new workspace instead of staying
   // put.
   if (cfg::behavior.switch_on_drop != 0) {
-    StripItem dst;
+    model::StripItem dst;
     dst.ws = target;
     switchToWorkspace(dst);
     return;
@@ -156,12 +156,12 @@ void Overview::swapTiles(int a, int b) {
 // the other's workspace. Falls back to a plain move when there's nothing on the
 // target to swap with (empty workspace, or a fullscreen partner with no
 // well-defined slot).
-void Overview::swapOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
+void Overview::swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   if (w && w->m_workspace == it.ws.lock()) {
     damage(); // nothing to swap with across workspaces
     return;
   }
-  if (!w || it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All) {
+  if (!w || it.kind == model::StripItem::Kind::Plus || it.kind == model::StripItem::Kind::All) {
     damage();
     return;
   }
@@ -206,7 +206,7 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
   g_layoutManager->switchTargets(ta, tb);
 
   if (cfg::behavior.switch_on_drop != 0) {
-    StripItem dst;
+    model::StripItem dst;
     dst.ws = target;
     switchToWorkspace(dst);
     return;
@@ -216,13 +216,13 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
   damage();
 }
 
-void Overview::switchToWorkspace(const StripItem &it) {
+void Overview::switchToWorkspace(const model::StripItem &it) {
   const auto m = m_monitor.lock();
   if (!m)
     return;
 
   PHLWORKSPACE ws;
-  if (it.kind == StripItem::Kind::Plus) {
+  if (it.kind == model::StripItem::Kind::Plus) {
     int id = 1;
     while (State::workspaceState()->query().id(id).run())
       ++id;
@@ -296,7 +296,7 @@ void Overview::stepWorkspace(int dir) {
   std::vector<int> real;
   int activePos = -1;
   for (size_t i = 0; i < m_strip.size(); ++i) {
-    if (m_strip[i].kind == StripItem::Kind::Plus || m_strip[i].kind == StripItem::Kind::All)
+    if (m_strip[i].kind == model::StripItem::Kind::Plus || m_strip[i].kind == model::StripItem::Kind::All)
       continue;
     if (m_strip[i].active)
       activePos = static_cast<int>(real.size());
@@ -346,7 +346,7 @@ void Overview::addWorkspace() {
   m_newCardAnim = true;
   debug::dbg("added workspace " + std::to_string(id));
   if (cfg::behavior.switch_on_new_workspace != 0) {
-    StripItem it;
+    model::StripItem it;
     it.ws = ws;
     switchToWorkspace(
         it); // follow the display (rebuilds the strip with the new card)
@@ -375,8 +375,8 @@ void Overview::closeTileWindow(int i) {
 
 // Middle-click a workspace card: send-close every window on it (async, like the
 // per-window middle-click). syncTiles() reflows once the windows actually go.
-void Overview::closeWorkspaceWindows(const StripItem &it) {
-  if (it.kind == StripItem::Kind::Plus || it.kind == StripItem::Kind::All)
+void Overview::closeWorkspaceWindows(const model::StripItem &it) {
+  if (it.kind == model::StripItem::Kind::Plus || it.kind == model::StripItem::Kind::All)
     return;
   const auto ws = it.ws.lock();
   if (!ws)

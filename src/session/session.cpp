@@ -1,6 +1,6 @@
-#include "config/config.hpp"
-#include "debug/log.hpp"
-#include "overview.hpp"
+#include "../config/config.hpp"
+#include "../debug/log.hpp"
+#include "../overview.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -271,36 +271,14 @@ SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
                                            const CHyprColor &col, int size) {
   auto &c = m_labelCache[key];
   if ((!c.tex || c.text != text) && g_pHyprRenderer)
-    c = LabelTex{text, g_pHyprRenderer->renderText(text, col, size, false, "",
+    c = model::LabelTex{text, g_pHyprRenderer->renderText(text, col, size, false, "",
                                                    0, size >= 15 ? 700 : 600)};
   return c.tex;
 }
 
 // ---- animation registry (AN1) ----------------------------------------------
 
-Overview::AnimCfg Overview::anim(const char *leaf) const {
-  AnimCfg a;
-  a.on = cfg::anim.enabled != 0;
-  if (const auto *e = cfg::anim.leafEnabled(leaf); e && *e == 0)
-    a.on = false;
-  if (const auto *ms = cfg::anim.leafMs(leaf))
-    a.ms = ms->get(); // -1 = follow the legacy duration knob
-  if (const auto *c = cfg::anim.leafCurve(leaf))
-    a.curve = c->get();
-  return a;
-}
 
-double Overview::animMs(const char *leaf) const {
-  if (cfg::anim.enabled == 0)
-    return 1.0; // master off: clocks complete within one frame
-  if (const auto *e = cfg::anim.leafEnabled(leaf); e && *e == 0)
-    return 1.0; // leaf off
-  const int ms = cfg::anim.leafMs(leaf)->get();
-  if (ms >= 0)
-    return std::max(1.0, static_cast<double>(ms));
-  // _ms left at the sentinel (-1) → follow the legacy duration knob
-  return std::max(1.0, static_cast<double>(cfg::anim.duration));
-}
 
 Overview::Anchor Overview::stripAnchor() const {
   std::string a = cfg::strip.anchor.get();
