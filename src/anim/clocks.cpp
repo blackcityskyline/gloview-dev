@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "../anim/curves.hpp"
+#include "../config/config.hpp"
 #include "../overview.hpp"
 
 namespace gloview {
@@ -28,8 +29,7 @@ double Overview::eased() const {
 double Overview::animDuration() const {
   // Legacy shared knob: open/close/reflow leaves follow it when their own
   // _ms is unset (sentinel -1). Master-off collapses everything to 1ms.
-  return animMs(m_opening ? "open" : "close",
-                "plugin:gloview:duration", 360);
+  return animMs(m_opening ? "open" : "close");
 }
 
 double Overview::tileProgress(int i) const {
@@ -105,11 +105,11 @@ void Overview::updateAnimation() {
   m_lastAnimTick = nowTick;
 
   // AN5: ease the strip scroll toward its target (strip_step leaf).
-  if (!m_stripTween.done(animMs("strip_step", nullptr, 200)))
+  if (!m_stripTween.done(animMs("strip_step")))
     m_stripScroll = std::lerp(
         m_stripScrollFrom, m_stripScrollTarget,
         curves::eval(anim("strip_step").curve,
-                  m_stripTween.raw(animMs("strip_step", nullptr, 200))));
+                  m_stripTween.raw(animMs("strip_step"))));
   else
     m_stripScroll = m_stripScrollTarget;
 
@@ -119,7 +119,7 @@ void Overview::updateAnimation() {
   // Advance/prune swap pulses. Progress accumulates per animated frame with
   // the frame delta CAPPED, so a post-drop render hole cannot jump the ring
   // through its overshoot plateau (the "snaps wide and freezes" artifact).
-  const double pulseMs = animMs("swap_pulse", nullptr, 180);
+  const double pulseMs = animMs("swap_pulse");
   const auto nowTickP  = std::chrono::steady_clock::now();
   for (auto &p : m_pulses) {
     if (p.w.expired())

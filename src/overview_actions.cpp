@@ -1,3 +1,5 @@
+#include "config/config.hpp"
+#include "debug/log.hpp"
 #include "overview.hpp"
 
 #include <algorithm>
@@ -83,7 +85,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
 
   // switch_on_drop: follow the window to its new workspace instead of staying
   // put.
-  if (cfgInt("plugin:gloview:switch_on_drop", 0) != 0) {
+  if (cfg::behavior.switch_on_drop != 0) {
     StripItem dst;
     dst.ws = target;
     switchToWorkspace(dst);
@@ -203,7 +205,7 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const StripItem &it) {
 
   g_layoutManager->switchTargets(ta, tb);
 
-  if (cfgInt("plugin:gloview:switch_on_drop", 0) != 0) {
+  if (cfg::behavior.switch_on_drop != 0) {
     StripItem dst;
     dst.ws = target;
     switchToWorkspace(dst);
@@ -262,7 +264,7 @@ void Overview::switchToWorkspace(const StripItem &it) {
   buildTiles();
   buildStrip();
   layoutTiles();
-  dbg("SWITCH ->" + std::to_string(ws ? ws->m_id : -1) + " tiles=" +
+  debug::dbg("SWITCH ->" + std::to_string(ws ? ws->m_id : -1) + " tiles=" +
       std::to_string(m_tiles.size()));
   // The frozen backdrop/blur belong to the PREVIOUS workspace's background.
   // The wallpaper TEXTURE identity does not change on a ws switch (same
@@ -323,7 +325,7 @@ void Overview::addWorkspace() {
   if (!m)
     return;
   int id = 1;
-  if (cfgStr("plugin:gloview:new_workspace_mode", "fill") == "linear") {
+  if (cfg::behavior.new_workspace_mode.get() == "linear") {
     for (const auto &wref : State::workspaceState()->workspaces())
       if (const auto ws = wref.lock(); ws && !ws->m_isSpecialWorkspace)
         id = std::max(id, static_cast<int>(ws->m_id) + 1);
@@ -342,8 +344,8 @@ void Overview::addWorkspace() {
   m_newCardId = id;
   m_newCard.begin();
   m_newCardAnim = true;
-  dbg("added workspace " + std::to_string(id));
-  if (cfgInt("plugin:gloview:switch_on_new_workspace", 1) != 0) {
+  debug::dbg("added workspace " + std::to_string(id));
+  if (cfg::behavior.switch_on_new_workspace != 0) {
     StripItem it;
     it.ws = ws;
     switchToWorkspace(
@@ -364,7 +366,7 @@ void Overview::closeTileWindow(int i) {
   const auto w = m_tiles[i].win.lock();
   if (!w)
     return;
-  dbg("close tile window");
+  debug::dbg("close tile window");
   // sendClose is async — the client decides when to unmap. Don't touch m_tiles
   // here: syncTiles() (run each frame) notices the window vanish and reflows,
   // which also covers windows that close themselves while the overview is up.
@@ -385,7 +387,7 @@ void Overview::closeWorkspaceWindows(const StripItem &it) {
       w->sendClose();
       ++n;
     }
-  dbg("middle-click workspace: closed " + std::to_string(n) + " window(s)");
+  debug::dbg("middle-click workspace: closed " + std::to_string(n) + " window(s)");
 }
 
 } // namespace gloview

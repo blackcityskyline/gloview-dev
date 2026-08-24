@@ -1,3 +1,5 @@
+#include "config/config.hpp"
+#include "debug/log.hpp"
 #include "overview.hpp"
 
 #include <algorithm>
@@ -232,30 +234,10 @@ bool Overview::initialize() {
 
 // ---- config -----------------------------------------------------------------
 
-// Read through the V2 value() accessor (ConfigRegistry in overview.hpp): the
+// Read through the V2 value() accessor: the
 // deprecated getConfigValue() ignored Lua-config values, so they had no effect.
-int Overview::cfgInt(const char *name, int fallback) const {
-  const auto it = g_config.ints.find(name);
-  return (it != g_config.ints.end() && it->second)
-             ? static_cast<int>(it->second->value())
-             : fallback;
-}
-
-float Overview::cfgFloat(const char *name, float fallback) const {
-  const auto it = g_config.floats.find(name);
-  return (it != g_config.floats.end() && it->second)
-             ? static_cast<float>(it->second->value())
-             : fallback;
-}
-
-std::string Overview::cfgStr(const char *name, const char *fallback) const {
-  const auto it = g_config.strings.find(name);
-  return (it != g_config.strings.end() && it->second) ? it->second->value()
-                                                       : std::string{fallback};
-}
-
 std::string Overview::cursorMode() const {
-    return cfgStr("plugin:gloview:cursor_mode", "auto");
+    return cfg::behavior.cursor_mode.get();
 }
 
 namespace {
@@ -267,32 +249,10 @@ namespace {
 // deliberately NOT Hyprland's own rgba(RRGGBBAA)/rgb(RRGGBB) forms, since
 // those use the OPPOSITE alpha position and would silently produce a wrong
 // color if guessed at; since these fields are no longer Hyprlang's native
-// COLOR type (see the ConfigRegistry comment in overview.hpp for why), that
+// COLOR type (colors are STRING hex literals — see config/config.hpp), that
 // parsing was never inherited for free and re-implementing its exact
 // ambiguity isn't worth it when gloview's own docs only ever taught 0xAARRGGBB
 // anyway. Returns `fallback` (parsed the same way) on anything unparseable.
-Hyprlang::INT parseHexColor(std::string s, Hyprlang::INT fallback) {
-  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
-    s.erase(s.begin());
-  while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
-    s.pop_back();
-  if (s.size() > 1 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
-    s.erase(0, 2);
-  else if (!s.empty() && s[0] == '#')
-    s.erase(0, 1);
-  if (s.size() != 6 && s.size() != 8)
-    return fallback;
-  for (const char c : s)
-    if (!std::isxdigit(static_cast<unsigned char>(c)))
-      return fallback;
-  uint64_t v = 0;
-  try {
-    v = std::stoull(s, nullptr, 16);
-  } catch (...) { return fallback; }
-  if (s.size() == 6) // RRGGBB, no alpha given — fully opaque
-    v |= 0xFF000000ULL;
-  return static_cast<Hyprlang::INT>(v);
-}
 } // namespace
 
 // ONE accessor for every color option. The config value is a plain string:
@@ -307,11 +267,6 @@ Hyprlang::INT parseHexColor(std::string s, Hyprlang::INT fallback) {
 // engine; whatever writes the config is responsible for substitution. A value
 // that parses as nothing falls through to `fallback` (also parsed), so a typo
 // degrades to the documented default instead of black.
-Hyprlang::INT Overview::cfgColor(const char *base, const char *fallback) const {
-  return parseHexColor(cfgStr((std::string("plugin:gloview:") + base).c_str(), fallback),
-                       parseHexColor(fallback, 0xffffffffLL));
-}
-
 SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
                                            const CHyprColor &col, int size) {
   auto &c = m_labelCache[key];
@@ -324,32 +279,33 @@ SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
 // ---- animation registry (AN1) ----------------------------------------------
 
 Overview::AnimCfg Overview::anim(const char *leaf) const {
-  static const std::string P = "plugin:gloview:";
   AnimCfg a;
-  a.on = cfgInt("plugin:gloview:animations_enabled", 1) != 0 &&
-         cfgInt((P + leaf + "_enabled").c_str(), 1) != 0;
-  a.ms = cfgInt((P + leaf + "_ms").c_str(), -1); // -1 = follow fallback knob
-  a.curve = cfgStr((P + leaf + "_curve").c_str(), "easeout");
+  a.on = cfg::anim.enabled != 0;
+  if (const auto *e = cfg::anim.leafEnabled(leaf); e && *e == 0)
+    a.on = false;
+  if (const auto *ms = cfg::anim.leafMs(leaf))
+    a.ms = ms->get(); // -1 = follow the legacy duration knob
+  if (const auto *c = cfg::anim.leafCurve(leaf))
+    a.curve = c->get();
   return a;
 }
 
-double Overview::animMs(const char *leaf, const char *msFallbackKey,
-                        int msFallback) const {
-  const auto a = anim(leaf);
-  if (!a.on)
-    return 1.0; // master or leaf off: clocks complete within one frame
-  if (a.ms >= 0)
-    return std::max(1.0, static_cast<double>(a.ms));
-  // _ms left at the sentinel (-1) → follow this leaf's legacy knob
-  return std::max(
-      1.0, static_cast<double>(msFallbackKey ? cfgInt(msFallbackKey, msFallback)
-                                             : msFallback));
+double Overview::animMs(const char *leaf) const {
+  if (cfg::anim.enabled == 0)
+    return 1.0; // master off: clocks complete within one frame
+  if (const auto *e = cfg::anim.leafEnabled(leaf); e && *e == 0)
+    return 1.0; // leaf off
+  const int ms = cfg::anim.leafMs(leaf)->get();
+  if (ms >= 0)
+    return std::max(1.0, static_cast<double>(ms));
+  // _ms left at the sentinel (-1) → follow the legacy duration knob
+  return std::max(1.0, static_cast<double>(cfg::anim.duration));
 }
 
 Overview::Anchor Overview::stripAnchor() const {
-  std::string a = cfgStr("plugin:gloview:anchor", "");
+  std::string a = cfg::strip.anchor.get();
   if (a.empty()) // back-compat: the old top|bottom knob
-    a = cfgStr("plugin:gloview:bar_position", "top");
+    a = cfg::strip.bar_position.get();
   if (a == "bottom")
     return Anchor::Bottom;
   if (a == "left")
@@ -372,7 +328,7 @@ double Overview::stripThickness() const {
   // strip, width for a vertical one.
   const double cross = stripHorizontal() ? m->m_size.y : m->m_size.x;
   return std::clamp(
-      static_cast<double>(cfgInt("plugin:gloview:strip_height", 150)), 100.0,
+      static_cast<double>(cfg::strip.height), 100.0,
       cross * 0.42);
 }
 
@@ -384,7 +340,7 @@ double Overview::stripOffset() const {
   // cosmetic.
   const double cross = stripHorizontal() ? m->m_size.y : m->m_size.x;
   return std::clamp(
-      static_cast<double>(cfgInt("plugin:gloview:strip_offset", 0)), 0.0,
+      static_cast<double>(cfg::strip.offset), 0.0,
       cross * 0.4);
 }
 
@@ -431,19 +387,19 @@ bool Overview::blurEnabled() const { return blurStrength() > 0.0F; }
 // plugin:gloview:blur is a float: 0 = off, 1 = full, between scales blur
 // strength via the pass alpha. Clamped 0..1.
 float Overview::blurStrength() const {
-  return std::clamp(cfgFloat("plugin:gloview:blur", 1.0F), 0.0F, 1.0F);
+  return std::clamp(cfg::blur.strength.get(), 0.0F, 1.0F);
 }
 
 int Overview::blurPasses() const {
-  return std::clamp(cfgInt("plugin:gloview:blur_passes", 3), 1, 16);
+  return std::clamp(cfg::blur.passes.get(), 1, 16);
 }
 
 int Overview::blurSize() const {
-  return std::clamp(cfgInt("plugin:gloview:blur_size", 8), 1, 200);
+  return std::clamp(cfg::blur.size.get(), 1, 200);
 }
 
 int Overview::blurResolution() const {
-  return std::clamp(cfgInt("plugin:gloview:blur_resolution", 4), 1, 32);
+  return std::clamp(cfg::blur.resolution.get(), 1, 32);
 }
 
 // ---- open / close -----------------------------------------------------------
@@ -611,7 +567,7 @@ void Overview::open() {
   // exactly the windows that have blur-behind. The srcId+recipe key forces
   // one fresh blur on the first backdrop-visible frame anyway.
   m_blur.valid = false;
-  dbg("=== OPEN ===");
+  debug::dbg("=== OPEN ===");
   damage();
 }
 
@@ -656,7 +612,7 @@ void Overview::close() {
   // huge phantom gap and rewind every clock to its pre-close anchor — the
   // tiles' fresh glide included. open() does the same.
   m_lastAnimTick = {};
-  dbg("=== CLOSE from progress " + std::to_string(m_progress).substr(0, 5) + " ===");
+  debug::dbg("=== CLOSE from progress " + std::to_string(m_progress).substr(0, 5) + " ===");
   damage();
 }
 
@@ -708,7 +664,7 @@ void Overview::hardClose() {
 // config; -1 means "follow config".
 bool Overview::showAllWorkspaces() const {
   return m_allOverride < 0
-             ? (cfgInt("plugin:gloview:show_all_workspaces", 0) != 0)
+             ? (cfg::behavior.show_all_workspaces != 0)
              : (m_allOverride != 0);
 }
 
@@ -725,7 +681,7 @@ bool Overview::tileBelongs(const PHLWINDOW &w, const PHLMONITOR &m,
   if (showAllWorkspaces()) { // expo: every window living on this monitor, any
                              // workspace
     if (wws->m_isSpecialWorkspace &&
-        cfgInt("plugin:gloview:show_special", 0) == 0)
+        cfg::behavior.show_special == 0)
       return false;
     return wws->m_monitor.lock() == m;
   }
@@ -840,7 +796,7 @@ void Overview::deactivate() {
   // one. (Used to be a single slot that only released the LAST one created —
   // creating several in one session silently leaked the rest as permanent
   // phantom persistent workspaces — task/bug #4.)
-  dbg("deactivate (natural close end)");
+  debug::dbg("deactivate (natural close end)");
   if (m_animPump) {
     m_animPump->cancel();
     m_animPump.reset();
@@ -892,7 +848,7 @@ void Overview::finishPendingDeactivate() {
   if (!m_pendingDeactivate)
     return;
   m_pendingDeactivate = false;
-  dbg("handoff: final overlay frame painted, deactivating");
+  debug::dbg("handoff: final overlay frame painted, deactivating");
   deactivate();
 }
 
@@ -963,7 +919,7 @@ void Overview::ensureAnimPump() {
 // mid-session gets one grab and then holds that exact frame; the map is
 // cleared wholesale on teardown (deactivate/hardClose).
 bool Overview::snapshotMode() const {
-  return cfgStr("plugin:gloview:preview_mode", "live") == "snapshot";
+  return cfg::behavior.preview_mode.get() == "snapshot";
 }
 
 void Overview::updateSnapshots() {
@@ -1026,31 +982,6 @@ void Overview::updateSnapshots() {
     for (const auto &sw : it.wins)
       if (const auto w = sw.win.lock())
         grab(w);
-}
-
-void Overview::dbg(const std::string &msg) const {
-  // Bootstrap window: the first 80 lines after a plugin load are written
-  // REGARDLESS of the flag, stamped with what THIS instance reads for it.
-  // Exists because a dead config path silently produced an empty log while
-  // hyprctl getoption insisted the flag was 1 — with the bootstrap we either
-  // see the frames or see the gate value lying, never silence.
-  static int bootstrap = 200000; // TEMP: file-config debug_logs never reaches
-                                 // the V2 registry on hyprctl reload, so the
-                                 // shake-hunt trace must bypass the gate
-  const int gate = cfgInt("plugin:gloview:debug_logs", 0);
-  if (gate != 0)
-    bootstrap = -1; // flag works — stop spending the free lines
-  else if (bootstrap <= 0 || --bootstrap < 0)
-    return;
-  if (Log::logger)
-    Log::logger->log(Log::INFO, "[gloview] {}", msg);
-  // Mirror to a plain file: Hyprland's own log routing varies by session
-  // init (journald unit names, stdout redirection), this one is always here.
-  static FILE *f = fopen("/tmp/gloview.log", "w"); // truncated per plugin load
-  if (f) {
-    fprintf(f, "[gate=%d] %s\n", gate, msg.c_str());
-    fflush(f);
-  }
 }
 
 } // namespace gloview

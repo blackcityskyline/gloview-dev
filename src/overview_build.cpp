@@ -1,3 +1,5 @@
+#include "config/config.hpp"
+#include "debug/log.hpp"
 #include "overview.hpp"
 #include "render/gl_util.hpp"
 
@@ -63,7 +65,7 @@ void Overview::buildTiles() {
   // cache each window's title texture, drawn under the tile on hover.
   if (g_pHyprOpenGL && g_pHyprRenderer) {
     g_pHyprOpenGL->makeEGLCurrent();
-    const auto lblCol = CHyprColor(argb(cfgColor("label_color", "0xf2ffffff")));
+    const auto lblCol = cfg::colors.label.get();
     for (auto &t : m_tiles) {
       const auto w = t.win.lock();
       if (!w)
@@ -79,10 +81,10 @@ void Overview::buildTiles() {
     // mid-pass is unsafe); re-rendered whenever close_button_icon changes so it
     // takes effect live.
     const std::string closeIcon =
-        cfgStr("plugin:gloview:close_button_icon", "✕");
+        cfg::look.close_button_icon.get();
     if (!m_closeGlyph || m_closeGlyphIcon != closeIcon) {
       m_closeGlyph = g_pHyprRenderer->renderText(closeIcon,
-          CHyprColor(argb(cfgColor("close_glyph_color", "0xffffffff"))), 16,
+          cfg::colors.close_glyph.get(), 16,
           false, "", 0, 800);
       m_closeGlyphIcon = closeIcon;
     }
@@ -109,8 +111,8 @@ void Overview::buildStrip() {
   // (StripItem::virtualWs) instead, which lazily creates the real workspace the
   // same way "+" does, but at that specific number.
   const std::string emptyMode =
-      cfgStr("plugin:gloview:strip_empty_mode", "show");
-  const bool showSpecial = cfgInt("plugin:gloview:show_special", 0) != 0;
+      cfg::strip.empty_mode.get();
+  const bool showSpecial = cfg::behavior.show_special != 0;
   const auto wsHasWindows = [](const PHLWORKSPACE &w) {
     for (const auto &win : Desktop::windowState()->windows())
       if (win && win->m_isMapped && !win->isHidden() && win->m_workspace == w)
@@ -185,7 +187,7 @@ void Overview::buildStrip() {
   // optional leading "All workspaces" card (toggles expo). Pushed FIRST so it
   // sits at the strip's leading edge; skipped wherever cards are treated as
   // workspaces (see the Kind::All guards).
-  if (cfgInt("plugin:gloview:strip_all_card", 0) != 0) {
+  if (cfg::strip.all_card != 0) {
     StripItem all;
     all.kind = StripItem::Kind::All;
     all.id = 0;
@@ -232,7 +234,7 @@ void Overview::buildStrip() {
   // render workspace name labels (cached textures) up front
   if (g_pHyprOpenGL && g_pHyprRenderer) {
     g_pHyprOpenGL->makeEGLCurrent();
-    const auto lblCol = CHyprColor(argb(cfgColor("label_color", "0xf2ffffff")));
+    const auto lblCol = cfg::colors.label.get();
     for (auto &it : m_strip) {
       if (it.kind == StripItem::Kind::Plus)
         continue;
@@ -262,8 +264,8 @@ void Overview::buildStrip() {
   //     nothing spills into the preview area.
   const LRect band = stripBand();
   const bool horiz = stripHorizontal();
-  const double margin = cfgInt("plugin:gloview:strip_margin", 22);
-  const double gap = cfgInt("plugin:gloview:strip_gap", 18);
+  const double margin = cfg::strip.margin;
+  const double gap = cfg::strip.gap;
   const double labelH = 26.0;
   const double aspect = m->m_size.x / std::max(1.0, m->m_size.y);
 
@@ -366,11 +368,11 @@ void Overview::layoutTiles() {
     return;
 
   LayoutCfg cfg;
-  cfg.engine = parseEngine(cfgStr("plugin:gloview:layout", "rows").c_str());
-  cfg.gap = cfgInt("plugin:gloview:gap", 34);
-  const int padX = cfgInt("plugin:gloview:padding", 80);
-  const int padT = cfgInt("plugin:gloview:padding_top", 40);
-  const int padB = cfgInt("plugin:gloview:padding_bottom", 70);
+  cfg.engine = parseEngine(cfg::grid.layout.get().c_str());
+  cfg.gap = cfg::grid.gap;
+  const int padX = cfg::grid.padding;
+  const int padT = cfg::grid.padding_top;
+  const int padB = cfg::grid.padding_bottom;
   cfg.padLeft = padX;
   cfg.padRight = padX;
   cfg.padTop = padT;
@@ -394,7 +396,7 @@ void Overview::layoutTiles() {
     cfg.padTop += bandSpan;
     break;
   }
-  cfg.maxScale = cfgFloat("plugin:gloview:max_scale", 1.0F);
+  cfg.maxScale = cfg::grid.max_scale;
 
   // Desktop (canvas) mode: fit the WHOLE monitor into the usable area and place
   // each preview at its real scaled position — a shrunk live desktop. A dragged
@@ -565,8 +567,8 @@ void Overview::hideLayers() {
   const auto m = m_monitor.lock();
   if (!m)
     return;
-  const bool top = cfgInt("plugin:gloview:hide_top_layers", 0) != 0;
-  const bool ovl = cfgInt("plugin:gloview:hide_overlay_layers", 0) != 0;
+  const bool top = cfg::layer.hide_top != 0;
+  const bool ovl = cfg::layer.hide_overlay != 0;
   if (!top && !ovl)
     return;
   const auto fade = [this](const std::vector<PHLLSREF> &layer) {
@@ -588,7 +590,7 @@ void Overview::hideLayers() {
   if (ovl)
     fade(m->m_layerSurfaceLayers[3]); // ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY
   if (!m_hiddenLayers.empty()) {
-    dbg("hid " + std::to_string(m_hiddenLayers.size()) + " layer surface(s)");
+    debug::dbg("hid " + std::to_string(m_hiddenLayers.size()) + " layer surface(s)");
     damage();
   }
 }

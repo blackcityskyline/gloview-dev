@@ -7,6 +7,7 @@
 #include <hyprland/src/render/Renderer.hpp>
 
 #include "gl_util.hpp"
+#include "../config/config.hpp"
 #include "../overview.hpp"
 #include "window_content.hpp"
 
@@ -34,8 +35,8 @@ void Overview::renderStrip() const {
     return;
   const double s =
       m->m_scale; // logical→pixel; Hyprland's renderRect wants pixel coords
-  const int   previewRound = cfgInt("plugin:gloview:preview_round", 12);
-  const float roundPow     = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+  const int   previewRound = cfg::look.preview_round;
+  const float roundPow     = cfg::look.preview_round_power;
 
   // Translucent band behind the cards (kept faint per request). The band
   // never uses native blur: it would sample currentFB, which can hold a
@@ -43,7 +44,7 @@ void Overview::renderStrip() const {
   // shouldRenderWindow), leaking window content into the band. The backdrop
   // already provides the blur behind the strip — a flat band color is
   // sufficient.
-  const auto bandCol = argb(cfgColor("strip_band_color", "0x24ffffff"), e);
+  const auto bandCol = cfg::colors.strip_band.get(e);
   const LRect bandR  = stripBand();
   const Vector2D slide  = stripSlide(e);  // slide the whole strip in from its edge
   const Vector2D scroll = stripScroll();  // scroll the card group along the band
@@ -51,17 +52,17 @@ void Overview::renderStrip() const {
       pxb(CBox(bandR.x + slide.x, bandR.y + slide.y, bandR.w, bandR.h), s),
       bandCol, {});
 
-  const int  cardRound = cfgInt("plugin:gloview:strip_card_round", 10);
-  const auto cardBg    = argb(cfgColor("strip_card_color", "0x3a0e131c"), e);
-  const auto activeBg  = argb(cfgColor("strip_active_color", "0x4d1c2c44"), e);
-  const auto activeLine = argb(cfgColor("strip_active_border", "0xf0ffffff"), e);
-  const auto hoverLine  = argb(cfgColor("strip_hover_border", "0x80ffffff"), e);
-  const auto plusCol    = argb(cfgColor("strip_plus_color", "0xd0eef4ff"), e);
-  const auto allCol     = argb(cfgColor("strip_all_color", "0xd0eef4ff"), e);
+  const int  cardRound = cfg::strip.card_round;
+  const auto cardBg    = cfg::colors.strip_card.get(e);
+  const auto activeBg  = cfg::colors.strip_active.get(e);
+  const auto activeLine = cfg::colors.strip_active_border.get(e);
+  const auto hoverLine  = cfg::colors.strip_hover.get(e);
+  const auto plusCol    = cfg::colors.strip_plus.get(e);
+  const auto allCol     = cfg::colors.strip_all.get(e);
   // Expo indicator: when all-workspaces is active, the "All" card (if present)
   // lights up active-style; otherwise outline every real card for feedback.
   const bool allWs       = showAllWorkspaces();
-  const bool allCardShown = cfgInt("plugin:gloview:strip_all_card", 0) != 0;
+  const bool allCardShown = cfg::strip.all_card != 0;
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
@@ -139,9 +140,9 @@ void Overview::renderStrip() const {
                              static_cast<int>(j) == m_drag.winIdx &&
                              !(m_drag.press == Drag::Press::StripWin);
         if (grabbed)
-          strokeRing(wbL, s, argb(cfgColor("hover_border", "0xf0ffffff"), e),
+          strokeRing(wbL, s, cfg::colors.hover_border.get(e),
                      2, wRound, roundPow);
-        safetyBacking(wbL, s, cfgColor("backing_color", "0xff14181f"),
+        safetyBacking(wbL, s, cfg::colors.backing.get(),
                       0.08 * e, wRound, roundPow);
       }
     }
@@ -182,8 +183,8 @@ void Overview::renderStripWindows() const {
   const Vector2D scroll = stripScroll();
   const double scale = m->m_scale;
   const auto when    = Time::steadyNow();
-  const int previewRound = cfgInt("plugin:gloview:preview_round", 12);
-  const float roundPow   = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+  const int previewRound = cfg::look.preview_round;
+  const float roundPow   = cfg::look.preview_round_power;
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
@@ -227,8 +228,8 @@ void Overview::renderStripButtons() const {
   if (e <= 0.01)
     return;
   const double s = m->m_scale;
-  const int cardRound = cfgInt("plugin:gloview:strip_card_round", 10);
-  const float roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+  const int cardRound = cfg::strip.card_round;
+  const float roundPow = cfg::look.preview_round_power;
   const bool showClose = m_desktopMode || closeButtonsAlwaysOn();
   const bool dropping = m_drag.armed() && m_drag.lifted;
   // Carrying a STRIP window: hovering an exact slot means swap intent —
@@ -244,9 +245,9 @@ void Overview::renderStripButtons() const {
                                       stripCardAt(m_drag.idx),
                                       m_drag.winIdx),
                      s),
-                 argb(cfgColor("select_border", "0xf066ccff"), e),
+                 cfg::colors.select_border.get(e),
                  0.7F * static_cast<float>(e),
-                 clampRound(cfgInt("plugin:gloview:preview_round", 12), 40, 40),
+                 clampRound(cfg::look.preview_round, 40, 40),
                  roundPow);
   }
 
@@ -278,7 +279,7 @@ void Overview::renderStripButtons() const {
       }
     }
     if (intentRing && !it.wins.empty()) {
-      const auto hoverCol = argb(cfgColor("hover_border", "0xf0ffffff"), e);
+      const auto hoverCol = cfg::colors.hover_border.get(e);
       for (size_t j = 0; j < it.wins.size(); ++j) {
         const auto v = it.wins[j].win.lock();
         if (!v || !v->m_isMapped)
@@ -287,7 +288,7 @@ void Overview::renderStripButtons() const {
         if (!sl.contains(m_drag.x, m_drag.y))
           continue;
         strokeRingPx(pxb(sl, s), hoverCol, 0.9F * static_cast<float>(e),
-                     clampRound(cfgInt("plugin:gloview:preview_round", 12),
+                     clampRound(cfg::look.preview_round,
                                 sl.w, sl.h),
                      roundPow);
         break;
@@ -307,7 +308,7 @@ void Overview::renderStripButtons() const {
                      : LRect{card.x, card.cy(), card.w, card.h / 2.0};
       }
       g_pHyprOpenGL->renderRect(
-          pxb(zone, s), argb(cfgColor("drop_hint_color", "0x38ffffff"), e),
+          pxb(zone, s), cfg::colors.drop_hint.get(e),
           {.round = pxr(cardRound / 2, s), .roundingPower = roundPow});
     }
 
@@ -320,7 +321,7 @@ void Overview::renderStripButtons() const {
       const double rad = br.w / 2.0;
       g_pHyprOpenGL->renderRect(
           pxb(box(br), s),
-          argb(cfgColor("close_button_color", "0xe6e23b3b"), e),
+          cfg::colors.close_button.get(e),
           {.round = pxr(rad, s)});
       if (m_closeGlyph && m_closeGlyph->m_size.x > 0) {
         const double gw = m_closeGlyph->m_size.x * 0.62,

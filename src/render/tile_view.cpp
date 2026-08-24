@@ -11,6 +11,7 @@
 #include <hyprland/src/render/pass/TexPassElement.hpp>
 
 #include "gl_util.hpp"
+#include "../config/config.hpp"
 #include "../overview.hpp"
 #include "../anim/curves.hpp"
 #include "window_content.hpp"
@@ -44,7 +45,7 @@ LRect fitInside(const LRect &outer, double aspect) {
 // every tile and strip card all the time, not just in desktop mode / while
 // Shift is the desktop-mode key.
 bool Overview::closeButtonsAlwaysOn() const {
-  return cfgStr("plugin:gloview:close_button_visibility", "shift") == "always";
+  return cfg::look.close_button_visibility.get() == "always";
 }
 
 // plugin:gloview:close_trigger == "doubleclick" (default "button"): swaps the
@@ -52,15 +53,15 @@ bool Overview::closeButtonsAlwaysOn() const {
 // deferred single-click handling in onMouseButton. Only affects the
 // PER-WINDOW close mechanism.
 bool Overview::closeOnDoubleClick() const {
-  return cfgStr("plugin:gloview:close_trigger", "button") == "doubleclick";
+  return cfg::look.close_trigger.get() == "doubleclick";
 }
 
 LRect Overview::closeButtonRect(const LRect &lb) const {
   const double scale = std::max(0.3, static_cast<double>(
-                                         cfgFloat("plugin:gloview:close_button_size", 1.0F)));
+                                         cfg::look.close_button_size));
   const double r     = std::clamp(std::min(lb.w, lb.h) * 0.11, 9.0, 18.0) * scale;
   const double inset = r + 6.0;
-  const std::string pos = cfgStr("plugin:gloview:close_button_position", "top-right");
+  const std::string pos = cfg::look.close_button_position.get();
   double cx = lb.x + lb.w - inset, cy = lb.y + inset; // top-right (default)
   if (pos == "top-left") {
     cx = lb.x + inset;
@@ -103,10 +104,10 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
     return;
   const double s        = m->m_scale;
   const double e        = eased();
-  const int    round    = cfgInt("plugin:gloview:preview_round", 12);
-  const float  roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
-  const auto shadowCol  = argb(cfgColor("shadow_color", "0x70000000"), 1.0);
-  const auto hoverCol   = argb(cfgColor("hover_border", "0xf0ffffff"), e);
+  const int    round    = cfg::look.preview_round;
+  const float  roundPow = cfg::look.preview_round_power;
+  const auto shadowCol  = cfg::colors.shadow.get(1.0);
+  const auto hoverCol   = cfg::colors.hover_border.get(e);
 
   const auto &t = m_tiles[i];
   const auto w  = t.win.lock();
@@ -128,18 +129,18 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
   // Two independent, modular ring layers (see README "Border modes"):
   // show_border — an always-on base ring on EVERY tile; show_focus_border —
   // the hover/keyboard-selection ring on top (hover wins over selection).
-  if (cfgInt("plugin:gloview:show_border", 0) != 0) {
-    strokeRing(lb, s, argb(cfgColor("border_color", "0x50ffffff"), e),
-               cfgInt("plugin:gloview:border_size", 2), round, roundPow);
+  if (cfg::look.show_border != 0) {
+    strokeRing(lb, s, cfg::colors.border.get(e),
+               cfg::look.border_size, round, roundPow);
   }
-  if (cfgInt("plugin:gloview:show_focus_border", 1) != 0) {
+  if (cfg::look.show_focus_border != 0) {
     if (framed)
       strokeRing(lb, s, hoverCol,
-                 cfgInt("plugin:gloview:hover_border_size", 3), round,
+                 cfg::look.hover_border_size, round,
                  roundPow);
     else if (selected)
-      strokeRing(lb, s, argb(cfgColor("select_border", "0xf066ccff"), e),
-                 cfgInt("plugin:gloview:select_border_size", 3), round,
+      strokeRing(lb, s, cfg::colors.select_border.get(e),
+                 cfg::look.select_border_size, round,
                  roundPow);
   }
 
@@ -187,11 +188,11 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
       // global alpha so the interior's dim tracks the surroundings exactly
       g_pHyprOpenGL->renderRect(
           lbPx,
-          argb(cfgColor("backdrop_color", "0x73070a10"), static_cast<float>(e)),
+          cfg::blur.backdrop.get(static_cast<float>(e)),
           {.round = pxr(round, s), .roundingPower = roundPow});
     }
   }
-  safetyBacking(lb, s, cfgColor("backing_color", "0xff14181f"), 0.08, round,
+  safetyBacking(lb, s, cfg::colors.backing.get(), 0.08, round,
                 roundPow);
 
   // window title in a dark pill below the tile (hover or keyboard selection)
@@ -204,7 +205,7 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
     const double px   = std::clamp(lb.cx() - pw / 2.0, 6.0, m->m_size.x - pw - 6.0);
     const double py   = std::min(lb.y + lb.h + 10.0, m->m_size.y - ph - 6.0);
     g_pHyprOpenGL->renderRect(pxb(CBox(px, py, pw, ph), s),
-                              argb(cfgColor("title_pill_color", "0xcc11151c"), e),
+                              cfg::colors.title_pill.get(e),
                               {.round = pxr(ph / 2.0, s)});
     g_pHyprOpenGL->renderTexture(t.label, pxb(CBox(px + padX, py + padY, lw, lh), s),
                                  {.a = static_cast<float>(e)});
@@ -263,7 +264,7 @@ void Overview::renderTileButtons() const {
     const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
     const LRect br = closeButtonRect(lb);
     g_pHyprOpenGL->renderRect(pxb(br, s),
-                              argb(cfgColor("close_button_color", "0xe6e23b3b"), e),
+                              cfg::colors.close_button.get(e),
                               {.round = pxr(br.h / 2.0, s)});
     if (m_closeGlyph && m_closeGlyph->m_size.x > 0) {
       const double gw = m_closeGlyph->m_size.x, gh = m_closeGlyph->m_size.y;
@@ -294,8 +295,8 @@ void Overview::renderMainWindows() const {
   const int    dragIdx = draggedTile();
   const double scale   = m->m_scale;
   const auto   when    = Time::steadyNow();
-  const int    round   = pxr(cfgInt("plugin:gloview:preview_round", 12), scale);
-  const float  roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+  const int    round   = pxr(cfg::look.preview_round, scale);
+  const float  roundPow = cfg::look.preview_round_power;
   for (size_t i = 0; i < m_tiles.size(); ++i) {
     if (static_cast<int>(i) == dragIdx)
       continue;
@@ -319,8 +320,8 @@ void Overview::renderGhosts() const {
     return;
   const double scale = m->m_scale;
   const auto when    = Time::steadyNow();
-  const int round    = pxr(cfgInt("plugin:gloview:preview_round", 12), scale);
-  const float roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
+  const int round    = pxr(cfg::look.preview_round, scale);
+  const float roundPow = cfg::look.preview_round_power;
   const double p     = std::min(1.0, m_populate.raw(populateMs()) / 0.6);
   const double eOut  = curves::eval(anim("populate").curve, p); // 0..1 gone
   for (const auto &g : m_ghosts) {

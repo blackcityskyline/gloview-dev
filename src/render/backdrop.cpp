@@ -13,6 +13,8 @@
 #include <hyprutils/utils/ScopeGuard.hpp>
 
 #include "gl_util.hpp"
+#include "../config/config.hpp"
+#include "../debug/log.hpp"
 #include "../overview.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -45,7 +47,7 @@ SP<Render::ITexture> Overview::backdropSource(bool &live) const {
   const auto m = m_monitor.lock();
   if (!m)
     return nullptr;
-  const auto fsBg = cfgInt("plugin:gloview:fullscreen_background", 0);
+  const auto fsBg = cfg::blur.fullscreen_background;
   if (fsBg) {
     const auto ws = m_workspace.lock();
     for (const auto &w : Desktop::windowState()->windows()) {
@@ -173,7 +175,7 @@ void Overview::renderBackdrop() const {
   const int W         = m->m_pixelSize.x;
   const int H         = m->m_pixelSize.y;
   const double e      = eased();
-  const auto baseCol  = cfgColor("backdrop_color", "0x73070a10");
+  const auto baseCol  = cfg::blur.backdrop.get();
 
   // Crossfade factor. Deliberately just `e` — blur_strength keeps meaning
   // "filter radius", never a blend amount.
@@ -192,7 +194,7 @@ void Overview::renderBackdrop() const {
   // base: blur decays over live currentFB straight into the real desktop the
   // previews are landing on.
   const float k = static_cast<float>(e);
-  dbg(std::string("backdrop e=") + std::to_string(e).substr(0, 5) +
+  debug::dbg(std::string("backdrop e=") + std::to_string(e).substr(0, 5) +
       " opening=" + std::to_string(m_opening) +
       " k=" + std::to_string(k).substr(0, 5));
 
@@ -271,7 +273,7 @@ void Overview::renderBackdrop() const {
       // exposed (it can hold a solitary fullscreen window): cover everything
       // with an OPAQUE background rect + dim overlay, and retry next frame.
       m_blur.valid = false;
-      dbg("backdrop FALLBACK: blur unavailable / no source");
+      debug::dbg("backdrop FALLBACK: blur unavailable / no source");
       static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
       g_pHyprOpenGL->renderRect(fullPx, argb(*PBG, 1.0), {});
       g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, e), {});

@@ -97,24 +97,6 @@ private:
   using clock = std::chrono::steady_clock;
 };
 
-// Plugin config values registered with `addConfigValueV2` (main.cpp), kept so
-// the cfg* helpers can read them through their V2 `value()` accessor. The
-// deprecated `HyprlandAPI::getConfigValue()` path does NOT observe values set
-// from a Lua `hl.config{}` config — it returned the registered default, so
-// every setting looked like it "did nothing" under a Lua config. Reading the
-// IValue directly works for both the legacy/ini and Lua config frontends.
-//
-// No `colors` map: every plugin:gloview:<color> option is registered as a
-// plain STRING (see cfgColor() in overview_core.cpp) holding a hex literal —
-// or a palette-resolved hex produced Lua-side from a theme module (hyprbars
-// pattern), so the plugin stays decoupled from any scheme engine.
-struct ConfigRegistry {
-  std::unordered_map<std::string, SP<Config::Values::CIntValue>> ints;
-  std::unordered_map<std::string, SP<Config::Values::CStringValue>> strings;
-  std::unordered_map<std::string, SP<Config::Values::CFloatValue>> floats;
-};
-inline ConfigRegistry g_config;
-
 // macOS Mission Control-style overview for Hyprland.
 //
 //   ┌───────────────────────────────────────────────┐
@@ -394,7 +376,7 @@ private:
     LRect box; // monitor-local logical, frozen at removal
   };
   std::vector<Ghost> m_ghosts;
-  double populateMs() const { return animMs("populate", nullptr, 250); }
+  double populateMs() const { return animMs("populate"); }
   // True while ANY secondary clock is mid-flight (population/ghosts, strip
   // scroll). The animation-pump predicates MUST include this: after a card/
   // digit workspace switch the master timeline sits pinned at 1 and tiles'
@@ -403,7 +385,7 @@ private:
   // visibly shakes.
   bool secondaryAnimsActive() const {
     return !m_populate.done(populateMs()) ||
-           !m_stripTween.done(animMs("strip_step", nullptr, 200));
+           !m_stripTween.done(animMs("strip_step"));
   }
   double tileAppear(int i) const; // staggered 0..1 for tile i
   void kickPulse(const PHLWINDOW &w);
@@ -514,11 +496,6 @@ private:
   // blur_size / blur_resolution, independent of Hyprland's global
   // decoration:blur:* (which plugins can't override per-call).
   mutable CBlurFilter m_blurFilter;
-
-  // config helpers
-  int cfgInt(const char *name, int fallback) const;
-  float cfgFloat(const char *name, float fallback) const;
-  std::string cfgStr(const char *name, const char *fallback) const;
   void updateSnapshots(); // snapshot mode: refresh m_snapshots from current
                           // tile windows' last committed textures
   // plugin:gloview:cursor_mode == "software" forces a software cursor
@@ -526,9 +503,6 @@ private:
   // use its hardware cursor plane when the driver supports one — zero GPU cost
   // per move, zero framebuffer pollution, zero trails.
   std::string cursorMode() const;
-  // Unified color read — see cfgColor() in overview_core.cpp for the value
-  // grammar (hex literal, or a palette-resolved hex produced Lua-side).
-  Hyprlang::INT cfgColor(const char *base, const char *fallback) const;
 
   // ---- animation registry (AN1) -----------------------------------------
   // Every animation is a config "leaf": <leaf>_enabled / <leaf>_ms /
@@ -544,8 +518,7 @@ private:
   // Effective duration for a leaf: 1ms when master/leaf disabled (every clock
   // then completes within one frame — the whole plugin goes static without
   // any per-site branching), else <leaf>_ms or its fallback.
-  double animMs(const char *leaf, const char *msFallbackKey,
-                int msFallback) const;
+  double animMs(const char *leaf) const;
 
   // Which monitor edge the workspace strip is anchored to. Top/Bottom give a
   // horizontal strip (cards in a row); Left/Right give a vertical strip (cards
@@ -592,11 +565,11 @@ private:
   double animDuration() const;
   // Tile-glide leaf (entry, reflow, close-home all ride one clock).
   double reflowDur() const {
-    return animMs("reflow", "plugin:gloview:duration", 360);
+    return animMs("reflow");
   }
   // "+" card pop-in duration: never shorter than the tile glide it overlaps.
   double newCardDur() const {
-    return std::max(120.0, animMs("new_card", "plugin:gloview:duration", 360));
+    return std::max(120.0, animMs("new_card"));
   }
   double tileProgress(int i) const; // staggered raw progress for tile i
   LRect
@@ -674,14 +647,13 @@ private:
   void drawDragStripChrome()
       const; // chrome for a strip-window drag (shadow/border/backing)
   // keyboard navigation
-  bool keyMatches(int keycode, uint32_t mods, const char *cfgName,
-                  const char *fallback)
-      const; // keycode+held mods ∈ the configured list (names or "shift+tab"
+  bool keyMatches(int keycode, uint32_t mods, const std::string &combo)
+      const; // keycode+held mods ∈ the combo list (names or "shift+tab"
              // combos; empty = disabled)
-  int keyIndex(
-      int keycode, uint32_t mods, const char *cfgName,
-      const char *fallback) const; // 0-based position of keycode in the list,
-                                   // else -1 (number-row → strip card N)
+  int keyIndex(int keycode, uint32_t mods,
+               const std::string &combo) const; // 0-based position of keycode
+                                                // in the list, else -1
+                                                // (number-row → strip card N)
   void moveSelection(
       int dx,
       int dy); // step the selection cursor to the nearest tile in a direction

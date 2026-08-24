@@ -12,6 +12,7 @@
 #include <hyprland/src/helpers/time/Time.hpp>
 
 #include "gl_util.hpp"
+#include "../config/config.hpp"
 #include "../overview.hpp"
 #include "../anim/curves.hpp"
 #include "window_content.hpp"
@@ -76,10 +77,10 @@ void Overview::drawDragStripChrome() const {
   const double s        = m->m_scale;
   const double e        = eased();
   const LRect  lb       = dragStripBox();
-  const int    round    = clampRound(cfgInt("plugin:gloview:preview_round", 12), lb.w, lb.h);
-  const float  roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
-  const auto   shadowCol = argb(cfgColor("shadow_color", "0x70000000"), 1.0);
-  const auto   hoverCol  = argb(cfgColor("hover_border", "0xf0ffffff"), e);
+  const int    round    = clampRound(cfg::look.preview_round, lb.w, lb.h);
+  const float  roundPow = cfg::look.preview_round_power;
+  const auto   shadowCol = cfg::colors.shadow.get(1.0);
+  const auto   hoverCol  = cfg::colors.hover_border.get(e);
 
   g_pHyprOpenGL->renderRoundedShadow(
       pxb(LRect{lb.x, lb.y + 14.0, lb.w, lb.h}, s), pxr(round, s), roundPow,
@@ -89,7 +90,7 @@ void Overview::drawDragStripChrome() const {
   // Real border stroke, not a filled underlay — a filled rect would show
   // through this window's own transparency as a solid wash instead of a
   // frame (see the chrome-kernel comment in gl_util.hpp).
-  const int th = cfgInt("plugin:gloview:hover_border_size", 3); // 0 = no ring
+  const int th = cfg::look.hover_border_size; // 0 = no ring
   const Config::CGradientValueData grad(hoverCol);
   g_pHyprOpenGL->renderBorder(pxb(lb, s), grad,
                               {.round = pxr(round, s),
@@ -98,7 +99,7 @@ void Overview::drawDragStripChrome() const {
                                .a = 1.0F,
                                .outerRound = outerRoundPx(round, th, roundPow, s)});
 
-  safetyBacking(lb, s, cfgColor("backing_color", "0xff14181f"), 0.08, round,
+  safetyBacking(lb, s, cfg::colors.backing.get(), 0.08, round,
                 roundPow);
 }
 
@@ -116,9 +117,9 @@ void Overview::renderDragWindow() const {
     const double scale = m->m_scale;
     const LRect  lb    = tileContentBox(static_cast<size_t>(dragIdx), dragBox());
     const CBox   px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
-    const int    round = pxr(cfgInt("plugin:gloview:preview_round", 12), scale);
+    const int    round = pxr(cfg::look.preview_round, scale);
     renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(),
-                     round, cfgFloat("plugin:gloview:preview_round_power", 2.0F));
+                     round, cfg::look.preview_round_power);
     return;
   }
   if (m_drag.press == Drag::Press::StripWin) {
@@ -129,11 +130,11 @@ void Overview::renderDragWindow() const {
     const double scale = m->m_scale;
     const LRect  lb    = dragStripBox();
     const CBox   px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
-    const int round = pxr(clampRound(cfgInt("plugin:gloview:preview_round", 12),
+    const int round = pxr(clampRound(cfg::look.preview_round,
                                      lb.w, lb.h),
                           scale);
     renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(),
-                     round, cfgFloat("plugin:gloview:preview_round_power", 2.0F));
+                     round, cfg::look.preview_round_power);
   }
 }
 
@@ -156,8 +157,8 @@ void Overview::renderPulses(bool strip) const {
   if (!m)
     return;
   const double s = m->m_scale;
-  const float roundPow = cfgFloat("plugin:gloview:preview_round_power", 2.0F);
-  const auto col = argb(cfgColor("hover_border", "0xf0ffffff"), 1.0);
+  const float roundPow = cfg::look.preview_round_power;
+  const auto col = cfg::colors.hover_border.get(1.0);
   for (const auto &p : m_pulses) {
     const auto w = p.w.lock();
     if (!w)
@@ -175,7 +176,7 @@ void Overview::renderPulses(bool strip) const {
           const LRect sl = stripWinSlotRect(it, card, j);
           strokeRingPx(pxb(sl, s), col,
                        static_cast<float>((1.0 - pr) * 0.9),
-                       clampRound(cfgInt("plugin:gloview:preview_round", 12),
+                       clampRound(cfg::look.preview_round,
                                   sl.w, sl.h),
                        roundPow);
         }
@@ -187,7 +188,7 @@ void Overview::renderPulses(bool strip) const {
         const LRect lb =
             tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
         drawPulseRing(pxb(lb, s),
-                      pxr(cfgInt("plugin:gloview:preview_round", 12), s),
+                      pxr(cfg::look.preview_round, s),
                       roundPow, col, pr);
         break;
       }
@@ -214,7 +215,7 @@ void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
 bool Overview::isAboveLayer(const std::string &ns) const {
   if (ns.find("aboveoverview") != std::string::npos)
     return true;
-  const std::string list = cfgStr("plugin:gloview:above_namespaces", "");
+  const std::string list = cfg::layer.above_namespaces.get();
   size_t i = 0;
   while (i < list.size()) {
     // split on commas AND whitespace
