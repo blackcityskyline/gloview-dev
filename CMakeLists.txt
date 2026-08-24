@@ -25,9 +25,9 @@ add_library(gloview SHARED
   src/main.cpp
   src/overview_core.cpp
   src/overview_build.cpp
-  src/overview_input.cpp
-  src/overview_keys.cpp
-  src/overview_actions.cpp
+  src/input/mouse.cpp
+  src/input/keys.cpp
+  src/actions/actions.cpp
   src/layout.cpp
   src/cursor.cpp
   src/blur.cpp

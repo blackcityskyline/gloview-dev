@@ -1,5 +1,5 @@
-#include "config/config.hpp"
-#include "overview.hpp"
+#include "../config/config.hpp"
+#include "../overview.hpp"
 
 #include <algorithm>
 #include <cctype>
