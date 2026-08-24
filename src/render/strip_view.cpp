@@ -9,6 +9,8 @@
 #include "gl_util.hpp"
 #include "../config/config.hpp"
 #include "../overview.hpp"
+#include <hyprland/src/render/pass/TexPassElement.hpp>
+
 #include "window_content.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -127,6 +129,48 @@ void Overview::renderStrip() const {
               pxb(CBox(gx + col * (cw + cg), gy + r * (ch + cg), cw, ch), s),
               allCol, {.round = pxr(2, s)});
     } else {
+      // Empty workspace: a cover-fit wallpaper thumbnail fills the card —
+      // the same source the backdrop uses (mpv/wallpaper texture, else the
+      // frozen layers FBO), center-cropped via UVs and rounded like the
+      // card. Without a backdrop source (blur off AND no direct texture)
+      // the card stays flat.
+      if (it.wins.empty() && cfg::strip.wallpaper != 0) {
+        bool live = false;
+        auto tex = backdropSource(live);
+        if ((!tex || !tex->ok()) && m_backdropSrcFB &&
+            m_backdropSrcFB->isAllocated())
+          tex = m_backdropSrcFB->getTexture();
+        if (tex && tex->ok()) {
+          const double texW = std::max(1.0, static_cast<double>(tex->m_size.x));
+          const double texH = std::max(1.0, static_cast<double>(tex->m_size.y));
+          const double cardRatio = card.w / std::max(1.0, card.h);
+          const double texRatio  = texW / texH;
+          double u0 = 0.0, v0 = 0.0, u1 = 1.0, v1 = 1.0;
+          if (cardRatio > texRatio) { // card wider than the image: crop top/bottom
+            const double f = texRatio / cardRatio;
+            v0 = (1.0 - f) / 2.0;
+            v1 = (1.0 + f) / 2.0;
+          } else {                    // card taller: crop left/right
+            const double f = cardRatio / texRatio;
+            u0 = (1.0 - f) / 2.0;
+            u1 = (1.0 + f) / 2.0;
+          }
+          CTexPassElement::SRenderData td{};
+          td.tex           = tex;
+          td.box           = pxb(c, s);
+          td.a             = static_cast<float>(e);
+          td.round         = pxr(cardRound, s);
+          td.roundingPower = roundPow;
+          td.allowCustomUV = true;
+          auto &uvTL = g_pHyprRenderer->m_renderData.primarySurfaceUVTopLeft;
+          auto &uvBR = g_pHyprRenderer->m_renderData.primarySurfaceUVBottomRight;
+          uvTL = Vector2D{u0, v0};
+          uvBR = Vector2D{u1, v1};
+          g_pHyprRenderer->draw(td, g_pHyprRenderer->m_renderData.damage);
+          uvTL = Vector2D{-1.0, -1.0};
+          uvBR = Vector2D{-1.0, -1.0};
+        }
+      }
       // Thin near-invisible backing per window slot: the thumbnail may carry
       // transparency, so without it the translucent card band over the
       // blurred backdrop bleeds through. NOT a decorative tint — see the

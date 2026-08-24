@@ -93,6 +93,7 @@ struct strip {
   Str bar_position;        // deprecated alias for anchor
   Str empty_mode;          // show | neighbors | hide
   Int all_card;            // leading "All workspaces" card
+  Int wallpaper;           // empty ws cards show a cover-fit wallpaper thumbnail
 };
 
 inline strip strip;
