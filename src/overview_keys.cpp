@@ -1,3 +1,4 @@
+#include "config/config.hpp"
 #include "overview.hpp"
 
 #include <algorithm>
@@ -49,7 +50,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
   // Hyprland in passthrough mode so the user's normal keybinds keep working.
   // With passthrough off it's fully modal — every key swallowed. Keycodes are
   // evdev (layout-independent).
-  const bool passthrough = cfgInt("plugin:gloview:passthrough_keys", 1) != 0;
+  const bool passthrough = cfg::behavior.passthrough_keys != 0;
 
   if (e.state != WL_KEYBOARD_KEY_STATE_PRESSED) {
     // Releasing the configured modifier while an alt-tab cycle is active
@@ -61,9 +62,9 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
     // defined further down this file) so this stays a simple keycode→ bit
     // comparison with no forward-declaration to worry about.
     if (m_altTabbing &&
-        cfgInt("plugin:gloview:alt_tab_commit_on_release", 1) != 0) {
+        cfg::keys.alt_tab_commit_on_release != 0) {
       const std::string modName =
-          cfgStr("plugin:gloview:alt_tab_modifier", "alt");
+          cfg::keys.alt_tab_modifier.get();
       uint32_t wantBit = HL_MODIFIER_ALT;
       if (modName == "super" || modName == "meta" || modName == "win")
         wantBit = HL_MODIFIER_META;
@@ -95,38 +96,36 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
   uint32_t mods = g_pInputManager ? g_pInputManager->getModsFromAllKBs() : 0;
   mods &= ~modBitForKeycode(k);
   bool handled = true;
-  if (keyMatches(k, mods, "plugin:gloview:key_close", "escape"))
+  if (keyMatches(k, mods, cfg::keys.close.get()))
     close();
-  else if (keyMatches(k, mods, "plugin:gloview:key_next_workspace", "tab"))
+  else if (keyMatches(k, mods, cfg::keys.next_workspace.get()))
     stepWorkspace(
         1); // cycle the displayed workspace card (wraps; committed on close)
-  else if (keyMatches(k, mods, "plugin:gloview:key_prev_workspace",
-                      "shift+tab"))
+  else if (keyMatches(k, mods, cfg::keys.prev_workspace.get()))
     stepWorkspace(-1);
-  else if (keyMatches(k, mods, "plugin:gloview:key_activate", "enter"))
+  else if (keyMatches(k, mods, cfg::keys.activate.get()))
     activateSelection();
-  else if (keyMatches(k, mods, "plugin:gloview:key_close_window", "d"))
+  else if (keyMatches(k, mods, cfg::keys.close_window.get()))
     closeTileWindow(m_selected); // sendClose the SELECTED tile (keyboard/hover
                                  // cursor), stay open & reflow
-  else if (keyMatches(k, mods, "plugin:gloview:key_left", "left"))
+  else if (keyMatches(k, mods, cfg::keys.left.get()))
     moveSelection(-1, 0);
-  else if (keyMatches(k, mods, "plugin:gloview:key_right", "right"))
+  else if (keyMatches(k, mods, cfg::keys.right.get()))
     moveSelection(1, 0);
-  else if (keyMatches(k, mods, "plugin:gloview:key_up", "up"))
+  else if (keyMatches(k, mods, cfg::keys.up.get()))
     moveSelection(0, -1);
-  else if (keyMatches(k, mods, "plugin:gloview:key_down", "down"))
+  else if (keyMatches(k, mods, cfg::keys.down.get()))
     moveSelection(0, 1);
-  else if (keyMatches(k, mods, "plugin:gloview:key_desktop", "shift"))
+  else if (keyMatches(k, mods, cfg::keys.desktop.get()))
     setDesktopMode(!m_desktopMode);
-  else if (keyMatches(k, mods, "plugin:gloview:key_all_workspaces", "a"))
+  else if (keyMatches(k, mods, cfg::keys.all_workspaces.get()))
     toggleAllWorkspaces(); // flip the expo (all-workspaces) main view
   // Ctrl is masked out of the match here (not treated as a strict combo
   // requirement): in "jump" mode it's the escape hatch back to the old
   // stay-open behavior, so a bare digit and Ctrl+digit both need to hit this
   // branch — see the mode check below.
   else if (const int idx =
-               keyIndex(k, mods & ~HL_MODIFIER_CTRL,
-                        "plugin:gloview:key_workspace", "1,2,3,4,5,6,7,8,9,0");
+               keyIndex(k, mods & ~HL_MODIFIER_CTRL, cfg::keys.workspace.get());
            idx >= 0) {
     // Key position N (0-based) maps DIRECTLY to workspace N+1 — "0" is always
     // workspace 10 — independent of what's currently on the strip, and creates
@@ -207,7 +206,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
       // "jump": a bare digit also closes the overview immediately (no Enter
       // needed); Ctrl+digit falls back to the old stay-open behavior.
       const bool jumpMode =
-          cfgStr("plugin:gloview:key_workspace_mode", "switch") == "jump";
+          cfg::behavior.workspace_key_mode.get() == "jump";
       const bool ctrlHeld = (mods & HL_MODIFIER_CTRL) != 0;
       if (jumpMode && !ctrlHeld)
         close();
@@ -384,9 +383,9 @@ bool comboMatches(int keycode, uint32_t heldMods, std::string token) {
 }
 } // namespace
 
-bool Overview::keyMatches(int keycode, uint32_t mods, const char *cfgName,
-                          const char *fallback) const {
-  for (const auto &tok : keyTokens(cfgStr(cfgName, fallback)))
+bool Overview::keyMatches(int keycode, uint32_t mods,
+                          const std::string &combo) const {
+  for (const auto &tok : keyTokens(combo))
     if (comboMatches(keycode, mods, tok))
       return true;
   return false;
@@ -395,10 +394,10 @@ bool Overview::keyMatches(int keycode, uint32_t mods, const char *cfgName,
 // 0-based token position of keycode within the list, else -1. The number row
 // uses it in onKey to map directly to a workspace ID (idx+1) — see the
 // key_workspace handler.
-int Overview::keyIndex(int keycode, uint32_t mods, const char *cfgName,
-                       const char *fallback) const {
+int Overview::keyIndex(int keycode, uint32_t mods,
+                       const std::string &combo) const {
   int idx = 0;
-  for (const auto &tok : keyTokens(cfgStr(cfgName, fallback))) {
+  for (const auto &tok : keyTokens(combo)) {
     if (comboMatches(keycode, mods, tok))
       return idx;
     ++idx;

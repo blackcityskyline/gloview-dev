@@ -1,3 +1,4 @@
+#include "config/config.hpp"
 #include "overview.hpp"
 
 #include <algorithm>
@@ -44,7 +45,7 @@ bool Overview::onMouseAxis(const IPointer::SAxisEvent &e) {
   }
 
   if (!overStrip &&
-      cfgInt("plugin:gloview:scroll_switches_workspace", 1) != 0) {
+      cfg::behavior.scroll_switches_workspace != 0) {
     if (notches != 0.0)
       stepWorkspace(notches > 0 ? 1 : -1);
     return true;
@@ -146,7 +147,7 @@ void Overview::updateHover() {
     m_hoveredStrip = newStrip;
     // keep the keyboard selection under the pointer so arrow-nav picks up where
     // the mouse left off (macOS-like). Only when actually over a tile.
-    if (newTile >= 0 && cfgInt("plugin:gloview:focus_follows_mouse", 1) != 0) {
+    if (newTile >= 0 && cfg::behavior.focus_follows_mouse != 0) {
       m_selected = newTile;
       syncFocus(); // so a passthrough killactive/hotkey hits the hovered window
     }
@@ -310,7 +311,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       // unreliable/"broken". (Skipped in desktop/canvas mode, where a drop
       // parks the preview instead.)
       if (!m_desktopMode && w &&
-          cfgInt("plugin:gloview:drag_to_swap", 1) != 0) {
+          cfg::behavior.drag_to_swap != 0) {
         int best = -1;
         double bestDist2 = 1e18;
         for (size_t i = 0; i < m_tiles.size(); ++i) {
@@ -327,7 +328,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           }
         }
         const double tol =
-            std::max(0.0, cfgInt("plugin:gloview:gap", 34) / 2.0);
+            std::max(0.0, cfg::grid.gap / 2.0);
         if (best >= 0 && bestDist2 <= tol * tol) {
           swapTiles(press, best);
           return true;
@@ -474,7 +475,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     break;
   }
 
-  if (cfgInt("plugin:gloview:exit_on_click", 1) != 0)
+  if (cfg::behavior.exit_on_click != 0)
     close(); // released on empty space
   return true;
 }

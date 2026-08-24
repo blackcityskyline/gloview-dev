@@ -8,6 +8,8 @@
 #include <hyprland/src/render/pass/PassElement.hpp>
 
 #include "gl_util.hpp"
+#include "../config/config.hpp"
+#include "../debug/log.hpp"
 #include "../overview.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -102,7 +104,7 @@ void Overview::renderStage(eRenderStage stage) {
     // partial-damage frames (a caret-sized region renders the terminal crisp
     // over an otherwise-stale buffer: the flash signature).
     const auto ext = g_pHyprRenderer->m_renderData.damage.copy().getExtents();
-    dbg("F t=+" +
+    debug::dbg("F t=+" +
         std::to_string(
             std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - m_openStamp)
@@ -140,7 +142,7 @@ void Overview::renderStage(eRenderStage stage) {
   // from what's actually on screen.
   if (m_opening && m->m_activeWorkspace != m_liveWsAtOpen.lock()) {
     m_liveWsAtOpen = m->m_activeWorkspace;
-    if (cfgInt("plugin:gloview:exit_on_switch", 0) != 0) {
+    if (cfg::behavior.exit_on_switch != 0) {
       m_workspace = m->m_activeWorkspace; // accept the external switch so
                                           // deactivate() doesn't revert it
       close();
@@ -149,7 +151,7 @@ void Overview::renderStage(eRenderStage stage) {
       // MUST go through captureCurrentBoxes + replayReflow (startTileGlide):
       // a bare rebuild reset Tile.appear to 1 and left stale ghosts — the
       // "tiles jerk then settle" on ctrl-jump and cross-workspace LMB drops.
-      dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
+      debug::dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
           " tiles=" + std::to_string(m_tiles.size()));
       m_workspace = m->m_activeWorkspace;
       const auto shown = captureCurrentBoxes();
@@ -245,7 +247,7 @@ void Overview::renderCursorOnTop() const {
   const auto m = m_monitor.lock();
   if (!m)
     return;
-  m_cursor.renderOnTop(m, argb(cfgColor("backdrop_color", "0x73070a10"), 1.0));
+  m_cursor.renderOnTop(m, cfg::blur.backdrop.get(1.0));
 }
 
 } // namespace gloview

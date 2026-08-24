@@ -71,7 +71,8 @@ inline int clampRound(int round, double w, double h) {
 }
 
 // "0xAARRGGBB"-style config literal -> CHyprColor, alpha multiplied by
-// alphaMul (clamped to 0..1).
+// alphaMul (clamped to 0..1). The CHyprColor overload alpha-multiplies an
+// already-parsed color (config.cpp Color handles).
 inline CHyprColor argb(Hyprlang::INT raw, double alphaMul = 1.0) {
   const auto a = static_cast<double>((raw >> 24) & 0xFF) / 255.0;
   const auto r = static_cast<double>((raw >> 16) & 0xFF) / 255.0;
@@ -127,7 +128,11 @@ inline void strokeRingPx(const CBox &b, const CHyprColor &col, float alpha,
        .outerRound = outerRoundPx(round, 2, roundPow, 1.0)});
 }
 
-inline void safetyBacking(const LRect &lb, double s, Hyprlang::INT col,
+inline CHyprColor argb(const CHyprColor &c, double alphaMul = 1.0) {
+  return CHyprColor(c.r, c.g, c.b, c.a * std::clamp(alphaMul, 0.0, 1.0));
+}
+
+inline void safetyBacking(const LRect &lb, double s, const CHyprColor &col,
                           double alphaMul, int round, float roundPow) {
   const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0),
                  std::max(0.0, lb.h - 2.0)};
