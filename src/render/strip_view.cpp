@@ -250,6 +250,8 @@ void Overview::renderStripWindows() const {
       const auto w = it.wins[j].win.lock();
       if (!w || !w->m_isMapped || w->isHidden())
         continue;
+      if (landingActive(w))
+        continue; // flying via a landing (Z2.5) — suppressed here
       // window slot inside the card, from its tiled goal position (logical)
       const LRect slot = stripWinSlotRect(it, card, j);
       const int round = pxr(clampRound(previewRound, slot.w, slot.h), scale);

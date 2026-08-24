@@ -10,6 +10,7 @@
 
 #include <hyprland/src/desktop/DesktopTypes.hpp>
 
+#include "../anim/clocks.hpp"
 #include "../layout.hpp"
 
 namespace gloview::model {
@@ -105,6 +106,18 @@ struct Drag {
   double x = 0, y = 0;             // current cursor, kept fresh by updateHover
   bool lifted = false;             // moved past the threshold → a real drag
   bool armed() const { return press == Press::Tile || press == Press::StripWin; }
+};
+
+// A drag/swap landing: the window's content flies from `from` (the box it
+// occupied at release — the drag preview under the cursor, or its old slot)
+// into its new slot. While the flight is live the painter draws the window
+// ONCE above the strip and suppresses its regular slot rendering; at t=1 the
+// lerped box equals the slot box, so the handoff to normal rendering is
+// invisible.
+struct Landing {
+  PHLWINDOWREF win;
+  LRect from; // monitor-local logical
+  anim::Tween clock;
 };
 
 } // namespace gloview::model

@@ -836,7 +836,7 @@ void Overview::rearmanim() const {
   const double dur = animDuration();
   const bool animating = secondaryAnimsActive() ||
                          !m_tileClock.done(dur) || m_newCardAnim ||
-                         m_drag.lifted ||
+                         m_drag.lifted || !m_landings.empty() ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0);
   if (!animating)

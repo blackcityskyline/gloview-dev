@@ -21,6 +21,10 @@ using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
 
+namespace {
+double lerp(double a, double b, double t) { return a + (b - a) * t; }
+} // namespace
+
 // ---- drag visuals (Z3) ------------------------------------------------------
 
 // The picked-up grid tile's floating box. Grid mode shrinks to half AND sits
@@ -208,6 +212,58 @@ void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
   strokeRingPx(ring, col, static_cast<float>((1.0 - p) * 0.9),
                static_cast<int>(std::max(2.0, round + round * 0.5 * k)),
                roundPow);
+}
+
+// ---- landings (Z2.5) --------------------------------------------------------
+
+// Flying windows: content drawn at the box lerped from the release point to
+// the CURRENT slot box (which may itself be gliding — the lerp targets the
+// live slot, so the flight bends toward a moving destination naturally).
+// Regular slot rendering for these windows is suppressed while the flight is
+// live; at t=1 both boxes coincide and normal rendering takes over invisibly.
+void Overview::renderLandings() const {
+  if (m_landings.empty())
+    return;
+  const auto m = m_monitor.lock();
+  if (!m)
+    return;
+  const double s     = m->m_scale;
+  const auto when    = Time::steadyNow();
+  const int  round   = cfg::look.preview_round;
+  const float roundPow = cfg::look.preview_round_power;
+  const double dur = dropDur();
+  for (const auto &l : m_landings) {
+    const auto w = l.win.lock();
+    if (!w || !w->m_isMapped || w->isHidden())
+      continue;
+    LRect to;
+    bool found = false;
+    for (size_t i = 0; i < m_tiles.size() && !found; ++i)
+      if (m_tiles[i].win.lock() == w) {
+        to = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
+        found = true;
+      }
+    for (size_t i = 0; i < m_strip.size() && !found; ++i) {
+      const auto &it = m_strip[i];
+      if (it.kind != model::StripItem::Kind::Ws)
+        continue;
+      for (size_t j = 0; j < it.wins.size() && !found; ++j)
+        if (it.wins[j].win.lock() == w) {
+          to = stripWinSlotRect(it, stripCardAt(i), j);
+          found = true;
+        }
+    }
+    if (!found)
+      continue;
+    const double p  = curves::eval(anim("drop").curve, l.clock.raw(dur));
+    const double bx = l.from.x + (to.x - l.from.x) * p;
+    const double by = l.from.y + (to.y - l.from.y) * p;
+    const double bw = l.from.w + (to.w - l.from.w) * p;
+    const double bh = l.from.h + (to.h - l.from.h) * p;
+    const CBox px(bx * s, by * s, bw * s, bh * s);
+    renderWindowLive(w, m, px, px, 1.0F, when,
+                     pxr(clampRound(round, bw, bh), s), roundPow);
+  }
 }
 
 // ---- above-layers (Z4) ------------------------------------------------------

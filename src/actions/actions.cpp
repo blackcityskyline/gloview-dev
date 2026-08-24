@@ -156,6 +156,64 @@ void Overview::swapTiles(int a, int b) {
 // the other's workspace. Falls back to a plain move when there's nothing on the
 // target to swap with (empty workspace, or a fullscreen partner with no
 // well-defined slot).
+// Landing animations (anim leaf "drop"). beginLanding: the window now renders
+// as a STRIP thumb (strip has no glide machinery of its own) — fly it from
+// `from` into its slot. landAfterMove: dispatches per landing surface — strip
+// -> flight, grid tile -> natural = oldBox so the existing tile glide flies it
+// in (chrome moves with it).
+void Overview::beginLanding(const PHLWINDOW &w, const LRect &from) {
+  if (!w || !w->m_isMapped || w->isHidden())
+    return;
+  bool strip = false;
+  for (const auto &it : m_strip) {
+    if (it.kind != model::StripItem::Kind::Ws)
+      continue;
+    for (const auto &sw : it.wins)
+      if (sw.win.lock() == w)
+        strip = true;
+  }
+  if (!strip)
+    return; // grid tiles fly via their own natural->target glide
+  std::erase_if(m_landings, [&w](const model::Landing &l) { return l.win.lock() == w; });
+  model::Landing l;
+  l.win  = w;
+  l.from = from;
+  l.clock.begin();
+  m_landings.push_back(std::move(l));
+  ensureAnimPump();
+  damage();
+}
+
+bool Overview::landingActive(const PHLWINDOW &w) const {
+  for (const auto &l : m_landings)
+    if (l.win.lock() == w)
+      return true;
+  return false;
+}
+
+void Overview::landAfterMove(const PHLWINDOW &w, const LRect &oldBox) {
+  if (!w)
+    return;
+  bool strip = false;
+  for (const auto &it : m_strip) {
+    if (it.kind != model::StripItem::Kind::Ws)
+      continue;
+    for (const auto &sw : it.wins)
+      if (sw.win.lock() == w)
+        strip = true;
+  }
+  if (strip) {
+    beginLanding(w, oldBox);
+    return;
+  }
+  for (auto &t : m_tiles)
+    if (t.win.lock() == w) {
+      t.natural = oldBox; // the tile glide flies it in from the old box
+      t.appear = 1.0;
+      break;
+    }
+}
+
 void Overview::swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   if (w && w->m_workspace == it.ws.lock()) {
     damage(); // nothing to swap with across workspaces
@@ -213,6 +271,12 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   }
 
   replayReflow(oldBoxes);
+  // landings: w flew from the drag preview (m_lastDragBox), the partner flew
+  // from its old grid slot into w's old card (a strip thumb now).
+  landAfterMove(w, m_lastDragBox);
+  for (const auto &[win, box] : oldBoxes)
+    if (win == partner)
+      landAfterMove(partner, box);
   damage();
 }
 

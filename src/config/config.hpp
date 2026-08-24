@@ -178,6 +178,9 @@ struct anim {
   Int populate_enabled;
   Int populate_ms;
   Str populate_curve;
+  Int drop_enabled;
+  Int drop_ms;
+  Str drop_curve;
 
   // built-ins only; null if unknown
   const Int *leafEnabled(std::string_view name);

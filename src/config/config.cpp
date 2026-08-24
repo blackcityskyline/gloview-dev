@@ -140,6 +140,8 @@ constexpr IntSpec kInts[] = {
     {&anim.strip_step_ms, "plugin:gloview:strip_step_ms", 200},
     {&anim.populate_enabled, "plugin:gloview:populate_enabled", 1},
     {&anim.populate_ms, "plugin:gloview:populate_ms", 250},
+    {&anim.drop_enabled, "plugin:gloview:drop_enabled", 1},
+    {&anim.drop_ms, "plugin:gloview:drop_ms", 250},
     // keys
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     // behavior
@@ -256,6 +258,7 @@ const Int *anim::leafEnabled(std::string_view name) {
       {"reflow", &reflow_enabled},     {"new_card", &new_card_enabled},
       {"swap_pulse", &swap_pulse_enabled},
       {"strip_step", &strip_step_enabled}, {"populate", &populate_enabled},
+      {"drop", &drop_enabled},
   };
   const auto it = k.find(name);
   return it == k.end() ? nullptr : it->second;
@@ -266,7 +269,7 @@ const Int *anim::leafMs(std::string_view name) {
       {"open", &open_ms},     {"close", &close_ms},
       {"reflow", &reflow_ms}, {"new_card", &new_card_ms},
       {"swap_pulse", &swap_pulse_ms}, {"strip_step", &strip_step_ms},
-      {"populate", &populate_ms},
+      {"populate", &populate_ms}, {"drop", &drop_ms},
   };
   const auto it = k.find(name);
   return it == k.end() ? nullptr : it->second;
@@ -277,7 +280,7 @@ const Str *anim::leafCurve(std::string_view name) {
       {"open", &open_curve},     {"close", &close_curve},
       {"reflow", &reflow_curve}, {"new_card", &new_card_curve},
       {"swap_pulse", &swap_pulse_curve}, {"strip_step", &strip_step_curve},
-      {"populate", &populate_curve},
+      {"populate", &populate_curve}, {"drop", &drop_curve},
   };
   const auto it = k.find(name);
   return it == k.end() ? nullptr : it->second;

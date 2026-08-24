@@ -296,11 +296,22 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const auto w = m_tiles[press].win.lock();
     const double grabDX = m_drag.grabDX, grabDY = m_drag.grabDY;
     if (m_drag.lifted) {
+      // the dragged preview lands: the tile glides from the CURSOR box into
+      // its slot (captureCurrentBoxes below picks this up, so every
+      // replayReflow-based path flies it in; the preview vanishes and the
+      // tile appears at the same box — no discontinuity)
+      if (press < static_cast<int>(m_tiles.size())) {
+        m_tiles[press].natural = tileContentBox(static_cast<size_t>(press), dragBox());
+        m_tiles[press].appear = 1.0;
+      }
+      m_lastDragBox = tileContentBox(press < static_cast<int>(m_tiles.size()) ? static_cast<size_t>(press) : 0, dragBox());
+      auto oldBoxes = captureCurrentBoxes();
       m_drag = {};
       // dropped onto a workspace card → move the window there (RMB: swap
       // instead — task #8, mirrors the strip-window-drag drop branch below)
       if (dropOnStripCard(w, lx, ly, -1)) {
         kickPulse(w); // success ring: pops on its NEW strip card slot
+        beginLanding(w, m_lastDragBox);
         return true;
       }
       // grid mode: dropped onto (or near) another preview → swap the two
@@ -348,7 +359,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         damage();
         return true;
       }
-      damage(); // dropped in empty space → tile snaps back to its slot
+      replayReflow(oldBoxes); // dropped in empty space → the tile GLIDES
+                              // back to its slot from the cursor
       return true;
     }
     // A plain click activates that window — normally immediately (focus +
@@ -392,6 +404,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const auto w = m_drag.win.lock();
     const bool rmb = m_drag.button == BTN_RIGHT;
     const bool lifted = m_drag.lifted;
+    const LRect fromBox = dragStripBox(); // the preview's box at release
+    m_lastDragBox = fromBox;
     m_drag = {};
     if (lifted) {
       if (w) {
@@ -415,7 +429,10 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
                 v->m_workspace == w->m_workspace;
             if (!rmb && !sameWs)
               break; // LMB cross-card: keep move/insert behavior
+            const LRect vOld = stripWinSlotRect(it, stripCardAt(i), j);
             if (swapWindows(w, v)) {
+              beginLanding(w, fromBox); // both thumbs fly to their new slots
+              beginLanding(v, vOld);
               kickPulse(w);
               kickPulse(v);
               return true;
@@ -430,6 +447,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         // drop (RMB: swap with that workspace's window instead — task #8)
         if (dropOnStripCard(w, lx, ly, stripItem)) {
           kickPulse(w);
+          beginLanding(w, fromBox);
           return true;
         }
         // dropped in the main preview area → send it to whichever workspace is
@@ -452,6 +470,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               else
                 dropOnWorkspace(w, it);
               kickPulse(w);
+              landAfterMove(w, fromBox); // strip thumb -> flight; grid tile -> glide
               return true;
             }
           }

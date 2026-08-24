@@ -285,6 +285,15 @@ private:
   }
   double tileAppear(int i) const; // staggered 0..1 for tile i
   void kickPulse(const PHLWINDOW &w);
+  // Landing animations (anim leaf "drop"): beginLanding flies a window that
+  // now renders as a STRIP thumb from `from` into its slot; landAfterMove
+  // dispatches per landing surface (strip -> flight, grid -> tile glide from
+  // oldBox). Called from the drop/swap handlers after the rebuild.
+  void beginLanding(const PHLWINDOW &w, const LRect &from);
+  void landAfterMove(const PHLWINDOW &w, const LRect &oldBox);
+  [[nodiscard]] bool landingActive(const PHLWINDOW &w) const;
+  void renderLandings() const; // Z2.5: flying windows, above the strip
+  double dropDur() const { return animMs("drop"); }
 
   // plugin:gloview:close_trigger == "doubleclick": a plain click on a tile
   // normally activates it IMMEDIATELY (focusAndClose), which leaves no room to
@@ -303,6 +312,10 @@ private:
   // half-armed drag can no longer exist across sessions (open() just resets
   // it), and release logic switches on `press` instead of decoding sentinels.
   model::Drag m_drag;
+  // The drag visual's content box at RELEASE (logical) — the `from` for
+  // landing animations, consumed by the drop/swap handlers after m_drag
+  // is reset.
+  LRect m_lastDragBox;
 
 
   // Alt-Tab session: armed by altTabInvoke() on open, released when the
@@ -448,6 +461,11 @@ private:
   bool swapWindows(const PHLWINDOW &a,
                    const PHLWINDOW &b); // real-slot swap core (grid+strip)
   std::vector<model::WinPulse> m_pulses;
+  // Drag/swap landings: windows flying from their release point (the drag
+  // preview under the cursor, or the old slot on a swap) into the new slot.
+  // Strip thumbnails have no glide machinery of their own — this is their
+  // motion; grid tiles fly via natural->target and skip landings.
+  std::vector<model::Landing> m_landings;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
                      const CHyprColor &col, double p) const;
   void addWorkspace();          // "+" card: create a workspace (animate it in,

@@ -144,6 +144,7 @@ pulses, everything — through a single choke point.
 | `swap_pulse` | 180 | back | success ring after swaps/moves |
 | `strip_step` | 200 | easeinout | animated strip scroll per workspace step |
 | `populate` | 250 | easeout | staggered tile population + ghost fade-out (all↔one, ws switch, window close) |
+| `drop` | 250 | easeout | drag/swap landings: the dragged preview flies from the release point into its new slot; strip thumbs fly between slots on swaps |
 
 **Custom curves (Lua).** Register a named curve once (e.g. next to the config
 in `plugins/gloview.lua`) and use its name in any `<leaf>_curve`:
