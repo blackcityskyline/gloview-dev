@@ -329,7 +329,7 @@ Overview::AnimCfg Overview::anim(const char *leaf) const {
   a.on = cfgInt("plugin:gloview:animations_enabled", 1) != 0 &&
          cfgInt((P + leaf + "_enabled").c_str(), 1) != 0;
   a.ms = cfgInt((P + leaf + "_ms").c_str(), -1); // -1 = follow fallback knob
-  a.curve = curveFromName(cfgStr((P + leaf + "_curve").c_str(), "easeout"));
+  a.curve = cfgStr((P + leaf + "_curve").c_str(), "easeout");
   return a;
 }
 
@@ -663,7 +663,7 @@ void Overview::close() {
 // Immediate, animation-free teardown for the UNLOAD path (`hyprctl
 // gloviewunload`, run before unloading). close() only *starts* the close anim;
 // unloading the .so before it finishes can yank the library while an overlay
-// COverlayPass element or a pending recapture timer — both holding callbacks in
+// PainterPass element or a pending recapture timer — both holding callbacks in
 // this .so — is still referenced → SEGV / IPC-dead spin. hardClose drops all
 // that state synchronously + damages, so the next frame is plugin-free ("flush
 // frame") and dlclose is safe. Hooks stay installed (harmless at

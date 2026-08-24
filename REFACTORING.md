@@ -123,7 +123,7 @@ PainterPass::draw (EXECUTION): z-слоты выше. Пост-условие: b
   НЕСУЩЕСТВУЮЩИЙ символ (nm: `U gloview::windowBlurEligible` в готовом .so).
   Вынесен в gloview-scope: T-символ, сборка без warning.
 
-## A1 (после R3) — реестр кривых + Lua-кривые: развязка ядра и анимаций
+## A1 — ВЫПОЛНЕН: реестр кривых + Lua-кривые
 
 Принцип: Clocks = чистое линейное время (Tween.raw), лист = данные
 {enabled, ms, curve-id} (AN1), шейпинг = одна точка. Захардкожен только
@@ -141,6 +141,12 @@ Curve enum — его заменяет реестр:
   НЕ клампится (overshoot легален).
 - Запреты: никакого шейпинга в painter/paint; никаких кривых внутри Tween;
   keyframe-DSL не нужен (Lua-функция покрывает любую форму).
+- Реализация: anim/curves.{hpp,cpp}, namespace gloview::curves (не `anim` —
+  коллизия с методом Overview::anim). Нативные: linear/easeout/easeinout/
+  back. Lua: hl.plugin.gloview.curve(name, fn) → luaL_ref; eval = rawgeti +
+  pcall; ошибка/не-число/неизвестное имя → easeout + warn-once (в лог
+  Hyprland, не в dbg-файл). AnimCfg.curve теперь std::string; enum Curve и
+  curveFromName удалены. README: раздел "Custom curves (Lua)".
 
 ## R3 — ВЫПОЛНЕН: один PainterPass + сплит src/render/, src/anim/
 
@@ -165,6 +171,11 @@ Curve enum — его заменяет реестр:
   очередью попадал над SW-курсором случайно; курсор сверху — корректно).
 
 ## Журнал сессий
+
+- 2026-08-24: R3 закоммичен (918f979: PainterPass + сплит + чистка include,
+  138→55 hyprland-include в старых TU). A1 закоммичен: реестр кривых +
+  hl.plugin.gloview.curve; R4-хвост (последние stale-комментарии очереди,
+  аудит конфиг-ключей — осиротевших нет, 2 deprecated no-op намеренно).
 
 - 2026-08-23: v5 спека записана; контракты верифицированы по pinned HLsrc 0.56.2.
   Главная находка: IHyprRenderer::draw(SRenderData, CRegion) (Renderer.hpp:162) —

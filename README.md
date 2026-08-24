@@ -107,7 +107,8 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 One master switch plus a registry of leaves, mirroring Hyprland's own
 animation model. Every leaf expands to three options: `<leaf>_enabled` (0/1),
 `<leaf>_ms` (-1 = follow `duration`; otherwise its own length), and
-`<leaf>_curve` (`linear` / `easeout` / `easeinout` / `back`). Setting
+`<leaf>_curve` (`linear` / `easeout` / `easeinout` / `back`, or the name of
+any custom curve registered from Lua — see below). Setting
 `animations_enabled = 0` makes the ENTIRE plugin instant — open/close, glides,
 pulses, everything — through a single choke point.
 
@@ -120,6 +121,20 @@ pulses, everything — through a single choke point.
 | `swap_pulse` | 180 | back | success ring after swaps/moves |
 | `strip_step` | 200 | easeinout | animated strip scroll per workspace step |
 | `populate` | 250 | easeout | staggered tile population + ghost fade-out (all↔one, ws switch, window close) |
+
+**Custom curves (Lua).** Register a named curve once (e.g. next to the config
+in `plugins/gloview.lua`) and use its name in any `<leaf>_curve`:
+
+```lua
+hl.plugin.gloview.curve("snap", function(t)
+    return 1 - (1 - t) * (1 - t) * (1 - t) * (1 - t) -- quartic out
+end)
+-- then: populate_curve = "snap"
+```
+
+The function receives `t` in `0..1` and returns the shaped progress;
+overshoot beyond `1` is allowed (that is what `back` does). Errors and
+non-number results fall back to `easeout` and are logged once.
 
 ```lua
 animations_enabled = 1,

@@ -13,6 +13,7 @@
 
 #include "gl_util.hpp"
 #include "../overview.hpp"
+#include "../anim/curves.hpp"
 #include "window_content.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -199,7 +200,7 @@ void Overview::renderPulses(bool strip) const {
 // while fading out.
 void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
                              const CHyprColor &col, double p) const {
-  const double k  = curveEval(Curve::Back, p) * 0.10;
+  const double k  = curves::eval("back", p) * 0.10;
   const double cx = boxPx.x + boxPx.w / 2.0, cy = boxPx.y + boxPx.h / 2.0;
   const CBox ring{cx - boxPx.w * (0.5 + k), cy - boxPx.h * (0.5 + k),
                   boxPx.w * (1.0 + 2.0 * k), boxPx.h * (1.0 + 2.0 * k)};

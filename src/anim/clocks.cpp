@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 
+#include "../anim/curves.hpp"
 #include "../overview.hpp"
 
 namespace gloview {
@@ -21,7 +22,7 @@ double lerp(double a, double b, double t) { return a + (b - a) * t; }
 double Overview::eased() const {
   // Chrome reveal/collapse curve follows its own leaf: open while entering,
   // close while exiting (m_progress is the LINEAR clock value either way).
-  return curveEval(anim(m_opening ? "open" : "close").curve, m_progress);
+  return curves::eval(anim(m_opening ? "open" : "close").curve, m_progress);
 }
 
 double Overview::animDuration() const {
@@ -55,13 +56,13 @@ double Overview::tileAppear(int i) const {
   // Same tight stagger as the position glide, on the populate clock.
   const int n = static_cast<int>(m_tiles.size());
   if (n <= 1)
-    return curveEval(anim("populate").curve,
+    return curves::eval(anim("populate").curve,
                      m_populate.raw(populateMs()));
   const double base  = m_populate.raw(populateMs());
   const double spread = std::min(0.08, 0.015 * n);
   const double start  = spread * (static_cast<double>(i) / (n - 1));
   const double span   = std::max(0.001, 1.0 - spread);
-  return curveEval(anim("populate").curve,
+  return curves::eval(anim("populate").curve,
                    std::clamp((base - start) / span, 0.0, 1.0));
 }
 
@@ -69,7 +70,7 @@ LRect Overview::currentBox(const Tile &t, int i) const {
   // Plain smooth deceleration: easeOutBack's per-tile bounce landed at
   // visibly different moments and read as jerky; one shared curve with no
   // overshoot reads as "monolithic".
-  const double e = curveEval(anim("reflow").curve, tileProgress(i));
+  const double e = curves::eval(anim("reflow").curve, tileProgress(i));
   const auto &a = t.natural;
   const auto &b = t.target;
   LRect r{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
@@ -107,7 +108,7 @@ void Overview::updateAnimation() {
   if (!m_stripTween.done(animMs("strip_step", nullptr, 200)))
     m_stripScroll = std::lerp(
         m_stripScrollFrom, m_stripScrollTarget,
-        curveEval(anim("strip_step").curve,
+        curves::eval(anim("strip_step").curve,
                   m_stripTween.raw(animMs("strip_step", nullptr, 200))));
   else
     m_stripScroll = m_stripScrollTarget;
@@ -154,7 +155,7 @@ double Overview::newCardScale() const {
     return 1.0;
   const double p = m_newCard.raw(newCardDur());
   // pop curve from the registry ("back" default — a little overshoot)
-  return curveEval(anim("new_card").curve, p);
+  return curves::eval(anim("new_card").curve, p);
 }
 
 void Overview::animateStripTo(double from, double to) {

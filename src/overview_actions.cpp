@@ -269,7 +269,7 @@ void Overview::switchToWorkspace(const StripItem &it) {
   // noctalia layer object, repainted content), so the per-frame srcId check
   // in renderBackdrop() keeps the stale dark capture alive — previews then
   // snap old->new the instant their population settles and blur-behind
-  // kicks in. Invalidate explicitly; the next Back phase re-captures.
+  // kicks in. Invalidate explicitly; the next frame re-captures.
 
   // Every new-workspace tile is a newcomer here: staggered fade/scale-in
   // replaces the old one-frame content swap (cards, digits, jump alike).
