@@ -134,14 +134,14 @@ constexpr IntSpec kInts[] = {
     {&anim.reflow_ms, "plugin:gloview:reflow_ms", -1},
     {&anim.new_card_enabled, "plugin:gloview:new_card_enabled", 1},
     {&anim.new_card_ms, "plugin:gloview:new_card_ms", -1},
-    {&anim.swap_pulse_enabled, "plugin:gloview:swap_pulse_enabled", 1},
+    {&anim.swap_pulse_enabled, "plugin:gloview:swap_pulse_enabled", 0},
     {&anim.swap_pulse_ms, "plugin:gloview:swap_pulse_ms", 180},
     {&anim.strip_step_enabled, "plugin:gloview:strip_step_enabled", 1},
     {&anim.strip_step_ms, "plugin:gloview:strip_step_ms", 200},
     {&anim.populate_enabled, "plugin:gloview:populate_enabled", 1},
     {&anim.populate_ms, "plugin:gloview:populate_ms", 250},
     {&anim.drop_enabled, "plugin:gloview:drop_enabled", 1},
-    {&anim.drop_ms, "plugin:gloview:drop_ms", 250},
+    {&anim.drop_ms, "plugin:gloview:drop_ms", 320},
     // keys
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     // behavior

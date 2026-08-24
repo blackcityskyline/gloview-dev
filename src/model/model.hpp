@@ -118,6 +118,7 @@ struct Landing {
   PHLWINDOWREF win;
   LRect from; // monitor-local logical
   anim::Tween clock;
+  mutable bool dbgLogged = false; // TEMP: first-frame trace
 };
 
 } // namespace gloview::model

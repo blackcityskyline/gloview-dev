@@ -24,7 +24,20 @@ void dbg(const std::string &msg) {
     return;
   if (Log::logger)
     Log::logger->log(Log::INFO, "[gloview] {}", msg);
-  static FILE *f = fopen("/tmp/gloview.log", "w"); // truncated per plugin load
+  // APPEND, not truncate: a session-fatal crash must not lose its own
+  // evidence to the restarted session's plugin load. Each session stamps a
+  // separator line instead.
+  static FILE *f = nullptr;
+  if (!f) {
+    f = fopen("/tmp/gloview.log", "a");
+    if (f) {
+      fprintf(f, "\n=== SESSION %s ===\n",
+              getenv("HYPRLAND_INSTANCE_SIGNATURE")
+                  ? getenv("HYPRLAND_INSTANCE_SIGNATURE")
+                  : "?");
+      fflush(f);
+    }
+  }
   if (f) {
     fprintf(f, "[gate=%d] %s\n", gate, msg.c_str());
     fflush(f);

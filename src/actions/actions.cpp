@@ -172,8 +172,13 @@ void Overview::beginLanding(const PHLWINDOW &w, const LRect &from) {
       if (sw.win.lock() == w)
         strip = true;
   }
-  if (!strip)
-    return; // grid tiles fly via their own natural->target glide
+  if (!strip) {
+    debug::dbg("landing SKIP: win is not a strip thumb");
+    return;
+  }
+  debug::dbg("landing BEGIN from=" + std::to_string(from.x) + "," +
+             std::to_string(from.y) + " " + std::to_string(from.w) + "x" +
+             std::to_string(from.h));
   std::erase_if(m_landings, [&w](const model::Landing &l) { return l.win.lock() == w; });
   model::Landing l;
   l.win  = w;

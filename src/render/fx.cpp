@@ -11,6 +11,7 @@
 #include <hyprland/src/render/pass/SurfacePassElement.hpp>
 #include <hyprland/src/helpers/time/Time.hpp>
 
+#include "../debug/log.hpp"
 #include "gl_util.hpp"
 #include "../config/config.hpp"
 #include "../overview.hpp"
@@ -236,6 +237,10 @@ void Overview::renderLandings() const {
     const auto w = l.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;
+    if (!l.dbgLogged) {
+      l.dbgLogged = true;
+      debug::dbg("landing FRAME0 win alive, drawing flight");
+    }
     LRect to;
     bool found = false;
     for (size_t i = 0; i < m_tiles.size() && !found; ++i)
@@ -261,6 +266,19 @@ void Overview::renderLandings() const {
     const double bw = l.from.w + (to.w - l.from.w) * p;
     const double bh = l.from.h + (to.h - l.from.h) * p;
     const CBox px(bx * s, by * s, bw * s, bh * s);
+    // Flight chrome — the drag preview carried a shadow and a ring; without
+    // the same chrome here the release reads as "everything vanished, a bare
+    // window snapped in". The ring fades out over the flight (the slot has
+    // no permanent ring); the shadow holds, matching the drag preview.
+    const float ringA = static_cast<float>((1.0 - p) * 0.9);
+    if (ringA > 0.02F)
+      strokeRingPx(px, argb(cfg::colors.hover_border.get(), ringA),
+                   ringA, pxr(clampRound(round, bw, bh), s), roundPow);
+    g_pHyprOpenGL->renderRoundedShadow(
+        pxb(LRect{bx, by + 6.0, bw, bh}, s), pxr(clampRound(round, bw, bh), s),
+        roundPow, static_cast<int>(16.0 * s),
+        Config::CGradientValueData(argb(cfg::colors.shadow.get(), 1.0)),
+        static_cast<float>(0.18 * (1.0 - p * 0.5)));
     renderWindowLive(w, m, px, px, 1.0F, when,
                      pxr(clampRound(round, bw, bh), s), roundPow);
   }

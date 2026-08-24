@@ -6,6 +6,7 @@
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 
+#include "../debug/log.hpp"
 #include "gl_util.hpp"
 #include "../config/config.hpp"
 #include "../overview.hpp"
@@ -40,6 +41,20 @@ void Overview::renderStrip() const {
   const int   previewRound = cfg::look.preview_round;
   const float roundPow     = cfg::look.preview_round_power;
 
+  // TEMP guard: the "width/height < 0" RASSERT in renderRect killed the
+  // session on a drop-to-empty-card; log the offending box + site instead of
+  // aborting, until the source is pinned.
+  auto safeRect = [&](const CBox &b, const CHyprColor &col,
+                      Render::GL::CHyprOpenGLImpl::SRectRenderData opts, const char *tag) {
+    if (b.width < 0 || b.height < 0) {
+      debug::dbg(std::string("renderStrip NEG box @") + tag + ": " +
+                 std::to_string(b.width) + "x" + std::to_string(b.height) +
+                 " at " + std::to_string(b.x) + "," + std::to_string(b.y));
+      return;
+    }
+    g_pHyprOpenGL->renderRect(b, col, opts);
+  };
+
   // Translucent band behind the cards (kept faint per request). The band
   // never uses native blur: it would sample currentFB, which can hold a
   // solitary fullscreen window (the workspace-switch fast path bypasses
@@ -50,9 +65,8 @@ void Overview::renderStrip() const {
   const LRect bandR  = stripBand();
   const Vector2D slide  = stripSlide(e);  // slide the whole strip in from its edge
   const Vector2D scroll = stripScroll();  // scroll the card group along the band
-  g_pHyprOpenGL->renderRect(
-      pxb(CBox(bandR.x + slide.x, bandR.y + slide.y, bandR.w, bandR.h), s),
-      bandCol, {});
+  safeRect(pxb(CBox(bandR.x + slide.x, bandR.y + slide.y, bandR.w, bandR.h), s),
+           bandCol, {}, "band");
 
   const int  cardRound = cfg::strip.card_round;
   const auto cardBg    = cfg::colors.strip_card.get(e);
@@ -65,6 +79,7 @@ void Overview::renderStrip() const {
   // lights up active-style; otherwise outline every real card for feedback.
   const bool allWs       = showAllWorkspaces();
   const bool allCardShown = cfg::strip.all_card != 0;
+
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
@@ -92,9 +107,9 @@ void Overview::renderStrip() const {
     if (ring || hover) {
       const auto &lc = ring ? activeLine : hoverLine;
       const double t = actLike ? 2.5 : 2.0;
-      g_pHyprOpenGL->renderRect(
-          pxb(CBox(c.x - t, c.y - t, c.w + 2 * t, c.h + 2 * t), s), lc,
-          {.round = pxr(cardRound + t, s), .roundingPower = roundPow});
+      safeRect(pxb(CBox(c.x - t, c.y - t, c.w + 2 * t, c.h + 2 * t), s), lc,
+               {.round = pxr(cardRound + t, s), .roundingPower = roundPow},
+               "ring");
     }
 
     // The "All" card skips the active FILL: its 2x2 glyph shares the accent
@@ -102,19 +117,23 @@ void Overview::renderStrip() const {
     // body turned the whole card into one blob. Active reads via the thick
     // ring alone; the glyph sits on the dark body, clear of the ring.
     const bool allSkipFill = actLike && it.kind == model::StripItem::Kind::All;
-    g_pHyprOpenGL->renderRect(
-        pxb(c, s), (actLike && !allSkipFill) ? activeBg : cardBg,
-        {.round = pxr(cardRound, s), .roundingPower = roundPow});
+    safeRect(pxb(c, s), (actLike && !allSkipFill) ? activeBg : cardBg,
+             {.round = pxr(cardRound, s), .roundingPower = roundPow}, "body");
 
     if (it.kind == model::StripItem::Kind::Plus) {
       // centered plus glyph
       const double t = std::max(2.0, card.h * 0.04);
       const double L = std::min(card.w, card.h) * 0.34;
       const double cx = card.cx(), cy = card.cy();
-      g_pHyprOpenGL->renderRect(pxb(CBox(cx - L / 2, cy - t / 2, L, t), s),
-                                plusCol, {.round = pxr(t / 2, s)});
-      g_pHyprOpenGL->renderRect(pxb(CBox(cx - t / 2, cy - L / 2, t, L), s),
-                                plusCol, {.round = pxr(t / 2, s)});
+      if (L > 0.5) { // a degenerate card has no glyph
+        safeRect(pxb(CBox(cx - L / 2, cy - t / 2, L, t), s), plusCol,
+                 {.round = pxr(t / 2, s)}, "plusH");
+        safeRect(pxb(CBox(cx - t / 2, cy - L / 2, t, L), s), plusCol,
+                 {.round = pxr(t / 2, s)}, "plusV");
+      } else
+        debug::dbg("plus glyph skipped: card " + std::to_string(card.w) + "x" +
+                   std::to_string(card.h) + " at " + std::to_string(card.x) +
+                   "," + std::to_string(card.y));
     } else if (it.kind == model::StripItem::Kind::All) {
       // 2x2 grid-of-squares glyph = "all windows / every workspace"
       const double pad = std::min(card.w, card.h) * 0.26;
@@ -125,9 +144,8 @@ void Overview::renderStrip() const {
       const double gx = card.x + pad, gy = card.y + pad;
       for (int r = 0; r < 2; ++r)
         for (int col = 0; col < 2; ++col)
-          g_pHyprOpenGL->renderRect(
-              pxb(CBox(gx + col * (cw + cg), gy + r * (ch + cg), cw, ch), s),
-              allCol, {.round = pxr(2, s)});
+          safeRect(pxb(CBox(gx + col * (cw + cg), gy + r * (ch + cg), cw, ch), s),
+                   allCol, {.round = pxr(2, s)}, "all");
     } else {
       // Empty workspace: a cover-fit wallpaper thumbnail fills the card —
       // the same source the backdrop uses (mpv/wallpaper texture, else the
