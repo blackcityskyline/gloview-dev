@@ -173,8 +173,12 @@ public:
       bool reverse); // gloview:alttab[back] dispatcher: opens+seeds-at-previous
                      // if closed, else advances
 
-  // wired to Hyprland's event bus / render pass
+  // wired to Hyprland's event bus / render pass: renderStage is the frame
+  // entry (BUILD), paint is the painter it schedules (EXECUTION).
   void renderStage(eRenderStage stage);
+  // The painter — one call stack, fixed z-slots (see render/painter.cpp).
+  // Reads Model/Clocks/Pixels, mutates nothing.
+  void paint();
   void renderBackdrop() const;
   // The texture the backdrop blur is sourced from (the wallpaper, or — with
   // fullscreen_background=1 — the fullscreen mpv window on the displayed
@@ -188,28 +192,16 @@ public:
   // even that is unavailable.
   SP<Render::ITexture> renderBackdropSource(int W, int H) const;
   void renderStrip() const;
-  void
-  renderStripWindows(bool execCtx = false) const; // live window surfaces inside
-                                                  // the strip cards; execCtx=true
-                                                  // when called from pass
-                                                  // EXECUTION (Phase::Mid) —
-                                                  // enables the immediate leaf
+  void renderStripWindows() const; // live window surfaces inside the strip cards
   void
   renderStripButtons() const;  // per-card close-all button + drag destination
                                // hint, drawn after the strip's live surfaces
   void renderPulses(bool strip) const; // swap success rings (grid|strip)
   void renderPreviews() const; // static tiles' chrome (shadow/border/backing),
                                 // drawn under the strip
-  void
-  renderMainWindows(bool execCtx = false) const; // live window surfaces for the
-                                                  // main-area tiles; execCtx=true
-                                                  // when called from pass
-                                                  // EXECUTION (Phase::Back) —
-                                                  // enables the immediate leaf
-  void renderGhosts(bool execCtx = false) const; // removed-tile fade-out
-                                                 // (populate mirror), drawn
-                                                 // UNDER the mains; execCtx
-                                                 // like renderMainWindows
+  void renderMainWindows() const; // live window surfaces for the main-area tiles
+  void renderGhosts() const; // removed-tile fade-out (populate mirror), drawn
+                             // UNDER the mains
   void renderTileButtons()
       const; // per-window "✕", drawn after the tiles' live surfaces
   void
@@ -250,13 +242,6 @@ public:
                                  // non-tile windows in hkDamageSurface)
 
   [[nodiscard]] bool active() const { return m_active; }
-  // True during the close glide: the ONLY phase where previews sample the
-  // live monitor blur FB (landing continuity). Everywhere else they use the
-  // session-frozen frost — touching Hyprland's stateful blur pyramid at rest
-  // resurrected per-tile dim mismatches whose shape depended on window count.
-  [[nodiscard]] bool closing() const {
-    return m_active && !m_opening && m_progress > 0.0;
-  }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
@@ -274,10 +259,6 @@ public:
   [[nodiscard]] bool
   snapshotMode() const; // plugin:gloview:preview_mode == "snapshot" (queried
                         // by renderWindowLive too)
-  [[nodiscard]] bool
-  immediateSurfaces() const; // R1 A/B flag (REFACTORING.md v5): draw window
-                             // content immediately inside the chrome phase
-                             // instead of queueing CSurfacePassElements
 
 private:
   struct Tile {

@@ -1,7 +1,7 @@
 #pragma once
 
 // Shared GL-drawing helpers for the overview's immediate-mode chrome
-// (used by overview_render.cpp and overview_tiles_render.cpp).
+// (render/* view TUs; input/actions include it for hit-test geometry only).
 //
 // All chrome is authored in monitor-LOGICAL pixels, but Hyprland's
 // immediate-mode renderRect/renderTexture/renderRoundedShadow feed the box
@@ -10,8 +10,9 @@
 // Renderer.cpp: clipBox/scaledWindowBox are pre-.scale(m_scale)'d before
 // applyToBox). Everything must therefore be pre-scaled by mon->m_scale here,
 // otherwise on any monitor with scale != 1 the chrome renders at 1/scale size
-// and top-left-biased while the live window surfaces (renderWindowLive, which
-// converts to pixels itself) land correctly — the overview looks "distorted".
+// and top-left-biased while the live window surfaces (window_content.cpp,
+// which converts to pixels itself) land correctly — the overview looks
+// "distorted".
 //
 // The trailing .round() in pxb() is NOT cosmetic:
 // CHyprOpenGLImpl::renderBorder() builds its scissor-culling CRegion from the
@@ -35,7 +36,7 @@
 #include <hyprland/src/helpers/Color.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 
-#include "layout.hpp"
+#include "../layout.hpp"
 
 namespace gloview {
 

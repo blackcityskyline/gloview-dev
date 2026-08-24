@@ -61,12 +61,6 @@ constexpr std::pair<const char*, Config::INTEGER> kIntCfg[] = {
     {"plugin:gloview:blur_size", 8},               // backdrop blur radius in screen px (1..200)
     {"plugin:gloview:blur_resolution", 4},         // backdrop blur buffer = 1/N monitor res (1..32; lower = sharper/cleaner)
     {"plugin:gloview:fullscreen_background", 0},   // 1: a fullscreen mpv window on the displayed workspace becomes the (blurred) backdrop instead of wallpaper (live video); 0 (default): the wallpaper shows and fullscreen windows stay hidden
-    // R1 (render core rewrite, REFACTORING.md v5): 1 — strip thumbnails draw
-    // IMMEDIATELY inside their chrome phase via IHyprRenderer::draw() instead
-    // of being queued as CSurfacePassElements between the phases. Visual
-    // output is identical by construction; this is the A/B switch for the
-    // migration (default off = the legacy queue route). Removed at R3.
-    {"plugin:gloview:immediate_surfaces", 0},
     // DEPRECATED, no-op: the transition frost's alphas were corrected (blur
     // constant, dim tracks the global fade), which makes an always-on variant
     // pixel-identical to the plain backdrop at rest. Kept registered so old
