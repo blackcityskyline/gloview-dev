@@ -5,6 +5,29 @@ https://github.com/user-attachments/assets/0a3d812a-eae0-4ca5-8698-7a006e540857
 
 A better macOS Mission Control-style overview plugin for Hyprland
 
+## Architecture
+
+```
+src/
+├── main.cpp              plugin entry: registers the config schema, actions, Lua API
+├── overview.hpp          Session: owns the three stores (Model / Clocks / Pixels)
+├── session/              lifecycle: open/close/deactivate, shouldRenderWindow + damageSurface hooks, animation pump
+├── build/                Model construction: windows -> tiles/strip, reflow, sync
+├── input/                pointer events -> Model (drag FSM), keyboard, alt-tab
+├── actions/              commands: drop/swap/workspace/focus (dispatcher + hyprctl + Lua from one table)
+├── render/               the painter (one pass element, fixed z-slots), backdrop blur cache,
+│                         window-content leaf (immediate surface drawing), tile/strip views, fx
+├── anim/                 clocks (Tween + leaf resolution) and the curve registry (native + Lua curves)
+├── config/               the typed option schema, grouped by domain; live handles
+├── debug/                gated log channel (/tmp/gloview.log)
+└── model/                the Model data structures (Tile/StripItem/Drag/...)
+
+Layering rule: arrows point one way — main wires the domains; domains
+(session/build/input/actions/render/anim) read the primitives (model/config/
+layout/gl_util); the painter only reads Model+Clocks+Pixels and mutates
+nothing. Whatever sits ON TOP of content draws AFTER it.
+```
+
 ## Install
 
 Via hyprpm:

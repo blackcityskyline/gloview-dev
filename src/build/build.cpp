@@ -1,7 +1,7 @@
-#include "config/config.hpp"
-#include "debug/log.hpp"
-#include "overview.hpp"
-#include "render/gl_util.hpp"
+#include "../config/config.hpp"
+#include "../debug/log.hpp"
+#include "../overview.hpp"
+#include "../render/gl_util.hpp"
 
 #include <algorithm>
 #include <cctype>
