@@ -28,11 +28,44 @@ bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
   const int idx = stripItemAt(lx, ly);
   if (idx < 0 || idx == skipItem)
     return false;
-  if (m_drag.button == BTN_RIGHT)
-    swapOnWorkspace(w, m_strip[idx]);
-  else
-    dropOnWorkspace(w, m_strip[idx]);
-  return true;
+  const auto &it = m_strip[idx];
+  if (it.kind != model::StripItem::Kind::Ws) {
+    // "+" / "All": the legacy whole-card semantics
+    if (m_drag.button == BTN_RIGHT)
+      swapOnWorkspace(w, it);
+    else
+      dropOnWorkspace(w, it);
+    return true;
+  }
+
+  // Ws card: resolve the SLOT under the cursor — the drop is positional.
+  // The half-zone the cursor is in names the NEIGHBOR window; dwindle splits
+  // the last-focused window on the target workspace, so focusing the
+  // neighbor right before the move gives a TRUE half-split (the moved
+  // window takes one half of the neighbor, the neighbor keeps the other).
+  PHLWINDOW vj;
+  for (size_t j = 0; j < it.wins.size(); ++j) {
+    const auto v = it.wins[j].win.lock();
+    if (!v || v == w || !v->m_isMapped || v->isHidden())
+      continue;
+    if (stripWinSlotRect(it, stripCardAt(idx), j).contains(lx, ly)) {
+      vj = v;
+      break;
+    }
+  }
+
+  if (m_drag.button == BTN_RIGHT) {
+    if (vj)
+      swapWindows(w, vj); // precise slot swap with the chosen window
+    else
+      swapOnWorkspace(w, it); // empty card / gap: last-focused fallback
+    return true;
+  }
+
+  if (vj)
+    Desktop::focusState()->fullWindowFocus(
+        vj, Desktop::FOCUS_REASON_OTHER); // dwindle splits the focused one
+  dropOnWorkspace(w, it); // move: the layout halves the focused neighbor
 }
 
 void Overview::dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {

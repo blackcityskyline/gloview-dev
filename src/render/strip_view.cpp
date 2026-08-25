@@ -359,25 +359,11 @@ void Overview::renderStripButtons() const {
           continue;
         slotFound = true;
         const int sr = clampRound(cfg::look.preview_round, sl.w, sl.h);
-        if (rmbSwap || m_drag.press == model::Drag::Press::Tile) {
-          // swap partner: the full slot perimeter
-          strokeRingPx(pxb(sl, s), hoverCol, 0.9F * static_cast<float>(e),
-                       sr, roundPow);
-        } else {
-          // insert offer: the slot's half on the cursor's side
-          const bool horiz = sl.w >= sl.h;
-          LRect half = sl;
-          if (horiz)
-            half = (m_drag.x < sl.x + sl.w / 2.0)
-                       ? LRect{sl.x, sl.y, sl.w / 2.0, sl.h}
-                       : LRect{sl.x + sl.w / 2.0, sl.y, sl.w / 2.0, sl.h};
-          else
-            half = (m_drag.y < sl.y + sl.h / 2.0)
-                       ? LRect{sl.x, sl.y, sl.w, sl.h / 2.0}
-                       : LRect{sl.x, sl.y + sl.h / 2.0, sl.w, sl.h / 2.0};
-          safeRenderRect("inserthalf", pxb(half, s), hintCol,
-                         {.round = pxr(sr / 2, s), .roundingPower = roundPow});
-        }
+        // The drop takes the chosen window's slot (swap): highlight its full
+        // perimeter. (A true half-split visual awaits the layout-insert
+        // support — the halves were a promise the drop couldn't keep.)
+        strokeRingPx(pxb(sl, s), hoverCol, 0.9F * static_cast<float>(e), sr,
+                     roundPow);
         break;
       }
       if (!slotFound && it.wins.empty()) {
