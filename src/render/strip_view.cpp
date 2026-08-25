@@ -22,6 +22,19 @@ namespace {
 
 CBox box(const LRect &r) { return CBox{r.x, r.y, r.w, r.h}; }
 
+// TEMP guard: renderRect RASSERTs on non-positive boxes ("width/height < 0"
+// fires for 0 too) — log the offending box + site instead of aborting.
+void safeRenderRect(const char *tag, const CBox &b, const CHyprColor &col,
+                    Render::GL::CHyprOpenGLImpl::SRectRenderData opts) {
+  if (b.width < 0 || b.height < 0) {
+    debug::dbg(std::string("renderStrip NEG box @") + tag + ": " +
+               std::to_string(b.width) + "x" + std::to_string(b.height) +
+               " at " + std::to_string(b.x) + "," + std::to_string(b.y));
+    return;
+  }
+  g_pHyprOpenGL->renderRect(b, col, opts);
+}
+
 } // namespace
 
 // Z2: the workspace strip — translucent band, card frames/backings, "+"/"All"
@@ -41,19 +54,6 @@ void Overview::renderStrip() const {
   const int   previewRound = cfg::look.preview_round;
   const float roundPow     = cfg::look.preview_round_power;
 
-  // TEMP guard: the "width/height < 0" RASSERT in renderRect killed the
-  // session on a drop-to-empty-card; log the offending box + site instead of
-  // aborting, until the source is pinned.
-  auto safeRect = [&](const CBox &b, const CHyprColor &col,
-                      Render::GL::CHyprOpenGLImpl::SRectRenderData opts, const char *tag) {
-    if (b.width < 0 || b.height < 0) {
-      debug::dbg(std::string("renderStrip NEG box @") + tag + ": " +
-                 std::to_string(b.width) + "x" + std::to_string(b.height) +
-                 " at " + std::to_string(b.x) + "," + std::to_string(b.y));
-      return;
-    }
-    g_pHyprOpenGL->renderRect(b, col, opts);
-  };
 
   // Translucent band behind the cards (kept faint per request). The band
   // never uses native blur: it would sample currentFB, which can hold a
@@ -65,8 +65,8 @@ void Overview::renderStrip() const {
   const LRect bandR  = stripBand();
   const Vector2D slide  = stripSlide(e);  // slide the whole strip in from its edge
   const Vector2D scroll = stripScroll();  // scroll the card group along the band
-  safeRect(pxb(CBox(bandR.x + slide.x, bandR.y + slide.y, bandR.w, bandR.h), s),
-           bandCol, {}, "band");
+  safeRenderRect("band", pxb(CBox(bandR.x + slide.x, bandR.y + slide.y, bandR.w, bandR.h), s),
+                 bandCol, {});
 
   const int  cardRound = cfg::strip.card_round;
   const auto cardBg    = cfg::colors.strip_card.get(e);
@@ -107,9 +107,8 @@ void Overview::renderStrip() const {
     if (ring || hover) {
       const auto &lc = ring ? activeLine : hoverLine;
       const double t = actLike ? 2.5 : 2.0;
-      safeRect(pxb(CBox(c.x - t, c.y - t, c.w + 2 * t, c.h + 2 * t), s), lc,
-               {.round = pxr(cardRound + t, s), .roundingPower = roundPow},
-               "ring");
+      safeRenderRect("ring", pxb(CBox(c.x - t, c.y - t, c.w + 2 * t, c.h + 2 * t), s),
+                     lc, {.round = pxr(cardRound + t, s), .roundingPower = roundPow});
     }
 
     // The "All" card skips the active FILL: its 2x2 glyph shares the accent
@@ -117,8 +116,8 @@ void Overview::renderStrip() const {
     // body turned the whole card into one blob. Active reads via the thick
     // ring alone; the glyph sits on the dark body, clear of the ring.
     const bool allSkipFill = actLike && it.kind == model::StripItem::Kind::All;
-    safeRect(pxb(c, s), (actLike && !allSkipFill) ? activeBg : cardBg,
-             {.round = pxr(cardRound, s), .roundingPower = roundPow}, "body");
+    safeRenderRect("strip", pxb(c, s), (actLike && !allSkipFill) ? activeBg : cardBg,
+             {.round = pxr(cardRound, s), .roundingPower = roundPow});
 
     if (it.kind == model::StripItem::Kind::Plus) {
       // centered plus glyph
@@ -126,10 +125,10 @@ void Overview::renderStrip() const {
       const double L = std::min(card.w, card.h) * 0.34;
       const double cx = card.cx(), cy = card.cy();
       if (L > 0.5) { // a degenerate card has no glyph
-        safeRect(pxb(CBox(cx - L / 2, cy - t / 2, L, t), s), plusCol,
-                 {.round = pxr(t / 2, s)}, "plusH");
-        safeRect(pxb(CBox(cx - t / 2, cy - L / 2, t, L), s), plusCol,
-                 {.round = pxr(t / 2, s)}, "plusV");
+        safeRenderRect("plusH", pxb(CBox(cx - L / 2, cy - t / 2, L, t), s), plusCol,
+                 {.round = pxr(t / 2, s)});
+        safeRenderRect("plusV", pxb(CBox(cx - t / 2, cy - L / 2, t, L), s), plusCol,
+                 {.round = pxr(t / 2, s)});
       } else
         debug::dbg("plus glyph skipped: card " + std::to_string(card.w) + "x" +
                    std::to_string(card.h) + " at " + std::to_string(card.x) +
@@ -144,8 +143,8 @@ void Overview::renderStrip() const {
       const double gx = card.x + pad, gy = card.y + pad;
       for (int r = 0; r < 2; ++r)
         for (int col = 0; col < 2; ++col)
-          safeRect(pxb(CBox(gx + col * (cw + cg), gy + r * (ch + cg), cw, ch), s),
-                   allCol, {.round = pxr(2, s)}, "all");
+          safeRenderRect("all", pxb(CBox(gx + col * (cw + cg), gy + r * (ch + cg), cw, ch), s),
+                   allCol, {.round = pxr(2, s)});
     } else {
       // Empty workspace: a cover-fit wallpaper thumbnail fills the card —
       // the same source the backdrop uses (mpv/wallpaper texture, else the
@@ -332,65 +331,59 @@ void Overview::renderStripButtons() const {
                  roundPow);
   }
 
+  const auto dragW = m_drag.win.lock();
+
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
     if (it.kind == model::StripItem::Kind::Plus || it.kind == model::StripItem::Kind::All)
       continue;
     const LRect card = stripCardAt(i);
 
-    // Destination hints. LMB drag (insert): exactly TWO scenarios — whole
-    // card (empty ws) or halves by the first window's aspect. RMB drag while
-    // carrying a STRIP window (swap): no insert zones at all — instead the
-    // REAL windows are highlighted where they actually sit: a ring on the
-    // exact hovered slot (the swap partner) plus a ring on the source slot.
-    bool intentRing = false;
-    if (dropping && m_drag.press == model::Drag::Press::StripWin &&
-        static_cast<int>(i) == m_hoveredStrip && !it.wins.empty() &&
-        m_drag.idx >= 0 && m_drag.winIdx >= 0) {
-      const auto dragW = m_drag.win.lock();
+    // Drop-zone visualization, built around the target workspace's REAL
+    // tiling slots (stripWinSlotRect per window) — not the card aspect:
+    //   RMB swap / any grid-tile drag: the FULL slot perimeter of the window
+    //   under the cursor is the swap partner;
+    //   LMB insert: each occupied slot splits in half on the side the cursor
+    //   is in — that half is the insertion offer;
+    //   an empty card (or a gap between slots) offers the whole card.
+    if (dropping && static_cast<int>(i) == m_hoveredStrip) {
+      const auto hoverCol = argb(cfg::colors.hover_border.get(e));
+      const auto hintCol  = argb(cfg::colors.drop_hint.get(e));
+      bool slotFound = false;
       for (size_t j = 0; j < it.wins.size(); ++j) {
         const auto v = it.wins[j].win.lock();
         if (!v || v == dragW)
           continue;
-        if (!stripWinSlotRect(it, card, j).contains(m_drag.x, m_drag.y))
-          continue;
-        intentRing = rmbSwap ||
-                     (dragW && v->m_workspace == dragW->m_workspace);
-        break;
-      }
-    }
-    if (intentRing && !it.wins.empty()) {
-      const auto hoverCol = cfg::colors.hover_border.get(e);
-      for (size_t j = 0; j < it.wins.size(); ++j) {
-        const auto v = it.wins[j].win.lock();
-        if (!v || !v->m_isMapped)
-          continue;
         const LRect sl = stripWinSlotRect(it, card, j);
         if (!sl.contains(m_drag.x, m_drag.y))
           continue;
-        strokeRingPx(pxb(sl, s), hoverCol, 0.9F * static_cast<float>(e),
-                     clampRound(cfg::look.preview_round,
-                                sl.w, sl.h),
-                     roundPow);
+        slotFound = true;
+        const int sr = clampRound(cfg::look.preview_round, sl.w, sl.h);
+        if (rmbSwap || m_drag.press == model::Drag::Press::Tile) {
+          // swap partner: the full slot perimeter
+          strokeRingPx(pxb(sl, s), hoverCol, 0.9F * static_cast<float>(e),
+                       sr, roundPow);
+        } else {
+          // insert offer: the slot's half on the cursor's side
+          const bool horiz = sl.w >= sl.h;
+          LRect half = sl;
+          if (horiz)
+            half = (m_drag.x < sl.x + sl.w / 2.0)
+                       ? LRect{sl.x, sl.y, sl.w / 2.0, sl.h}
+                       : LRect{sl.x + sl.w / 2.0, sl.y, sl.w / 2.0, sl.h};
+          else
+            half = (m_drag.y < sl.y + sl.h / 2.0)
+                       ? LRect{sl.x, sl.y, sl.w, sl.h / 2.0}
+                       : LRect{sl.x, sl.y + sl.h / 2.0, sl.w, sl.h / 2.0};
+          safeRenderRect("inserthalf", pxb(half, s), hintCol,
+                         {.round = pxr(sr / 2, s), .roundingPower = roundPow});
+        }
         break;
       }
-    } else if (!rmbSwap && dropping &&
-               static_cast<int>(i) == m_hoveredStrip) {
-      LRect zone = card;
-      if (!it.wins.empty()) {
-        const auto &r = it.wins.front().rel;
-        if (r.w * card.w >= r.h * card.h) // wide → left/right halves
-          zone = (m_drag.x < card.cx())
-                     ? LRect{card.x, card.y, card.w / 2.0, card.h}
-                     : LRect{card.cx(), card.y, card.w / 2.0, card.h};
-        else // tall → top/bottom halves
-          zone = (m_drag.y < card.cy())
-                     ? LRect{card.x, card.y, card.w, card.h / 2.0}
-                     : LRect{card.x, card.cy(), card.w, card.h / 2.0};
+      if (!slotFound && it.wins.empty()) {
+        safeRenderRect("emptycard", pxb(card, s), hintCol,
+                       {.round = pxr(cardRound / 2, s), .roundingPower = roundPow});
       }
-      g_pHyprOpenGL->renderRect(
-          pxb(zone, s), cfg::colors.drop_hint.get(e),
-          {.round = pxr(cardRound / 2, s), .roundingPower = roundPow});
     }
 
     // "close every window on this workspace" — the visible counterpart to
