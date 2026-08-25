@@ -327,6 +327,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const auto w = m_tiles[press].win.lock();
     const double grabDX = m_drag.grabDX, grabDY = m_drag.grabDY;
     if (m_drag.lifted) {
+      const bool rmb = m_drag.button == BTN_RIGHT;
       // the dragged preview lands: the tile glides from the CURSOR box into
       // its slot (captureCurrentBoxes below picks this up, so every
       // replayReflow-based path flies it in; the preview vanishes and the
@@ -345,9 +346,21 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         if (win == w)
           box = m_tiles[press].natural;
       m_drag = {};
-      // dropped onto a workspace card → move the window there (RMB: swap
-      // instead — task #8, mirrors the strip-window-drag drop branch below)
-      if (dropOnStripCard(w, lx, ly, -1)) {
+      // dropped onto a strip card: LMB moves the window to that workspace,
+      // RMB SWAPS it with the card's window (the grid-tile counterpart of
+      // the strip RMB slot swap)
+      int cardIdx = -1;
+      for (int i = 0; i < static_cast<int>(m_strip.size()); ++i)
+        if (m_strip[i].kind == model::StripItem::Kind::Ws &&
+            stripCardAt(i).contains(lx, ly)) {
+          cardIdx = i;
+          break;
+        }
+      if (cardIdx >= 0) {
+        if (rmb)
+          swapOnWorkspace(w, m_strip[cardIdx]);
+        else
+          dropOnStripCard(w, lx, ly, -1);
         kickPulse(w); // success ring: pops on its NEW strip card slot
         landAfterMove(w, m_lastDragBox);
         return true;
