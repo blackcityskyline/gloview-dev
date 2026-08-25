@@ -15,6 +15,12 @@ struct LRect {
     [[nodiscard]] bool contains(double px, double py) const {
         return px >= x && py >= y && px <= x + w && py <= y + h;
     }
+    void grow(double d) { // expand by d on every side (can go negative)
+      x -= d;
+      y -= d;
+      w += 2 * d;
+      h += 2 * d;
+    }
     [[nodiscard]] double cx() const { return x + w / 2.0; }
     [[nodiscard]] double cy() const { return y + h / 2.0; }
     [[nodiscard]] double aspect() const { return h > 0.0 ? w / h : 1.0; }

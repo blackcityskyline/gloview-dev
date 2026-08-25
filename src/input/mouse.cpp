@@ -143,6 +143,11 @@ void Overview::updateHover() {
   const int newTile = tileAt(lx, ly);
   const int newStrip = stripItemAt(lx, ly);
   if (newTile != m_hovered || newStrip != m_hoveredStrip) {
+    // Scoped damage: only the tiles/cards whose VISUALS change (rings,
+    // labels, keyboard-selection ring) need repainting — a full-monitor
+    // damage per hover crossing pinned the GPU for the whole cursor sweep.
+    const int oldTile = m_hovered, oldStrip = m_hoveredStrip,
+              oldSel = m_selected;
     m_hovered = newTile;
     m_hoveredStrip = newStrip;
     // keep the keyboard selection under the pointer so arrow-nav picks up where
@@ -151,7 +156,33 @@ void Overview::updateHover() {
       m_selected = newTile;
       syncFocus(); // so a passthrough killactive/hotkey hits the hovered window
     }
-    damage();
+    const auto m = m_monitor.lock();
+    if (m) {
+      const double s = m->m_scale;
+      auto dmgTile = [&](int idx) {
+        if (idx < 0 || idx >= static_cast<int>(m_tiles.size()))
+          return;
+        LRect b = currentBox(m_tiles[idx], idx);
+        b.grow(48.0); // ring + shadow + title pill clearance
+        g_pHyprRenderer->damageBox(
+            CBox{b.x + m->m_position.x, b.y + m->m_position.y, b.w, b.h});
+      };
+      auto dmgCard = [&](int idx) {
+        if (idx < 0 || idx >= static_cast<int>(m_strip.size()))
+          return;
+        LRect b = stripCardAt(idx);
+        b.grow(40.0); // ring + label above
+        g_pHyprRenderer->damageBox(
+            CBox{(b.x + m->m_position.x) * s, (b.y + m->m_position.y) * s,
+                 b.w * s, b.h * s});
+      };
+      dmgTile(oldTile);
+      dmgTile(newTile);
+      if (oldSel != m_selected)
+        dmgTile(oldSel);
+      dmgCard(oldStrip);
+      dmgCard(newStrip);
+    }
   }
 }
 
