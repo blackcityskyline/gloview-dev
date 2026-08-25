@@ -181,6 +181,8 @@ struct anim {
   Int drop_enabled;
   Int drop_ms;
   Str drop_curve;
+  Str grid_swap_anim;   // horizontal | slidevert | fade | pop
+  Str strip_swap_anim;
 
   // built-ins only; null if unknown
   const Int *leafEnabled(std::string_view name);

@@ -195,6 +195,8 @@ constexpr StrSpec kStrs[] = {
     {&keys.alt_tab_modifier, "plugin:gloview:alt_tab_modifier", "alt"},
     // behavior
     {&behavior.preview_mode, "plugin:gloview:preview_mode", "live"},
+    {&anim.grid_swap_anim, "plugin:gloview:grid_swap_anim", "horizontal"},
+    {&anim.strip_swap_anim, "plugin:gloview:strip_swap_anim", "horizontal"},
     {&behavior.cursor_mode, "plugin:gloview:cursor_mode", "auto"},
     {&behavior.workspace_key_mode, "plugin:gloview:key_workspace_mode", "switch"},
     {&behavior.new_workspace_mode, "plugin:gloview:new_workspace_mode", "fill"},

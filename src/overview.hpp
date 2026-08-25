@@ -285,14 +285,17 @@ private:
   }
   double tileAppear(int i) const; // staggered 0..1 for tile i
   void kickPulse(const PHLWINDOW &w);
-  // Landing animations (anim leaf "drop"): beginLanding flies a window that
+  // Landing animations (anim leaf "drop"): beginSwapFX flies a window that
   // now renders as a STRIP thumb from `from` into its slot; landAfterMove
   // dispatches per landing surface (strip -> flight, grid -> tile glide from
   // oldBox). Called from the drop/swap handlers after the rebuild.
-  void beginLanding(const PHLWINDOW &w, const LRect &from);
+  void beginSwapFX(const PHLWINDOW &w, const LRect &from,
+                   model::SwapStyle style);
+  [[nodiscard]] model::SwapStyle gridSwapStyle() const;
+  [[nodiscard]] model::SwapStyle stripSwapStyle() const;
   void landAfterMove(const PHLWINDOW &w, const LRect &oldBox);
-  [[nodiscard]] bool landingActive(const PHLWINDOW &w) const;
-  void renderLandings() const; // Z2.5: flying windows, above the strip
+  [[nodiscard]] bool swapfxActive(const PHLWINDOW &w) const;
+  void renderSwapFX() const; // Z2.5: flying windows, above the strip
   double dropDur() const { return animMs("drop"); }
 
   // plugin:gloview:close_trigger == "doubleclick": a plain click on a tile
@@ -465,7 +468,7 @@ private:
   // preview under the cursor, or the old slot on a swap) into the new slot.
   // Strip thumbnails have no glide machinery of their own — this is their
   // motion; grid tiles fly via natural->target and skip landings.
-  std::vector<model::Landing> m_landings;
+  std::vector<model::SwapFX> m_swapfx;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
                      const CHyprColor &col, double p) const;
   void addWorkspace();          // "+" card: create a workspace (animate it in,

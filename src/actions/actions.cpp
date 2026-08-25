@@ -156,41 +156,44 @@ void Overview::swapTiles(int a, int b) {
 // the other's workspace. Falls back to a plain move when there's nothing on the
 // target to swap with (empty workspace, or a fullscreen partner with no
 // well-defined slot).
-// Landing animations (anim leaf "drop"). beginLanding: the window now renders
+// Landing animations (anim leaf "drop"). beginSwapFX: the window now renders
 // as a STRIP thumb (strip has no glide machinery of its own) — fly it from
 // `from` into its slot. landAfterMove: dispatches per landing surface — strip
 // -> flight, grid tile -> natural = oldBox so the existing tile glide flies it
 // in (chrome moves with it).
-void Overview::beginLanding(const PHLWINDOW &w, const LRect &from) {
+model::SwapStyle Overview::stripSwapStyle() const {
+  const auto s = cfg::anim.strip_swap_anim.get();
+  if (s == "slidevert") return model::SwapStyle::SlideVert;
+  if (s == "fade") return model::SwapStyle::Fade;
+  if (s == "pop") return model::SwapStyle::Pop;
+  return model::SwapStyle::Horizontal;
+}
+
+model::SwapStyle Overview::gridSwapStyle() const {
+  const auto s = cfg::anim.grid_swap_anim.get();
+  if (s == "slidevert") return model::SwapStyle::SlideVert;
+  if (s == "fade") return model::SwapStyle::Fade;
+  if (s == "pop") return model::SwapStyle::Pop;
+  return model::SwapStyle::Horizontal;
+}
+
+void Overview::beginSwapFX(const PHLWINDOW &w, const LRect &from,
+                           model::SwapStyle style) {
   if (!w || !w->m_isMapped || w->isHidden())
     return;
-  bool strip = false;
-  for (const auto &it : m_strip) {
-    if (it.kind != model::StripItem::Kind::Ws)
-      continue;
-    for (const auto &sw : it.wins)
-      if (sw.win.lock() == w)
-        strip = true;
-  }
-  if (!strip) {
-    debug::dbg("landing SKIP: win is not a strip thumb");
-    return;
-  }
-  debug::dbg("landing BEGIN from=" + std::to_string(from.x) + "," +
-             std::to_string(from.y) + " " + std::to_string(from.w) + "x" +
-             std::to_string(from.h));
-  std::erase_if(m_landings, [&w](const model::Landing &l) { return l.win.lock() == w; });
-  model::Landing l;
-  l.win  = w;
-  l.from = from;
-  l.clock.begin();
-  m_landings.push_back(std::move(l));
+  std::erase_if(m_swapfx, [&w](const model::SwapFX &f) { return f.win.lock() == w; });
+  model::SwapFX fx;
+  fx.win   = w;
+  fx.from  = from;
+  fx.style = style;
+  fx.clock.begin();
+  m_swapfx.push_back(std::move(fx));
   ensureAnimPump();
   damage();
 }
 
-bool Overview::landingActive(const PHLWINDOW &w) const {
-  for (const auto &l : m_landings)
+bool Overview::swapfxActive(const PHLWINDOW &w) const {
+  for (const auto &l : m_swapfx)
     if (l.win.lock() == w)
       return true;
   return false;
@@ -207,8 +210,14 @@ void Overview::landAfterMove(const PHLWINDOW &w, const LRect &oldBox) {
       if (sw.win.lock() == w)
         strip = true;
   }
-  if (strip) {
-    beginLanding(w, oldBox);
+  if (strip) { // strip thumbs have no glide machinery — always an FX flight
+    beginSwapFX(w, oldBox, stripSwapStyle());
+    return;
+  }
+  // grid tile: Horizontal keeps the natural->target tile glide (chrome flies
+  // with it); the other styles replace the glide with an FX flight.
+  if (gridSwapStyle() != model::SwapStyle::Horizontal) {
+    beginSwapFX(w, oldBox, gridSwapStyle());
     return;
   }
   for (auto &t : m_tiles)

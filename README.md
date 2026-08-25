@@ -145,6 +145,8 @@ pulses, everything — through a single choke point.
 | `strip_step` | 200 | easeinout | animated strip scroll per workspace step |
 | `populate` | 250 | easeout | staggered tile population + ghost fade-out (all↔one, ws switch, window close) |
 | `drop` | 320 | easeinout | drag/swap landings: the dragged preview flies from the release point into its new slot; strip thumbs fly between slots on swaps |
+| `grid_swap_anim` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` | how grid tiles choreograph a swap: travel toward each other / exit up + enter from the top / fade out + in / scale-pop in place |
+| `strip_swap_anim` | same set | `horizontal` | the same styles for strip card thumbnails (slidevert always uses the strip's top edge) |
 
 **Custom curves (Lua).** Register a named curve once (e.g. next to the config
 in `plugins/gloview.lua`) and use its name in any `<leaf>_curve`:

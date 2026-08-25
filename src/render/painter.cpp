@@ -185,7 +185,7 @@ void Overview::renderStage(eRenderStage stage) {
     const bool busy = secondaryAnimsActive() ||
                       !m_tileClock.done(reflowDur()) || m_newCardAnim ||
                       m_drag.lifted || !m_pulses.empty() ||
-                      !m_landings.empty() ||
+                      !m_swapfx.empty() ||
                       (m_opening ? m_progress < 1.0 : m_progress > 0.0);
     if (busy)
       m->m_forceFullFrames = std::max(m->m_forceFullFrames, 1);
@@ -221,7 +221,7 @@ void Overview::paint() {
   renderStripWindows();
   renderStripButtons();
   renderPulses(true /* strip slots */);
-  renderLandings(); // Z2.5: drag/swap flights, above the strip
+  renderSwapFX(); // Z2.5: drag/swap flights, above the strip
 
   const bool dragging =
       draggedTile() >= 0 ||

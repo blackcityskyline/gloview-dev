@@ -136,6 +136,11 @@ inline void safetyBacking(const LRect &lb, double s, const CHyprColor &col,
                           double alphaMul, int round, float roundPow) {
   const LRect bb{lb.x + 1.0, lb.y + 1.0, std::max(0.0, lb.w - 2.0),
                  std::max(0.0, lb.h - 2.0)};
+  // The inset can reach ZERO (a 2px-wide slot, a degenerate card) — and
+  // renderRect RASSERTs on non-positive boxes ("width/height < 0" fires for
+  // 0 too). A zero-area backing draws nothing anyway: skip.
+  if (bb.w < 0.5 || bb.h < 0.5)
+    return;
   Render::GL::g_pHyprOpenGL->renderRect(pxb(bb, s), argb(col, alphaMul),
                                         {.round = pxr(round, s),
                                          .roundingPower = roundPow});

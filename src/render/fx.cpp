@@ -222,25 +222,28 @@ void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
 // live slot, so the flight bends toward a moving destination naturally).
 // Regular slot rendering for these windows is suppressed while the flight is
 // live; at t=1 both boxes coincide and normal rendering takes over invisibly.
-void Overview::renderLandings() const {
-  if (m_landings.empty())
+void Overview::renderSwapFX() const {
+  if (m_swapfx.empty())
     return;
   const auto m = m_monitor.lock();
   if (!m)
     return;
-  const double s     = m->m_scale;
-  const auto when    = Time::steadyNow();
-  const int  round   = cfg::look.preview_round;
+  const double s       = m->m_scale;
+  const auto when      = Time::steadyNow();
+  const int  round     = cfg::look.preview_round;
   const float roundPow = cfg::look.preview_round_power;
-  const double dur = dropDur();
-  for (const auto &l : m_landings) {
-    const auto w = l.win.lock();
+  const double dur     = dropDur();
+
+  for (const auto &fx : m_swapfx) {
+    const auto w = fx.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;
-    if (!l.dbgLogged) {
-      l.dbgLogged = true;
-      debug::dbg("landing FRAME0 win alive, drawing flight");
+    if (!fx.dbgLogged) {
+      fx.dbgLogged = true;
+      debug::dbg("swapfx FRAME0 style=" + std::to_string((int)fx.style));
     }
+    // the CURRENT slot box (it may itself be gliding — the FX targets the
+    // live slot and bends toward a moving destination naturally)
     LRect to;
     bool found = false;
     for (size_t i = 0; i < m_tiles.size() && !found; ++i)
@@ -260,27 +263,72 @@ void Overview::renderLandings() const {
     }
     if (!found)
       continue;
-    const double p  = curves::eval(anim("drop").curve, l.clock.raw(dur));
-    const double bx = l.from.x + (to.x - l.from.x) * p;
-    const double by = l.from.y + (to.y - l.from.y) * p;
-    const double bw = l.from.w + (to.w - l.from.w) * p;
-    const double bh = l.from.h + (to.h - l.from.h) * p;
+
+    const double t = fx.clock.raw(dur);
+    double bx = 0, by = 0, bw = 0, bh = 0;
+    float alpha = 1.0F;
+    bool ring = false; // the release-point ring: only the direct flight keeps it
+
+    if (fx.style == model::SwapStyle::SlideVert) {
+      constexpr double LIFT = 12.0; // clearance above the zone's top edge
+      if (t < 0.5) { // exit: straight up from the old box
+        const double q = curves::eval(anim("drop").curve, t / 0.5);
+        bx = fx.from.x;
+        by = fx.from.y - (fx.from.h + LIFT) * q;
+        bw = fx.from.w;
+        bh = fx.from.h;
+      } else { // enter: drops down from the top edge into the new box
+        const double q = curves::eval(anim("drop").curve, (t - 0.5) / 0.5);
+        bx = to.x;
+        by = to.y - (to.h + LIFT) * (1.0 - q);
+        bw = to.w;
+        bh = to.h;
+        alpha = static_cast<float>(std::min(1.0, q * 2.0));
+      }
+    } else if (fx.style == model::SwapStyle::Fade) {
+      if (t < 0.5) { // fade out where it was
+        bx = fx.from.x; by = fx.from.y; bw = fx.from.w; bh = fx.from.h;
+        alpha = static_cast<float>(1.0 - t / 0.5);
+      } else { // fade in where it lands
+        bx = to.x; by = to.y; bw = to.w; bh = to.h;
+        alpha = static_cast<float>((t - 0.5) / 0.5);
+      }
+    } else if (fx.style == model::SwapStyle::Pop) {
+      if (t < 0.3) { // quick fade at the old box
+        bx = fx.from.x; by = fx.from.y; bw = fx.from.w; bh = fx.from.h;
+        alpha = static_cast<float>(1.0 - t / 0.3);
+      } else { // pop into the new box: scale 0.7 -> 1 with a slight overshoot
+        const double q = (t - 0.3) / 0.7;
+        const double k = 0.7 + 0.3 * curves::eval(anim("new_card").curve, q);
+        bx = to.x + to.w * (1.0 - k) / 2.0;
+        by = to.y + to.h * (1.0 - k) / 2.0;
+        bw = to.w * k;
+        bh = to.h * k;
+        alpha = static_cast<float>(std::min(1.0, q * 3.0));
+      }
+    } else { // Horizontal: the direct flight, windows travel toward each other
+      const double p = curves::eval(anim("drop").curve, t);
+      bx = lerp(fx.from.x, to.x, p);
+      by = lerp(fx.from.y, to.y, p);
+      bw = lerp(fx.from.w, to.w, p);
+      bh = lerp(fx.from.h, to.h, p);
+      ring = true;
+    }
+
     const CBox px(bx * s, by * s, bw * s, bh * s);
-    // Flight chrome — the drag preview carried a shadow and a ring; without
-    // the same chrome here the release reads as "everything vanished, a bare
-    // window snapped in". The ring fades out over the flight (the slot has
-    // no permanent ring); the shadow holds, matching the drag preview.
-    const float ringA = static_cast<float>((1.0 - p) * 0.9);
-    if (ringA > 0.02F)
-      strokeRingPx(px, argb(cfg::colors.hover_border.get(), ringA),
-                   ringA, pxr(clampRound(round, bw, bh), s), roundPow);
-    g_pHyprOpenGL->renderRoundedShadow(
-        pxb(LRect{bx, by + 6.0, bw, bh}, s), pxr(clampRound(round, bw, bh), s),
-        roundPow, static_cast<int>(16.0 * s),
-        Config::CGradientValueData(argb(cfg::colors.shadow.get(), 1.0)),
-        static_cast<float>(0.18 * (1.0 - p * 0.5)));
-    renderWindowLive(w, m, px, px, 1.0F, when,
-                     pxr(clampRound(round, bw, bh), s), roundPow);
+    const int rpx = pxr(clampRound(round, bw, bh), s);
+    // Flight chrome: the drag preview carried a shadow — keep it through the
+    // flight (fading with the window) so the release reads as continuous.
+    if (alpha > 0.02F)
+      g_pHyprOpenGL->renderRoundedShadow(
+          pxb(LRect{bx, by + 6.0, bw, bh}, s), rpx, roundPow,
+          static_cast<int>(16.0 * s),
+          Config::CGradientValueData(argb(cfg::colors.shadow.get(), 1.0)),
+          static_cast<float>(0.18 * alpha));
+    if (ring && t < 0.6) // the release ring fades quickly on the direct flight
+      strokeRingPx(px, argb(cfg::colors.hover_border.get(), (1.0F - t / 0.6F) * 0.9F),
+                   (1.0F - t / 0.6F) * 0.9F, rpx, roundPow);
+    renderWindowLive(w, m, px, px, alpha, when, rpx, roundPow);
   }
 }
 

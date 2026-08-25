@@ -199,6 +199,18 @@ void Overview::renderStrip() const {
         if (!w || !w->m_isMapped || w->isHidden())
           continue;
         const LRect wbL = stripWinSlotRect(it, card, j);
+        // TEMP: pin the degenerate-slot crash (safetyBacking -> renderRect
+        // RASSERTs on negative dims; NaN slips past the max() clamps)
+        if (!std::isfinite(wbL.w) || !std::isfinite(wbL.h) || wbL.w < 1 ||
+            wbL.h < 1) {
+          debug::dbg("renderStrip BAD slot: " + std::to_string(wbL.w) + "x" +
+                     std::to_string(wbL.h) + " at " + std::to_string(wbL.x) +
+                     "," + std::to_string(wbL.y) + " rel=" +
+                     std::to_string(sw.rel.w) + "x" +
+                     std::to_string(sw.rel.h) + " card=" +
+                     std::to_string(card.w) + "x" + std::to_string(card.h));
+          continue;
+        }
         const int wRound = clampRound(previewRound, wbL.w, wbL.h);
         // Grab indicator: a bright highlight around the exact slot currently
         // pressed, before it's lifted into a floating drag — static (not a
@@ -268,7 +280,7 @@ void Overview::renderStripWindows() const {
       const auto w = it.wins[j].win.lock();
       if (!w || !w->m_isMapped || w->isHidden())
         continue;
-      if (landingActive(w))
+      if (swapfxActive(w))
         continue; // flying via a landing (Z2.5) — suppressed here
       // window slot inside the card, from its tiled goal position (logical)
       const LRect slot = stripWinSlotRect(it, card, j);

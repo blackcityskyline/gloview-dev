@@ -306,12 +306,19 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       }
       m_lastDragBox = tileContentBox(press < static_cast<int>(m_tiles.size()) ? static_cast<size_t>(press) : 0, dragBox());
       auto oldBoxes = captureCurrentBoxes();
+      // captureCurrentBoxes reads currentBox = lerp(natural, target, e) —
+      // the tile clock is DONE at release (e = 1), so the dragged tile
+      // captures its TARGET, not the drag visual. Overwrite it: the whole
+      // point is flying that tile in from the cursor box.
+      for (auto &[win, box] : oldBoxes)
+        if (win == w)
+          box = m_tiles[press].natural;
       m_drag = {};
       // dropped onto a workspace card → move the window there (RMB: swap
       // instead — task #8, mirrors the strip-window-drag drop branch below)
       if (dropOnStripCard(w, lx, ly, -1)) {
         kickPulse(w); // success ring: pops on its NEW strip card slot
-        beginLanding(w, m_lastDragBox);
+        landAfterMove(w, m_lastDragBox);
         return true;
       }
       // grid mode: dropped onto (or near) another preview → swap the two
@@ -431,8 +438,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               break; // LMB cross-card: keep move/insert behavior
             const LRect vOld = stripWinSlotRect(it, stripCardAt(i), j);
             if (swapWindows(w, v)) {
-              beginLanding(w, fromBox); // both thumbs fly to their new slots
-              beginLanding(v, vOld);
+              landAfterMove(w, fromBox); // both thumbs fly to their new slots
+              landAfterMove(v, vOld);
               kickPulse(w);
               kickPulse(v);
               return true;
@@ -447,7 +454,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         // drop (RMB: swap with that workspace's window instead — task #8)
         if (dropOnStripCard(w, lx, ly, stripItem)) {
           kickPulse(w);
-          beginLanding(w, fromBox);
+          landAfterMove(w, fromBox);
           return true;
         }
         // dropped in the main preview area → send it to whichever workspace is

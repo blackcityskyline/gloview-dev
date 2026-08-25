@@ -114,9 +114,23 @@ struct Drag {
 // ONCE above the strip and suppresses its regular slot rendering; at t=1 the
 // lerped box equals the slot box, so the handoff to normal rendering is
 // invisible.
-struct Landing {
+// How a swapped/moved window leaves its old box and enters the new one.
+// Horizontal = direct lerp old->new (windows travel toward each other);
+// SlideVert = exits through the top, enters from the top of the new box;
+// Fade = fades out at the old box, in at the new; Pop = quick fade + scale
+// overshoot at the new box.
+enum class SwapStyle : int { Horizontal, SlideVert, Fade, Pop };
+
+// A drag/swap transition: the window's content flies from `from` (the box it
+// occupied at release — the drag preview under the cursor, or its old slot)
+// into its new slot, choreographed by `style`. While the FX is live the
+// painter draws the window ONCE above the strip and suppresses its regular
+// slot rendering; at t=1 the FX box equals the slot box, so the handoff to
+// normal rendering is invisible.
+struct SwapFX {
   PHLWINDOWREF win;
-  LRect from; // monitor-local logical
+  LRect from;    // monitor-local logical
+  SwapStyle style = SwapStyle::Horizontal;
   anim::Tween clock;
   mutable bool dbgLogged = false; // TEMP: first-frame trace
 };

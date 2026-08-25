@@ -303,7 +303,7 @@ void Overview::renderMainWindows() const {
     const auto w = m_tiles[i].win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;
-    if (landingActive(w))
+    if (swapfxActive(w))
       continue; // flying via a landing (Z2.5) — suppressed here
     const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
     const CBox  px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
