@@ -127,7 +127,8 @@ void Overview::renderStage(eRenderStage stage) {
         " liveWs=" +
         std::to_string(m->m_activeWorkspace ? m->m_activeWorkspace->m_id : -1) +
         " drag=" + std::to_string((int)m_drag.press) + "/" +
-        std::to_string(m_drag.lifted) + "/" + std::to_string(m_drag.idx));
+        std::to_string(m_drag.lifted) + "/" + std::to_string(m_drag.idx) +
+        " sfx=" + std::to_string(m_swapfx.size()));
   }
 
   updateHover();  // keep hover fresh even when the pointer is warped, not moved

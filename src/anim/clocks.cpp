@@ -150,6 +150,16 @@ void Overview::updateAnimation() {
   std::erase_if(m_pulses,
                 [](const model::WinPulse &p) { return p.w.expired() || p.p >= 1.0; });
 
+  // Swap/drop FX: done flights (and windows that vanished mid-flight) leave
+  // the Model. WITHOUT this prune the record lingers forever, the animation
+  // pump never disarms and the compositor recomposites the full monitor at
+  // refresh rate indefinitely (the idle GPU-spike bug).
+  for (auto it = m_swapfx.begin(); it != m_swapfx.end();)
+    if (it->win.expired() || it->clock.raw(dropDur()) >= 1.0)
+      it = m_swapfx.erase(it);
+    else
+      ++it;
+
   const double t = m_timeline.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
   if (m_newCardAnim && m_newCard.done(newCardDur())) {
