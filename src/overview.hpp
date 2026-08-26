@@ -154,7 +154,7 @@ public:
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
   // The cached FULLSCREEN blurred-wallpaper texture (or null). Read by the
   // tile chrome to frost translucent previews during the entry fade — see
-  // drawPreviewTile().
+  // drawPreviewChrome().
   [[nodiscard]] SP<Render::ITexture> backdropBlurTexture() const {
     return (m_blur.fb && m_blur.fb->isAllocated()) ? m_blur.fb->getTexture()
                                                    : nullptr;
@@ -275,7 +275,7 @@ private:
   // Per-frame resolved animation state, refreshed at the top of
   // updateAnimation; paint reads these and never resolves config itself
   // (leaf() allocates its curve string — fine once per frame, not per tile).
-  anim::AnimCfg m_glide, m_entry, m_ghost;
+  anim::AnimCfg m_glide, m_entry, m_ghost, m_lift;
   std::string m_enterStyle, m_exitStyle;
   // True while ANY animation can still produce motion (master pump predicate).
   bool animBusy() const;
@@ -452,12 +452,16 @@ private:
   LRect
   tileContentBox(size_t i,
                  const LRect &slot) const; // slot fitted to the window's aspect
-  LRect dragBox() const; // the picked-up tile's box at the cursor
+  LRect dragBox() const; // the picked-up tile's TARGET box at the cursor
+  LRect dragStripBox() const; // the picked-up strip thumb's TARGET box
+  LRect dragVisualBox() const; // where the preview IS: pickup flight or target
   int draggedTile()
       const; // m_drag.idx while a grid drag is lifted (bounds-checked), else -1
   void
   drawPreviewTile(size_t i, const LRect &slot,
                   bool lift) const; // tile chrome (shadow/border/backing/title)
+  void drawPreviewChrome(size_t i, const LRect &lb,
+                         bool lift) const; // same, box already content-fitted
   void switchToWorkspace(const model::StripItem &it);
   void dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
   // Shared tail of both drag-release paths (grid tile / strip window): if the
@@ -524,8 +528,6 @@ private:
   LRect
   stripWinSlotRect(const model::StripItem &it, const LRect &card,
                    size_t j) const; // a strip window's on-screen slot rect
-  LRect dragStripBox()
-      const; // the picked-up strip window's floating box at the cursor
   void drawDragStripChrome()
       const; // chrome for a strip-window drag (shadow/border/backing)
   // keyboard navigation

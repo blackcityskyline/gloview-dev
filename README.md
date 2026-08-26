@@ -151,7 +151,7 @@ pulses, everything — through a single choke point.
 | `expo_out` | 250 | easeout | all→one collapse: tile glide + dispersing ghosts during the flip |
 | `ws_enter` | 250 | easeout | incoming tiles' timing on a workspace switch (styles via `ws_enter_style`; the flip above uses `expo_*` instead) |
 | `ws_exit` | 250 | easeout | outgoing ghosts' timing on a workspace switch (styles via `ws_exit_style`) |
-| `lift` | 150 | easeout | the dragged preview's lift ramp when a grid-tile drag picks up (scale 0.7→1 + alpha); disabled → instant |
+| `lift` | 150 | easeout | the pickup flight when a drag grabs a preview (grid tile or strip thumb): it flies from its slot to the cursor anchor, bending toward the moving cursor; disabled → instant jump |
 | `grid_swap_style` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` | how grid tiles choreograph a swap: travel toward each other / exit up + enter from the top / fade out + in / scale-pop in place |
 | `strip_swap_style` | same set | `horizontal` | the same styles for strip card thumbnails (slidevert always uses the strip's top edge) |
 | `ws_enter_style` | `pop` \| `slide` \| `slidevert` \| `fade` | `slide` | how the incoming workspace's tiles appear on a ws switch: scale-pop from the slot center / slide in from the direction side (by ws id order) / drop from the top edge / alpha fade |
@@ -241,6 +241,7 @@ animations_enabled = 1,
 | `close_button_visibility` | `shift` \| `always` | `shift` | `shift`: close buttons only show in desktop/canvas mode (`key_desktop`) — `always`: show them on every tile and strip card all the time |
 | `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |
 | `close_button_size` | float | `1.0` | Scale multiplier over the computed base button size |
+| `drag_size` | float (0.15–1.0) | `0.55` | Drag-phase preview size as a fraction of its source slot — applies to grid tiles and strip thumbs alike; `1.0` keeps the full-size preview under the cursor |
 | `close_button_position` | `top-right` \| `top-left` \| `bottom-right` \| `bottom-left` | `top-right` | Corner the close button sits in |
 | `close_trigger` | `button` \| `doubleclick` | `button` | `button` (default): the "✕" close button — `doubleclick`: double-click/double-tap directly on a tile closes it instead (the "✕" is hidden); `key_close_window` and the strip card's whole-workspace "✕"/middle-click are unaffected either way |
 | `hide_top_layers` | bool (0/1) | `0` | Fade out Top layer surfaces (bars, e.g. Waybar) while open |

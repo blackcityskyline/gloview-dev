@@ -130,6 +130,7 @@ void Overview::updateAnimation() {
   m_glide      = leaf(glideLeaf());
   m_entry      = leaf(entryLeaf());
   m_ghost      = leaf(ghostLeaf());
+  m_lift       = leaf("lift");
   m_enterStyle = cfg::anim.ws_enter_style.get();
   m_exitStyle  = cfg::anim.ws_exit_style.get();
 

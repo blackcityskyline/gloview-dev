@@ -108,6 +108,7 @@ struct look {
   Int hover_border_size;
   Int select_border_size;
   Float close_button_size; // scale over the computed base size
+  Float drag_size;         // drag-phase preview as a fraction of its slot
   Str close_button_position;
   Str close_button_visibility; // shift | always
   Str close_trigger;           // button | doubleclick

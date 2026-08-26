@@ -110,10 +110,16 @@ double Overview::entryFade(size_t i) const {
   return tileAppear(static_cast<int>(i));
 }
 
-// One grid tile's chrome: shadow → rings → frost → backing → title pill.
-// Runs in the painter's Z1, BEFORE the tile's content — everything here sits
-// under the live surface by construction, so no ordering tricks are needed.
+// Z1 tile chrome: shadow → rings → frost → backing → title pill. Runs BEFORE
+// the tile's content — everything here sits under the live surface by
+// construction, so no ordering tricks are needed.
 void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
+  drawPreviewChrome(i, tileContentBox(i, slot), lift);
+}
+
+// Same chrome for a precomputed CONTENT box (already aspect-fitted) — the
+// flying drag preview reuses it verbatim.
+void Overview::drawPreviewChrome(size_t i, const LRect &slot, bool lift) const {
   const auto m = m_monitor.lock();
   if (!m || i >= m_tiles.size())
     return;
@@ -130,7 +136,7 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
   if (!w || !w->m_isMapped || w->isHidden())
     return;
 
-  const LRect lb = tileContentBox(i, slot);
+  const LRect lb = slot;
 
   // Soft drop shadow (real gaussian). The box is TILE-SIZED, just shifted
   // down: its solid core sits inside the tile footprint and shows through

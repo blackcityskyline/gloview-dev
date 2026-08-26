@@ -128,7 +128,16 @@ void Overview::updateHover() {
     const double dy = ly - m_drag.pressY;
     if (!m_drag.lifted && (dx * dx + dy * dy) > 64.0) { // ~8px
       m_drag.lifted = true;
-      m_dragLiftClock.begin(); // drag_lift leaf: the preview's lift ramp
+      m_dragLiftClock.begin(); // lift leaf: the pickup flight
+      // Where the grabbed preview sits RIGHT NOW — the flight's origin.
+      if (m_drag.press == model::Drag::Press::Tile)
+        m_drag.fromBox =
+            tileContentBox(static_cast<size_t>(m_drag.idx),
+                           currentBox(m_tiles[m_drag.idx], m_drag.idx));
+      else
+        m_drag.fromBox = stripWinSlotRect(
+            m_strip[m_drag.idx], stripCardAt(m_drag.idx),
+            static_cast<size_t>(std::max(0, m_drag.winIdx)));
     }
     if (m_drag.lifted) {
       m_drag.x = lx;
@@ -333,12 +342,16 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       // the dragged preview lands: the tile glides from the CURSOR box into
       // its slot (captureCurrentBoxes below picks this up, so every
       // replayReflow-based path flies it in; the preview vanishes and the
-      // tile appears at the same box — no discontinuity)
+      // tile appears at the same box — no discontinuity). The origin is the
+      // VISUAL box — mid-pickup releases fly in from wherever the preview is.
       if (press < static_cast<int>(m_tiles.size())) {
-        m_tiles[press].natural = tileContentBox(static_cast<size_t>(press), dragBox());
+        m_tiles[press].natural = dragVisualBox();
         m_tiles[press].appear = 1.0;
       }
-      m_lastDragBox = tileContentBox(press < static_cast<int>(m_tiles.size()) ? static_cast<size_t>(press) : 0, dragBox());
+      m_lastDragBox = m_drag.press == model::Drag::Press::Tile &&
+                              press < static_cast<int>(m_tiles.size())
+                          ? m_tiles[press].natural
+                          : dragVisualBox();
       auto oldBoxes = captureCurrentBoxes();
       // captureCurrentBoxes reads currentBox = lerp(natural, target, e) —
       // the tile clock is DONE at release (e = 1), so the dragged tile
@@ -457,7 +470,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const auto w = m_drag.win.lock();
     const bool rmb = m_drag.button == BTN_RIGHT;
     const bool lifted = m_drag.lifted;
-    const LRect fromBox = dragStripBox(); // the preview's box at release
+    const LRect fromBox = dragVisualBox(); // the preview's box at release
     m_lastDragBox = fromBox;
     m_drag = {};
     if (lifted) {

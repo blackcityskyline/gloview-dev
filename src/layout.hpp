@@ -27,6 +27,10 @@ struct LRect {
 };
 
 inline double lerp(double a, double b, double t) { return a + (b - a) * t; }
+inline LRect lerp(const LRect &a, const LRect &b, double t) {
+    return LRect{lerp(a.x, b.x, t), lerp(a.y, b.y, t),
+                 lerp(a.w, b.w, t), lerp(a.h, b.h, t)};
+}
 
 enum class Engine {
     Rows,    // macOS-like: aspect-preserving, packed into balanced rows

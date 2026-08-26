@@ -105,6 +105,8 @@ struct Drag {
   double grabDX = 0, grabDY = 0;   // cursor offset inside the grabbed box
   double x = 0, y = 0;             // current cursor, kept fresh by updateHover
   bool lifted = false;             // moved past the threshold → a real drag
+  LRect fromBox;                   // the grabbed preview's box at lift time —
+                                   // the pickup flight's origin
   bool armed() const { return press == Press::Tile || press == Press::StripWin; }
 };
 

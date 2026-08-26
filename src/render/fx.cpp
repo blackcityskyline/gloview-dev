@@ -23,11 +23,19 @@ namespace gloview {
 
 // ---- drag visuals (Z3) ------------------------------------------------------
 
-// The picked-up grid tile's floating box. Grid mode shrinks to half AND sits
-// offset down-right of the cursor — a preview under the pointer would hide
-// the drop-zone indicator it's meant to be aimed at. Desktop/canvas mode
-// keeps the true 1:1 grab offset and full size: there a drop PARKS the window
-// at exactly that visual spot.
+namespace {
+// Cursor offset of the drag preview: it sits down-right of the pointer so the
+// drop zones it is aimed at stay visible.
+constexpr double offX = 46.0, offY = 64.0;
+double dragScale() {
+  return std::clamp(static_cast<double>(cfg::look.drag_size), 0.15, 1.0);
+}
+} // namespace
+
+// The picked-up GRID tile's target box: its content box scaled by
+// plugin:gloview:drag_size and anchored down-right of the cursor. Desktop/
+// canvas mode keeps the true 1:1 grab offset and full size: there a drop
+// PARKS the window at exactly that visual spot.
 LRect Overview::dragBox() const {
   const int dragIdx = draggedTile();
   if (dragIdx < 0)
@@ -36,31 +44,41 @@ LRect Overview::dragBox() const {
   if (m_desktopMode)
     return LRect{m_drag.x - m_drag.grabDX, m_drag.y - m_drag.grabDY,
                  base.w, base.h};
-  const double w = base.w * 0.5;
-  const double h = base.h * 0.5;
-  constexpr double offX = 46.0, offY = 64.0;
-  return LRect{m_drag.x + offX, m_drag.y + offY, w, h};
+  const LRect full = tileContentBox(static_cast<size_t>(dragIdx), base);
+  const double k   = dragScale();
+  return LRect{m_drag.x + offX, m_drag.y + offY, full.w * k, full.h * k};
 }
 
-// The picked-up strip window's floating box: small AND offset down-right of
-// the cursor, same reason as dragBox.
+// The picked-up strip thumb's target box: its slot scaled by drag_size,
+// aspect preserved, anchored like the grid preview.
 LRect Overview::dragStripBox() const {
-  const auto w = m_drag.win.lock();
-  if (!w)
+  if (m_drag.win.expired())
     return LRect{0, 0, 0, 0};
-  const auto size   = w->sizeAnimation()->goal();
+  const double sw    = m_drag.fromBox.w > 1.0 ? m_drag.fromBox.w : 150.0;
+  const double ww    = sw * dragScale();
+  const auto size    = m_drag.win.lock()->sizeAnimation()->goal();
   const double aspect = (size.x > 0 && size.y > 0) ? size.x / size.y : 16.0 / 9.0;
-  const double w_   = 150.0; // fixed on-screen preview width while dragging
-  const double h_   = w_ / std::max(0.1, aspect);
-  constexpr double offX = 46.0, offY = 64.0;
-  return LRect{m_drag.x + offX, m_drag.y + offY, w_, h_};
+  return LRect{m_drag.x + offX, m_drag.y + offY, ww, ww / std::max(0.1, aspect)};
+}
+
+// Where the grabbed preview IS right now: flying from its source box to the
+// cursor anchor during pickup (the lift leaf shapes time; the destination
+// moves with the cursor, so the flight bends naturally), riding at 1 after.
+LRect Overview::dragVisualBox() const {
+  const LRect to =
+      m_drag.press == model::Drag::Press::Tile ? dragBox() : dragStripBox();
+  const double p = curves::eval(m_lift.curve, m_dragLiftClock.raw(m_lift.ms));
+  if (p < 1.0 && m_drag.lifted)
+    return lerp(m_drag.fromBox, to, p);
+  return to;
 }
 
 // Z3: chrome for whichever drag is live (grid tile or strip window).
 void Overview::renderDragTile() const {
   const int dragIdx = draggedTile();
   if (dragIdx >= 0) {
-    drawPreviewTile(static_cast<size_t>(dragIdx), dragBox(), true); // chrome; content right after
+    drawPreviewChrome(static_cast<size_t>(dragIdx), dragVisualBox(),
+                      true); // chrome; content right after
     return;
   }
   if (m_drag.press == model::Drag::Press::StripWin && !m_drag.win.expired())
@@ -68,7 +86,7 @@ void Overview::renderDragTile() const {
 }
 
 // Chrome for a window dragged straight off the strip — same visual language
-// as a grid-tile drag (drawPreviewTile), scaled down to match.
+// as a grid-tile drag (drawPreviewChrome), scaled down to match.
 void Overview::drawDragStripChrome() const {
   const auto m = m_monitor.lock();
   const auto w = m_drag.win.lock();
@@ -76,7 +94,7 @@ void Overview::drawDragStripChrome() const {
     return;
   const double s        = m->m_scale;
   const double e        = eased();
-  const LRect  lb       = dragStripBox();
+  const LRect  lb       = dragVisualBox();
   const int    round    = clampRound(cfg::look.preview_round, lb.w, lb.h);
   const float  roundPow = cfg::look.preview_round_power;
   const auto   shadowCol = cfg::colors.shadow.get(1.0);
@@ -103,47 +121,29 @@ void Overview::drawDragStripChrome() const {
                 roundPow);
 }
 
-// Z3: the dragged window's live content, right after its chrome.
+// Z3: the dragged window's live content, right after its chrome. Grid tile
+// and strip thumb share one flow: both fly from their source box to the
+// cursor anchor on the lift leaf (see dragVisualBox), fully opaque.
 void Overview::renderDragWindow() const {
-  const int dragIdx = draggedTile();
   const auto m = m_monitor.lock();
   if (!m)
     return;
-  // The drag_lift leaf: the preview ramps in when the drag lifts (scale
-  // 0.7 -> 1 around the box center + alpha), then rides at 1. Disabled leaf
-  // -> instant (ms 1).
-  const double liftT = m_dragLiftClock.raw(leaf("lift").ms);
-  const double liftK = curves::eval(leaf("lift").curve, liftT);
-  if (dragIdx >= 0) {
-    const auto w = m_tiles[dragIdx].win.lock();
-    if (!w || !w->m_isMapped || w->isHidden())
-      return;
-    const double e     = eased();
-    const double scale = m->m_scale;
-    const LRect  lb    = tileContentBox(static_cast<size_t>(dragIdx), dragBox());
-    const double cw    = lb.w * (0.7 + 0.3 * liftK);
-    const double ch    = lb.h * (0.7 + 0.3 * liftK);
-    const LRect  lbr{lb.cx() - cw / 2.0, lb.cy() - ch / 2.0, cw, ch};
-    const CBox   px(lbr.x * scale, lbr.y * scale, lbr.w * scale, lbr.h * scale);
-    const int    round = pxr(cfg::look.preview_round, scale);
-    renderWindowLive(w, m, px, px, static_cast<float>(e * liftK),
-                     Time::steadyNow(), round, cfg::look.preview_round_power);
+  PHLWINDOW w;
+  if (const int dragIdx = draggedTile(); dragIdx >= 0)
+    w = m_tiles[dragIdx].win.lock();
+  else if (m_drag.press == model::Drag::Press::StripWin)
+    w = m_drag.win.lock();
+  if (!w || !w->m_isMapped || w->isHidden())
     return;
-  }
-  if (m_drag.press == model::Drag::Press::StripWin) {
-    const auto w = m_drag.win.lock();
-    if (!w || !w->m_isMapped || w->isHidden())
-      return;
-    const double e     = eased();
-    const double scale = m->m_scale;
-    const LRect  lb    = dragStripBox();
-    const CBox   px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
-    const int round = pxr(clampRound(cfg::look.preview_round,
-                                     lb.w, lb.h),
-                          scale);
-    renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(),
-                     round, cfg::look.preview_round_power);
-  }
+
+  const double e     = eased();
+  const double scale = m->m_scale;
+  const LRect  lb    = dragVisualBox();
+  const CBox   px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
+  const int round =
+      pxr(clampRound(cfg::look.preview_round, lb.w, lb.h), scale);
+  renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(),
+                   round, cfg::look.preview_round_power);
 }
 
 // ---- swap pulses (Z1 tail for grid, Z2 tail for strip) ----------------------
