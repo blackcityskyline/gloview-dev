@@ -149,6 +149,10 @@ public:
                                  // non-tile windows in hkDamageSurface)
 
   [[nodiscard]] bool active() const { return m_active; }
+  // TEMP probes (renderWindowLive ghost-draw diagnostics)
+  void dbgRWLOn() const { m_dbgRWL = true; }
+  void dbgRWLOff() const { m_dbgRWL = false; }
+  [[nodiscard]] bool dbgRWLOnCheck() const { return m_dbgRWL; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
@@ -477,6 +481,9 @@ private:
   // drop/swap rebuild). Newcomer tiles slide in from that side, the removed
   // ones slide out to the opposite side.
   int m_wsSlideDir = 0;
+  // TEMP: renderWindowLive logs its geometry/alpha while this is set
+  // (renderGhosts arms it around the ghost loop).
+  mutable bool m_dbgRWL = false;
   // The lift clock: the drag preview's appearance ramp (drag_lift leaf).
   anim::Tween m_dragLiftClock;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,

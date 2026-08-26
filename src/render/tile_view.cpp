@@ -331,6 +331,7 @@ void Overview::renderGhosts() const {
   const float roundPow = cfg::look.preview_round_power;
   const double p    = std::min(1.0, m_populate.raw(cfgLeaf.ms));
   const double eOut = curves::eval(cfgLeaf.curve, p); // 0..1 gone
+  dbgRWLOn();
   for (const auto &g : m_ghosts) {
     const auto w = g.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
