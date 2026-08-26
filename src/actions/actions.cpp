@@ -28,7 +28,9 @@ bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
   const int idx = stripItemAt(lx, ly);
   if (idx < 0 || idx == skipItem)
     return false;
-  const auto &it = m_strip[idx];
+  // COPY, not a reference: the swap/move paths below REBUILD m_strip
+  // (replayReflow -> buildStrip), which frees the element this referred to.
+  const auto it = m_strip[idx];
   if (it.kind != model::StripItem::Kind::Ws) {
     // "+" / "All": the legacy whole-card semantics
     if (m_drag.button == BTN_RIGHT)

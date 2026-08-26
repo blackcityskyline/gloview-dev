@@ -197,6 +197,8 @@ constexpr StrSpec kStrs[] = {
     {&behavior.preview_mode, "plugin:gloview:preview_mode", "live"},
     {&anim.grid_swap_anim, "plugin:gloview:grid_swap_anim", "horizontal"},
     {&anim.strip_swap_anim, "plugin:gloview:strip_swap_anim", "horizontal"},
+    {&anim.ws_enter_anim, "plugin:gloview:ws_enter_anim", "slide"},
+    {&anim.ws_exit_anim, "plugin:gloview:ws_exit_anim", "slide"},
     {&anim.open_curve, "plugin:gloview:open_curve", "easeout"},
     {&anim.close_curve, "plugin:gloview:close_curve", "easeout"},
     {&anim.reflow_curve, "plugin:gloview:reflow_curve", "easeout"},

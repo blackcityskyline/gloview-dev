@@ -183,6 +183,8 @@ struct anim {
   Str drop_curve;
   Str grid_swap_anim;   // horizontal | slidevert | fade | pop
   Str strip_swap_anim;
+  Str ws_enter_anim;    // ws-switch: pop | slide | slidevert | fade (incoming)
+  Str ws_exit_anim;     // ws-switch: slide | slidevert | fade | pop (outgoing)
 
   // built-ins only; null if unknown
   const Int *leafEnabled(std::string_view name);

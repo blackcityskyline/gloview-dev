@@ -346,12 +346,19 @@ void Overview::renderGhosts() const {
     const LRect box{cx - g.box.w * k / 2.0, cy - g.box.h * k / 2.0,
                     g.box.w * k, g.box.h * k};
     double gx = box.x, gy = box.y;
-    if (m_wsSlideDir != 0)
+    float gAlpha = static_cast<float>((1.0 - eOut) * 0.85);
+    const auto exitAnim = cfg::anim.ws_exit_anim.get();
+    if (m_wsSlideDir != 0 && exitAnim == "slide") {
+      // horizontal ws-switch slide: out to the opposite side
       if (const auto mm = m_monitor.lock())
         gx -= static_cast<double>(m_wsSlideDir) * mm->m_size.x * eOut;
+    } else if (m_wsSlideDir != 0 && exitAnim == "slidevert") {
+      // vertical: exits through the top edge
+      if (const auto mm = m_monitor.lock())
+        gy -= static_cast<double>(mm->m_size.y) * eOut;
+    }
     const CBox px(gx * scale, gy * scale, box.w * scale, box.h * scale);
-    renderWindowLive(w, m, px, px, static_cast<float>((1.0 - eOut) * 0.85),
-                     when, round, roundPow);
+    renderWindowLive(w, m, px, px, gAlpha, when, round, roundPow);
   }
 }
 

@@ -147,6 +147,8 @@ pulses, everything — through a single choke point.
 | `drop` | 320 | easeinout | drag/swap landings: the dragged preview flies from the release point into its new slot; strip thumbs fly between slots on swaps |
 | `grid_swap_anim` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` | how grid tiles choreograph a swap: travel toward each other / exit up + enter from the top / fade out + in / scale-pop in place |
 | `strip_swap_anim` | same set | `horizontal` | the same styles for strip card thumbnails (slidevert always uses the strip's top edge) |
+| `ws_enter_anim` | `pop` \| `slide` \| `slidevert` \| `fade` | `slide` | how the incoming workspace's tiles appear on a ws switch: scale-pop from the slot center / slide in from the direction side (by ws id order) / drop from the top edge / alpha fade |
+| `ws_exit_anim` | `slide` \| `slidevert` \| `fade` | `slide` | how the outgoing workspace's tiles leave: slide out to the opposite side / exit through the top edge / fade+shrink in place |
 
 **Custom curves (Lua).** Register a named curve once (e.g. next to the config
 in `plugins/gloview.lua`) and use its name in any `<leaf>_curve`:
