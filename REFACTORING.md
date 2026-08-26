@@ -20,24 +20,30 @@ painter задаёт только ПОРЯДОК. Главное правило 
 **Pixels** (кэши блюра/лейблов/snapshots — только в моменты захвата).
 Paint = чистая функция (Model, Clocks, Pixels) → пиксели.
 
-## Модель анимаций
+## Модель анимаций (v2, декларативная)
 
-Лист = `{enabled, ms, curve}` (`<leaf>_enabled/_ms/_curve`), резолвится
-`Overview::anim()` из cfg::anim; `_ms = -1` → наследует `duration`; master-off
-→ всё мгновенно. Кривые — реестр anim/curves.cpp (нативные fn + Lua через
-`hl.plugin.gloview.curve(name, fn)`). Tween владеет только стартовой точкой;
-длительности перечитываются каждый кадр (живой конфиг).
+Лист = `{enabled, speed, curve}` (`<leaf>_enabled/_speed/_curve`), база
+каждого листа — в таблице kLeaves (config.cpp): effective = base/speed,
+пол 16мс. Кривые — один реестр (anim/curves.cpp): нативные fn + Lua-функции +
+Lua-безье `{type="bezier", points={{x,y},{x,y}} | {x1,y1,x2,y2}}` (Ньютон +
+бисекция). Поверх ключей — императивные правила `gloview.animation{...}`
+(AnimRule: enabled/speed/ms/curve/style; заданное выигрывает, остальное
+наследуется). Стили типов: `<thing>_style` (ws_enter/ws_exit/grid_swap/
+strip_swap), читаются только через cfg::animStyle(). Tween владеет стартом;
+длительности резолвятся каждый кадр.
+
+Листья: open, close, glide (плитка слот↔слот), appear (каскад новичков),
+card («+»), pulse (кольцо), strip_step, ws_enter/ws_exit (смена воркспейса),
+expo_in/expo_out (флип all↔one), swap_main/swap_partner (обмены),
+drag (ЗАХВАТ И ОТПУСКАНИЕ превью — оба направления одним листом).
 
 Переходные листья выбираются селекторами с приоритетом: флип all↔one
 (`m_expoFlip`: expo_in/expo_out) > слайд смены воркспейса (`m_wsSlideDir`:
 ws_enter/ws_exit) > appear. Обе стороны перехода едят ОДИН clock
 (m_rebuildClock), каждая в своём окне; флаги сбрасываются, когда ОБА окна
-закрылись. Стили: `ws_enter_style`/`ws_exit_style` (pop|slide|slidevert|fade),
-`grid_swap_style`/`strip_swap_style` (horizontal|slidevert|fade|pop). Слайд
-въезда — полный размер монитора от стороны dir; выход ghost'ов — зеркально.
-Все листья резолвятся ОДИН раз за кадр в updateAnimation (кэш m_glide/m_entry/
-m_ghost + стили); paint конфиг не читает. Предикат занятости насоса — ровно
-один: animBusy().
+закрылись. Все листья резолвятся ОДИН раз за кадр в updateAnimation (кэш
+m_glide/m_entry/m_ghost/m_lift/m_enterStyle/m_exitStyle); paint конфиг не
+читает. Предикат занятости насоса — ровно один: animBusy().
 
 ## Открытые вопросы
 
@@ -62,6 +68,11 @@ m_ghost + стили); paint конфиг не читает. Предикат з
 
 ## Журнал сессий
 
+- 2026-08-26 (ночь, 3): анимационная модель v2 (71eae61) — единые поля
+  {enabled,speed,curve} вместо _ms/-1/duration, безье из Lua
+  (`gloview.curve(name,{bezier|fn})`), правила `gloview.animation{...}`
+  поверх ключей; lift→drag (захват+отпускание одним листом), new_card→card.
+  Зонд DRAG LIFT в updateHover — для проверки стрип-драга в живой сессии.
 - 2026-08-26 (ночь, 2): симметричный lift. Все ручные отпускания (грид в
   пустоту, миниатюра на свою карточку/мимо, перелёты на карточки) летят на
   листе `lift` — те же ручки, что и захват; возврат стрипа раньше был
