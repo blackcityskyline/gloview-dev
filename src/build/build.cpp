@@ -487,7 +487,6 @@ void Overview::startTileGlide(
     for (auto &t : m_tiles)
       t.appear = 1.0;
   m_tileClock.begin();
-  m_tileGlideDone = false;
   if (newcomers || !m_ghosts.empty()) {
     m_rebuildClock.begin();
     ensureAnimPump(); // frames must keep coming while population runs
