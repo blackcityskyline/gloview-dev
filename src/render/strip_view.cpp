@@ -105,7 +105,7 @@ void Overview::renderStrip() const {
         allWs && !allCardShown && it.kind != model::StripItem::Kind::Plus;
     const bool ring = actLike || expoRing;
     if (ring || hover) {
-      const auto &lc = ring ? activeLine : hoverLine;
+      const auto &lc = actLike ? CHyprColor(1.0, 0.0, 0.0, 1.0) : hoverLine; // TEMP red ring
       const double t = actLike ? 2.5 : 2.0;
       safeRenderRect("ring", pxb(CBox(c.x - t, c.y - t, c.w + 2 * t, c.h + 2 * t), s),
                      lc, {.round = pxr(cardRound + t, s), .roundingPower = roundPow});
