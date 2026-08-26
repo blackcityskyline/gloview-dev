@@ -30,11 +30,11 @@ Paint = чистая функция (Model, Clocks, Pixels) → пиксели.
 
 Переходные листья выбираются селекторами с приоритетом: флип all↔one
 (`m_expoFlip`: expo_in/expo_out) > слайд смены воркспейса (`m_wsSlideDir`:
-ws_in/ws_out) > populate. Обе стороны перехода едят ОДИН clock (m_populate),
-каждая в своём окне; флаги сбрасываются, когда ОБА окна закрылись. Стили:
-`ws_enter_anim`/`ws_exit_anim` (pop|slide|slidevert|fade), `grid_swap_anim`/
-`strip_swap_anim` (horizontal|slidevert|fade|pop). Слайд въезда — полный
-размер монитора от стороны dir; выход ghost'ов — зеркально.
+ws_enter/ws_exit) > appear. Обе стороны перехода едят ОДИН clock
+(m_rebuildClock), каждая в своём окне; флаги сбрасываются, когда ОБА окна
+закрылись. Стили: `ws_enter_anim`/`ws_exit_anim` (pop|slide|slidevert|fade),
+`grid_swap_anim`/`strip_swap_anim` (horizontal|slidevert|fade|pop). Слайд
+въезда — полный размер монитора от стороны dir; выход ghost'ов — зеркально.
 
 ## Открытые вопросы
 

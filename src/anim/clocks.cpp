@@ -61,17 +61,17 @@ anim::AnimCfg Overview::leaf(const char *name) const {
 const char *Overview::entryLeaf() const {
   if (m_expoFlip != 0)
     return m_expoFlip > 0 ? "expo_in" : "expo_out";
-  return m_wsSlideDir != 0 ? "ws_in" : "populate";
+  return m_wsSlideDir != 0 ? "ws_enter" : "appear";
 }
 
 const char *Overview::ghostLeaf() const {
   if (m_expoFlip != 0)
     return m_expoFlip > 0 ? "expo_in" : "expo_out";
-  return m_wsSlideDir != 0 ? "ws_out" : "populate";
+  return m_wsSlideDir != 0 ? "ws_exit" : "appear";
 }
 
 const char *Overview::glideLeaf() const {
-  return m_expoFlip > 0 ? "expo_in" : m_expoFlip < 0 ? "expo_out" : "reflow";
+  return m_expoFlip > 0 ? "expo_in" : m_expoFlip < 0 ? "expo_out" : "glide";
 }
 
 double Overview::eased() const {
@@ -83,7 +83,7 @@ double Overview::eased() const {
 double Overview::animDuration() const { return leaf(m_opening ? "open" : "close").ms; }
 
 double Overview::tileProgress(int i) const {
-  // Entries and reflows ride the tiles' forward clock (m_tileClock). CLOSE
+  // Slot glides ride the tiles' forward clock (m_tileClock). CLOSE
   // deliberately goes back to riding m_progress DOWN: the tile lerp then has
   // the exact same shape as the collapsing chrome, keeping landing and
   // strip-collapse frame-synced.
@@ -164,7 +164,7 @@ void Overview::updateAnimation() {
 
   // Swap pulses accumulate per animated frame with the delta CAPPED, so a
   // post-drop render hole cannot jump the ring through its overshoot plateau.
-  const double pulseMs = leaf("swap_pulse").ms;
+  const double pulseMs = leaf("pulse").ms;
   const auto nowTickP  = std::chrono::steady_clock::now();
   for (auto &p : m_pulses) {
     if (p.w.expired())

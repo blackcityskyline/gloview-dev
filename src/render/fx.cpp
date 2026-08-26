@@ -117,8 +117,8 @@ void Overview::renderDragWindow() const {
   // The drag_lift leaf: the preview ramps in when the drag lifts (scale
   // 0.7 -> 1 around the box center + alpha), then rides at 1. Disabled leaf
   // -> instant (ms 1).
-  const double liftT = m_dragLiftClock.raw(leaf("drag_lift").ms);
-  const double liftK = curves::eval(leaf("drag_lift").curve, liftT);
+  const double liftT = m_dragLiftClock.raw(leaf("lift").ms);
+  const double liftK = curves::eval(leaf("lift").curve, liftT);
   if (dragIdx >= 0) {
     const auto w = m_tiles[dragIdx].win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
@@ -154,7 +154,7 @@ void Overview::renderDragWindow() const {
 // ---- swap pulses (Z1 tail for grid, Z2 tail for strip) ----------------------
 
 void Overview::kickPulse(const PHLWINDOW &w) {
-  if (!w || !leaf("swap_pulse").on)
+  if (!w || !leaf("pulse").on)
     return;
   std::erase_if(m_pulses, [&w](const model::WinPulse &p) { return p.w.lock() == w; });
   m_pulses.push_back(model::WinPulse{w, 0.0, std::chrono::steady_clock::now()});

@@ -333,7 +333,7 @@ void Overview::renderMainWindows() const {
 }
 
 // Removed-by-rebuild tiles fading/scaling out where they were (all→one,
-// close-window). Same populate clock as Tile.appear — the mirror direction.
+// close-window). Same rebuild clock as Tile.appear — the mirror direction.
 // Softer than the incoming pop: ghosts are a motion cue, not the main event.
 void Overview::renderGhosts() const {
   if (m_ghosts.empty())

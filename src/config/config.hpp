@@ -163,21 +163,21 @@ struct anim {
   Int close_enabled;
   Int close_ms;
   Str close_curve;
-  Int reflow_enabled;
-  Int reflow_ms;
-  Str reflow_curve;
+  Int glide_enabled;
+  Int glide_ms;
+  Str glide_curve;
   Int new_card_enabled;
   Int new_card_ms;
   Str new_card_curve;
-  Int swap_pulse_enabled;
-  Int swap_pulse_ms;
-  Str swap_pulse_curve;
+  Int pulse_enabled;
+  Int pulse_ms;
+  Str pulse_curve;
   Int strip_step_enabled;
   Int strip_step_ms;
   Str strip_step_curve;
-  Int populate_enabled;
-  Int populate_ms;
-  Str populate_curve;
+  Int appear_enabled;
+  Int appear_ms;
+  Str appear_curve;
   Int drop_enabled;
   Int drop_ms;
   Str drop_curve;
@@ -201,9 +201,9 @@ struct anim {
   Int expo_out_enabled; // all->one collapse
   Int expo_out_ms;      // all->one: the tiles collapsing
   Str expo_out_curve;
-  Int drag_lift_enabled; // the preview lift on grab
-  Int drag_lift_ms;
-  Str drag_lift_curve;
+  Int lift_enabled; // the preview lift on grab
+  Int lift_ms;
+  Str lift_curve;
 
   // built-ins only; null if unknown
   const Int *leafEnabled(std::string_view name);
