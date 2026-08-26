@@ -329,26 +329,27 @@ std::string animStyle(const std::string &thing) {
 //                     curve = "...", style = "..." }) — an imperative rule
 // layered over the schema keys; whatever it sets wins.
 int luaSetAnimRule(::lua_State *L) {
-  const char *leaf = luaL_checkstring(L, 1);
-  luaL_checktype(L, 2, LUA_TTABLE);
-  lua_settop(L, 2);
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_settop(L, 1);
+  lua_getfield(L, 1, "leaf");
+  const char *leaf = luaL_checkstring(L, -1);
+  lua_pop(L, 1);
   AnimRule r;
   auto num = [&](const char *k) -> std::optional<double> {
-    lua_getfield(L, 2, k);
+    lua_getfield(L, 1, k);
     const bool ok = lua_isnumber(L, -1);
     const double v = ok ? lua_tonumber(L, -1) : 0.0;
     lua_pop(L, 1);
     return ok ? std::optional(v) : std::nullopt;
   };
   auto str = [&](const char *k) -> std::optional<std::string> {
-    lua_getfield(L, 2, k);
+    lua_getfield(L, 1, k);
     const bool ok = lua_isstring(L, -1);
     const std::string v = ok ? lua_tostring(L, -1) : "";
     lua_pop(L, 1);
     return ok ? std::optional(v) : std::nullopt;
   };
-  if ((lua_getfield(L, 2, "enabled"), lua_pop(L, 1), false)) {}
-  lua_getfield(L, 2, "enabled");
+  lua_getfield(L, 1, "enabled");
   if (lua_isboolean(L, -1))
     r.enabled = lua_toboolean(L, -1) != 0;
   lua_pop(L, 1);
