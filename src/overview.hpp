@@ -309,8 +309,6 @@ private:
   void beginSwapFX(const PHLWINDOW &w, const LRect &from,
                    model::SwapStyle style, double ms,
                    const std::string &curve);
-  [[nodiscard]] model::SwapStyle gridSwapStyle() const;
-  [[nodiscard]] model::SwapStyle stripSwapStyle() const;
   void landAfterMove(const PHLWINDOW &w, const LRect &oldBox, double ms,
                      const std::string &curve);
   [[nodiscard]] bool swapfxActive(const PHLWINDOW &w) const;

@@ -11,7 +11,6 @@
 #include <hyprland/src/render/pass/SurfacePassElement.hpp>
 #include <hyprland/src/helpers/time/Time.hpp>
 
-#include "../debug/log.hpp"
 #include "gl_util.hpp"
 #include "../config/config.hpp"
 #include "../overview.hpp"
@@ -21,10 +20,6 @@
 using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
-
-namespace {
-double lerp(double a, double b, double t) { return a + (b - a) * t; }
-} // namespace
 
 // ---- drag visuals (Z3) ------------------------------------------------------
 

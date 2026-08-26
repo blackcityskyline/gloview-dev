@@ -1,4 +1,3 @@
-#include "../debug/log.hpp"
 #include "window_content.hpp"
 
 #include <algorithm>

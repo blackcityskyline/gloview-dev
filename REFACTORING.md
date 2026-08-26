@@ -32,9 +32,12 @@ Paint = чистая функция (Model, Clocks, Pixels) → пиксели.
 (`m_expoFlip`: expo_in/expo_out) > слайд смены воркспейса (`m_wsSlideDir`:
 ws_enter/ws_exit) > appear. Обе стороны перехода едят ОДИН clock
 (m_rebuildClock), каждая в своём окне; флаги сбрасываются, когда ОБА окна
-закрылись. Стили: `ws_enter_anim`/`ws_exit_anim` (pop|slide|slidevert|fade),
-`grid_swap_anim`/`strip_swap_anim` (horizontal|slidevert|fade|pop). Слайд
+закрылись. Стили: `ws_enter_style`/`ws_exit_style` (pop|slide|slidevert|fade),
+`grid_swap_style`/`strip_swap_style` (horizontal|slidevert|fade|pop). Слайд
 въезда — полный размер монитора от стороны dir; выход ghost'ов — зеркально.
+Все листья резолвятся ОДИН раз за кадр в updateAnimation (кэш m_glide/m_entry/
+m_ghost + стили); paint конфиг не читает. Предикат занятости насоса — ровно
+один: animBusy().
 
 ## Открытые вопросы
 
@@ -59,6 +62,15 @@ ws_enter/ws_exit) > appear. Обе стороны перехода едят ОД
 
 ## Журнал сессий
 
+- 2026-08-26 (вечер): хардненинг anim-ядра после крит-ревью — единый предикат
+  насоса animBusy() (превью три копии предиката уже разъехались: tick насоса
+  не видел swapfx и мог разоружиться посреди полёта), stall-guard теперь
+  накрывает ВСЕ часы, Tile.appear помечается settled (раньше плитки вечно
+  резолвили конфиг после въезда), prune swapfx по собственному fx.ms, fade —
+  чистая альфа без pop-scale, _enabled для swap_main/swap_partner. Стилевые
+  ключи переименованы: *_anim → *_style (ws_enter/ws_exit/grid_swap/
+  strip_swap); парсинг стилей — один parseSwapStyle; lerp переехал в
+  layout.hpp; покадровый кэш листьев убрал аллокации из per-tile пути.
 - 2026-08-26: найдено и закрыто (5dee8fc) — группа анимаций f987711 была
   проводкой мёртвым кодом: флаг направления never armed (oldWs захватывался
   после reassign m_workspace), expo-половины и lift-clock ни к чему не были

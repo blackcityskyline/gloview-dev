@@ -169,7 +169,7 @@ bool Overview::swapWindows(const PHLWINDOW &wa, const PHLWINDOW &wb) {
   // Rebuild the overview from the swapped real geometry and glide in.
   replayReflow(oldBoxes);
   // SwapFX dispatch: the swapped windows fly per their ZONE's style
-  // (grid_swap_anim / strip_swap_anim). Horizontal keeps the chrome-carrying
+  // (grid_swap_style / strip_swap_style). Horizontal keeps the chrome-carrying
   // tile glide for grid tiles; the other styles replace it with an FX
   // flight; strip thumbs always fly.
   for (const auto &[win, box] : oldBoxes)
@@ -207,21 +207,14 @@ void Overview::swapTiles(int a, int b) {
 // `from` into its slot. landAfterMove: dispatches per landing surface — strip
 // -> flight, grid tile -> natural = oldBox so the existing tile glide flies it
 // in (chrome moves with it).
-model::SwapStyle Overview::stripSwapStyle() const {
-  const auto s = cfg::anim.strip_swap_anim.get();
-  if (s == "slidevert") return model::SwapStyle::SlideVert;
-  if (s == "fade") return model::SwapStyle::Fade;
-  if (s == "pop") return model::SwapStyle::Pop;
-  return model::SwapStyle::Horizontal;
+namespace {
+model::SwapStyle parseSwapStyle(const std::string &s) {
+  return s == "slidevert"  ? model::SwapStyle::SlideVert
+         : s == "fade"     ? model::SwapStyle::Fade
+         : s == "pop"      ? model::SwapStyle::Pop
+                           : model::SwapStyle::Horizontal;
 }
-
-model::SwapStyle Overview::gridSwapStyle() const {
-  const auto s = cfg::anim.grid_swap_anim.get();
-  if (s == "slidevert") return model::SwapStyle::SlideVert;
-  if (s == "fade") return model::SwapStyle::Fade;
-  if (s == "pop") return model::SwapStyle::Pop;
-  return model::SwapStyle::Horizontal;
-}
+} // namespace
 
 void Overview::beginSwapFX(const PHLWINDOW &w, const LRect &from,
                            model::SwapStyle style, double ms,
@@ -261,13 +254,15 @@ void Overview::landAfterMove(const PHLWINDOW &w, const LRect &oldBox,
         strip = true;
   }
   if (strip) { // strip thumbs have no glide machinery — always an FX flight
-    beginSwapFX(w, oldBox, stripSwapStyle(), ms, curve);
+    beginSwapFX(w, oldBox, parseSwapStyle(cfg::anim.strip_swap_style.get()), ms, curve);
     return;
   }
   // grid tile: Horizontal keeps the natural->target tile glide (chrome flies
   // with it); the other styles replace the glide with an FX flight.
-  if (gridSwapStyle() != model::SwapStyle::Horizontal) {
-    beginSwapFX(w, oldBox, gridSwapStyle(), ms, curve);
+  if (parseSwapStyle(cfg::anim.grid_swap_style.get()) !=
+    model::SwapStyle::Horizontal) {
+    beginSwapFX(w, oldBox, parseSwapStyle(cfg::anim.grid_swap_style.get()),
+                ms, curve);
     return;
   }
   for (auto &t : m_tiles)

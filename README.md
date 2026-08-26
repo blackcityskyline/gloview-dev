@@ -149,13 +149,13 @@ pulses, everything — through a single choke point.
 | `swap_partner` | 320 | easeinout | the swap PARTNER's flight |
 | `expo_in` | 250 | easeout | one→all spread: tile glide + newcomers during the all↔one flip (`gloview:allworkspaces`) |
 | `expo_out` | 250 | easeout | all→one collapse: tile glide + dispersing ghosts during the flip |
-| `ws_enter` | 250 | easeout | incoming tiles' timing on a workspace switch (styles via `ws_enter_anim`; the flip above uses `expo_*` instead) |
-| `ws_exit` | 250 | easeout | outgoing ghosts' timing on a workspace switch (styles via `ws_exit_anim`) |
+| `ws_enter` | 250 | easeout | incoming tiles' timing on a workspace switch (styles via `ws_enter_style`; the flip above uses `expo_*` instead) |
+| `ws_exit` | 250 | easeout | outgoing ghosts' timing on a workspace switch (styles via `ws_exit_style`) |
 | `lift` | 150 | easeout | the dragged preview's lift ramp when a grid-tile drag picks up (scale 0.7→1 + alpha); disabled → instant |
-| `grid_swap_anim` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` | how grid tiles choreograph a swap: travel toward each other / exit up + enter from the top / fade out + in / scale-pop in place |
-| `strip_swap_anim` | same set | `horizontal` | the same styles for strip card thumbnails (slidevert always uses the strip's top edge) |
-| `ws_enter_anim` | `pop` \| `slide` \| `slidevert` \| `fade` | `slide` | how the incoming workspace's tiles appear on a ws switch: scale-pop from the slot center / slide in from the direction side (by ws id order) / drop from the top edge / alpha fade |
-| `ws_exit_anim` | `slide` \| `slidevert` \| `fade` | `slide` | how the outgoing workspace's tiles leave: slide out to the opposite side / exit through the top edge / fade+shrink in place |
+| `grid_swap_style` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` | how grid tiles choreograph a swap: travel toward each other / exit up + enter from the top / fade out + in / scale-pop in place |
+| `strip_swap_style` | same set | `horizontal` | the same styles for strip card thumbnails (slidevert always uses the strip's top edge) |
+| `ws_enter_style` | `pop` \| `slide` \| `slidevert` \| `fade` | `slide` | how the incoming workspace's tiles appear on a ws switch: scale-pop from the slot center / slide in from the direction side (by ws id order) / drop from the top edge / alpha fade |
+| `ws_exit_style` | `slide` \| `slidevert` \| `fade` | `slide` | how the outgoing workspace's tiles leave: slide out to the opposite side / exit through the top edge / fade+shrink in place |
 
 **Custom curves (Lua).** Register a named curve once (e.g. next to the config
 in `plugins/gloview.lua`) and use its name in any `<leaf>_curve`:
@@ -164,7 +164,7 @@ in `plugins/gloview.lua`) and use its name in any `<leaf>_curve`:
 hl.plugin.gloview.curve("snap", function(t)
     return 1 - (1 - t) * (1 - t) * (1 - t) * (1 - t) -- quartic out
 end)
--- then: populate_curve = "snap"
+-- then: appear_curve = "snap"
 ```
 
 The function receives `t` in `0..1` and returns the shaped progress;
@@ -173,7 +173,7 @@ non-number results fall back to `easeout` and are logged once.
 
 ```lua
 animations_enabled = 1,
--- populate_ms = 250, populate_curve = "easeout", populate_enabled = 1, ...
+-- appear_ms = 250, appear_curve = "easeout", appear_enabled = 1, ...
 ```
 | `preview_round` | int (px) | `12` | Corner radius for every window-shaped preview — main grid tiles AND strip card previews (with their borders/shadows) — clamped down automatically on the smaller strip thumbnails |
 | `preview_round_power` | float | `2.0` | Corner curve exponent (`2` = circular, higher = squarer "squircle"), applied consistently to the same set of elements as `preview_round` |

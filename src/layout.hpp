@@ -26,6 +26,8 @@ struct LRect {
     [[nodiscard]] double aspect() const { return h > 0.0 ? w / h : 1.0; }
 };
 
+inline double lerp(double a, double b, double t) { return a + (b - a) * t; }
+
 enum class Engine {
     Rows,    // macOS-like: aspect-preserving, packed into balanced rows
     Grid,    // uniform cells, aspect-preserving inside each

@@ -525,7 +525,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               else
                 dropOnWorkspace(w, it);
               kickPulse(w);
-              landAfterMove(w, fromBox, leaf("drop").ms, leaf("drop").curve); // strip thumb -> flight; grid tile -> glide
+              landAfterMove(w, fromBox, leaf("drop").ms, leaf("drop").curve);
               return true;
             }
           }

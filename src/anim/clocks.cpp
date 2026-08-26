@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 
 #include "../anim/curves.hpp"
 #include "../config/config.hpp"
@@ -9,8 +8,6 @@
 namespace gloview {
 
 namespace {
-
-double lerp(double a, double b, double t) { return a + (b - a) * t; }
 
 // Tight cascade window shared by the position glide and the appear stagger:
 // a loose per-tile fan reads as a scatter of individually-arriving tiles;
@@ -133,8 +130,8 @@ void Overview::updateAnimation() {
   m_glide      = leaf(glideLeaf());
   m_entry      = leaf(entryLeaf());
   m_ghost      = leaf(ghostLeaf());
-  m_enterStyle = cfg::anim.ws_enter_anim.get();
-  m_exitStyle  = cfg::anim.ws_exit_anim.get();
+  m_enterStyle = cfg::anim.ws_enter_style.get();
+  m_exitStyle  = cfg::anim.ws_exit_style.get();
 
   const double dur = animDuration();
   // Stall guard: a render hole rewinds EVERY clock to its last-known value so
