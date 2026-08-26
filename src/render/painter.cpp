@@ -231,6 +231,7 @@ void Overview::paint() {
 
   const bool dragging =
       draggedTile() >= 0 ||
+      (m_drag.press == model::Drag::Press::StripCard && m_drag.lifted) ||
       (m_drag.press == model::Drag::Press::StripWin && !m_drag.win.expired());
   if (dragging) { // Z3
     renderDragTile();
