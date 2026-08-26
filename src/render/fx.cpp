@@ -298,7 +298,7 @@ void Overview::renderSwapFX() const {
         alpha = static_cast<float>(1.0 - t / 0.3);
       } else { // pop into the new box: scale 0.7 -> 1 with a slight overshoot
         const double q = (t - 0.3) / 0.7;
-        const double k = 0.7 + 0.3 * curves::eval(leaf("new_card").curve, q);
+        const double k = 0.7 + 0.3 * curves::eval(leaf("card").curve, q);
         bx = to.x + to.w * (1.0 - k) / 2.0;
         by = to.y + to.h * (1.0 - k) / 2.0;
         bw = to.w * k;

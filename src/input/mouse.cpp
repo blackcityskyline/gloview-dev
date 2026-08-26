@@ -1,5 +1,6 @@
 #include "../config/config.hpp"
 #include "../overview.hpp"
+#include "../debug/log.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -138,6 +139,12 @@ void Overview::updateHover() {
         m_drag.fromBox = stripWinSlotRect(
             m_strip[m_drag.idx], stripCardAt(m_drag.idx),
             static_cast<size_t>(std::max(0, m_drag.winIdx)));
+      debug::dbg("DRAG LIFT kind=" +
+                 std::string(m_drag.press == model::Drag::Press::Tile
+                                 ? "tile"
+                                 : "strip") +
+                 " from=" + std::to_string(m_drag.fromBox.w) + "x" +
+                 std::to_string(m_drag.fromBox.h));
     }
     if (m_drag.lifted) {
       m_drag.x = lx;
@@ -363,7 +370,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         else
           dropOnStripCard(w, lx, ly, -1);
         kickPulse(w); // success ring: pops on its NEW strip card slot
-        landAfterMove(w, m_lastDragBox, leaf("lift").ms, leaf("lift").curve);
+        landAfterMove(w, m_lastDragBox, leaf("drag").ms, leaf("drag").curve);
         return true;
       }
       // grid mode: dropped onto (or near) another preview → swap the two
@@ -422,7 +429,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         t.appear = 1.0;
       }
       beginSwapFX(w, m_lastDragBox, model::SwapStyle::Horizontal,
-                  leaf("lift").ms, leaf("lift").curve);
+                  leaf("drag").ms, leaf("drag").curve);
       ensureAnimPump();
       damage();
       return true;
@@ -513,7 +520,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         // drop (RMB: swap with that workspace's window instead — task #8)
         if (dropOnStripCard(w, lx, ly, stripItem)) {
           kickPulse(w);
-          landAfterMove(w, fromBox, leaf("lift").ms, leaf("lift").curve);
+          landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
           return true;
         }
         // dropped in the main preview area → send it to whichever workspace is
@@ -536,7 +543,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               else
                 dropOnWorkspace(w, it);
               kickPulse(w);
-              landAfterMove(w, fromBox, leaf("lift").ms, leaf("lift").curve);
+              landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
               return true;
             }
           }
@@ -546,7 +553,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       // back into its slot on the lift leaf (reverse of the pickup)
       if (lifted)
         beginSwapFX(w, fromBox, model::SwapStyle::Horizontal,
-                    leaf("lift").ms, leaf("lift").curve);
+                    leaf("drag").ms, leaf("drag").curve);
       damage();
       return true;
     }

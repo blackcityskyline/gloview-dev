@@ -137,9 +137,13 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
               HyprlandAPI::addLuaFunction(handle, "gloview", kActions[Is].lua,
                                           &luaInvoke<Is>)),
              ...);
-            // hl.plugin.gloview.curve(name, fn): custom animation curves
+            // hl.plugin.gloview.curve(name, fn|{bezier}): custom curves
             HyprlandAPI::addLuaFunction(handle, "gloview", "curve",
                                         &gloview::curves::luaRegister);
+            // hl.plugin.gloview.animation({leaf=..., enabled=..., speed=...,
+            //                              ms=..., curve=..., style=...})
+            HyprlandAPI::addLuaFunction(handle, "gloview", "animation",
+                                        &gloview::cfg::luaSetAnimRule);
         }
     }(std::make_index_sequence<kActions.size()>{});
 

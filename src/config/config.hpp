@@ -23,6 +23,7 @@
 // any read is possible — the `def` members are only a last-resort fallback
 // for reads before registration (which would be a bug anyway).
 
+#include <optional>
 #include <string>
 
 #include <hyprland/src/plugins/PluginAPI.hpp>
@@ -32,6 +33,8 @@
 #include <hyprland/src/helpers/Color.hpp>
 
 #include "../layout.hpp"
+
+struct lua_State;
 
 namespace gloview::cfg {
 
@@ -153,64 +156,73 @@ struct blur {
 
 inline blur blur;
 
-// ---- anim: master + leaves (see anim/clocks.cpp, anim/curves.cpp) ------------
-struct anim {
-  Int enabled;    // master switch: 0 = the whole plugin is instant
-  Int duration;   // legacy shared knob (open/close/reflow follow it)
+// ---- anim: master + declarative leaves --------------------------------------
+// One LEAF per animated behavior; every leaf reads exactly
+//   <leaf>_enabled (0/1), <leaf>_speed (float multiplier over the leaf's
+//   built-in base duration, clamped to >= 16ms), <leaf>_curve (a registry
+//   name — native, Lua function or Lua bezier),
+// plus <leaf>_style where the motion has selectable types. The bases live in
+// one table in config.cpp — the single place that documents what a speed of
+// 1.0 means for every leaf.
+namespace anim {
 
-  Int open_enabled;
-  Int open_ms;
-  Str open_curve;
-  Int close_enabled;
-  Int close_ms;
-  Str close_curve;
-  Int glide_enabled;
-  Int glide_ms;
-  Str glide_curve;
-  Int new_card_enabled;
-  Int new_card_ms;
-  Str new_card_curve;
-  Int pulse_enabled;
-  Int pulse_ms;
-  Str pulse_curve;
-  Int strip_step_enabled;
-  Int strip_step_ms;
-  Str strip_step_curve;
-  Int appear_enabled;
-  Int appear_ms;
-  Str appear_curve;
-  Str grid_swap_style;   // horizontal | slidevert | fade | pop
-  Str strip_swap_style;
-  Str ws_enter_style;    // ws-switch: pop | slide | slidevert | fade (incoming)
-  Str ws_exit_style;     // ws-switch: slide | slidevert | fade | pop (outgoing)
-  Int ws_enter_enabled;
-  Int ws_enter_ms;
-  Str ws_enter_curve;
-  Int ws_exit_enabled;
-  Int ws_exit_ms;
-  Str ws_exit_curve;
-  Int swap_main_enabled;   // the swap initiator's flight
-  Int swap_main_ms;
-  Str swap_main_curve;
-  Int swap_partner_enabled; // the swap partner's flight
-  Int swap_partner_ms;
-  Str swap_partner_curve;
-  Int expo_in_enabled;  // one->all spread
-  Int expo_in_ms;       // one->all: the tiles spreading
-  Str expo_in_curve;
-  Int expo_out_enabled; // all->one collapse
-  Int expo_out_ms;      // all->one: the tiles collapsing
-  Str expo_out_curve;
-  Int lift_enabled; // the preview lift on grab
-  Int lift_ms;
-  Str lift_curve;
-
-  // built-ins only; null if unknown
-  const Int *leafEnabled(std::string_view name);
-  const Int *leafMs(std::string_view name);
-  const Str *leafCurve(std::string_view name);
+struct Leaf {
+  Int enabled;
+  Float speed;
+  Str curve;
 };
-inline anim anim;
+
+inline Int enabled; // master: 0 = the whole plugin is instant
+inline Leaf open{ {}, {}, {} };        // overview entry reveal
+inline Leaf close{ {}, {}, {} };       // exit collapse
+inline Leaf glide{ {}, {}, {} };       // tile movement slot <-> slot
+inline Leaf appear{ {}, {}, {} };      // staggered entry of brand-new tiles
+inline Leaf card{ {}, {}, {} };        // "+" card pop-in
+inline Leaf pulse{ {}, {}, {} };       // success ring after swaps/moves
+inline Leaf strip_step{ {}, {}, {} };  // animated strip scroll
+inline Leaf ws_enter{ {}, {}, {} };    // ws switch: incoming tiles
+inline Leaf ws_exit{ {}, {}, {} };     // ws switch: outgoing ghosts
+inline Leaf expo_in{ {}, {}, {} };     // all<->one flip: spread
+inline Leaf expo_out{ {}, {}, {} };    // all<->one flip: collapse
+inline Leaf swap_main{ {}, {}, {} };   // swap exchange: initiator flight
+inline Leaf swap_partner{ {}, {}, {} };// swap exchange: partner flight
+inline Leaf drag{ {}, {}, {} };        // grab pickup AND release return home
+
+// Motion TYPE selectors (<thing>_style keys).
+inline Str ws_enter_style;  // pop | slide | slidevert | fade (incoming)
+inline Str ws_exit_style;   // slide | slidevert | fade | pop (outgoing)
+inline Str grid_swap_style; // horizontal | slidevert | fade | pop
+inline Str strip_swap_style;
+
+} // namespace anim
+
+// Imperative rules layered OVER the config keys (gloview.animation{...}):
+// whatever a rule sets wins; unset fields fall through to the schema.
+struct AnimRule {
+  std::optional<bool> enabled;
+  std::optional<double> speed;
+  std::optional<int> ms; // absolute window, beats speed
+  std::optional<std::string> curve;
+  std::optional<std::string> style;
+};
+void setAnimRule(const std::string &leaf, const AnimRule &rule);
+const AnimRule *animRule(const std::string &leaf);
+// Style of a <thing>_style key with its rule override applied.
+std::string animStyle(const std::string &thing);
+
+// Leaf lookup for the resolver: name -> handles + built-in base duration
+// (what a speed of 1.0 means).
+struct LeafSpec {
+  const char *name;
+  anim::Leaf *leaf;
+  float base;       // ms at speed 1.0
+  const char *curveDef;
+};
+const LeafSpec *animLeaf(const char *name);
+
+// gloview.animation({ leaf = "...", enabled = bool, speed = n, ms = n,
+//                     curve = "...", style = "..." }) — Lua side.
+int luaSetAnimRule(lua_State *L);
 
 // ---- keys --------------------------------------------------------------------
 struct keys {

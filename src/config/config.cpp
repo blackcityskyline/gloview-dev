@@ -2,9 +2,17 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
+#include <deque>
+#include <optional>
 #include <unordered_map>
 
 #include <hyprland/src/plugins/PluginAPI.hpp>
+
+extern "C" {
+#include <lauxlib.h>
+#include <lua.h>
+}
 
 namespace gloview::cfg {
 
@@ -75,6 +83,8 @@ CHyprColor Color::get(float alphaMul) const {
 
 namespace {
 
+
+
 struct IntSpec {
   Int *h;
   const char *key;
@@ -124,36 +134,7 @@ constexpr IntSpec kInts[] = {
     {&blur.fullscreen_background, "plugin:gloview:fullscreen_background", 0},
     {&blur.frost_underlay, "plugin:gloview:frost_underlay", 0}, // DEPRECATED no-op
     // anim
-    {&anim.enabled, "plugin:gloview:animations_enabled", 1},
-    {&anim.duration, "plugin:gloview:duration", 360},
-    {&anim.open_enabled, "plugin:gloview:open_enabled", 1},
-    {&anim.open_ms, "plugin:gloview:open_ms", -1},
-    {&anim.close_enabled, "plugin:gloview:close_enabled", 1},
-    {&anim.close_ms, "plugin:gloview:close_ms", -1},
-    {&anim.glide_enabled, "plugin:gloview:glide_enabled", 1},
-    {&anim.glide_ms, "plugin:gloview:glide_ms", -1},
-    {&anim.new_card_enabled, "plugin:gloview:new_card_enabled", 1},
-    {&anim.new_card_ms, "plugin:gloview:new_card_ms", -1},
-    {&anim.pulse_enabled, "plugin:gloview:pulse_enabled", 0},
-    {&anim.pulse_ms, "plugin:gloview:pulse_ms", 180},
-    {&anim.strip_step_enabled, "plugin:gloview:strip_step_enabled", 1},
-    {&anim.strip_step_ms, "plugin:gloview:strip_step_ms", 200},
-    {&anim.appear_enabled, "plugin:gloview:appear_enabled", 1},
-    {&anim.appear_ms, "plugin:gloview:appear_ms", 250},
-    {&anim.ws_enter_enabled, "plugin:gloview:ws_enter_enabled", 1},
-    {&anim.ws_enter_ms, "plugin:gloview:ws_enter_ms", 250},
-    {&anim.ws_exit_enabled, "plugin:gloview:ws_exit_enabled", 1},
-    {&anim.ws_exit_ms, "plugin:gloview:ws_exit_ms", 250},
-    {&anim.swap_main_enabled, "plugin:gloview:swap_main_enabled", 1},
-    {&anim.swap_main_ms, "plugin:gloview:swap_main_ms", 320},
-    {&anim.swap_partner_enabled, "plugin:gloview:swap_partner_enabled", 1},
-    {&anim.swap_partner_ms, "plugin:gloview:swap_partner_ms", 320},
-    {&anim.expo_in_enabled, "plugin:gloview:expo_in_enabled", 1},
-    {&anim.expo_in_ms, "plugin:gloview:expo_in_ms", 250},
-    {&anim.expo_out_enabled, "plugin:gloview:expo_out_enabled", 1},
-    {&anim.expo_out_ms, "plugin:gloview:expo_out_ms", 250},
-    {&anim.lift_enabled, "plugin:gloview:lift_enabled", 1},
-    {&anim.lift_ms, "plugin:gloview:lift_ms", 150},
+    {&anim::enabled, "plugin:gloview:animations_enabled", 1},
     // keys
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     // behavior
@@ -208,24 +189,10 @@ constexpr StrSpec kStrs[] = {
     {&keys.alt_tab_modifier, "plugin:gloview:alt_tab_modifier", "alt"},
     // behavior
     {&behavior.preview_mode, "plugin:gloview:preview_mode", "live"},
-    {&anim.grid_swap_style, "plugin:gloview:grid_swap_style", "horizontal"},
-    {&anim.strip_swap_style, "plugin:gloview:strip_swap_style", "horizontal"},
-    {&anim.ws_enter_style, "plugin:gloview:ws_enter_style", "slide"},
-    {&anim.ws_exit_style, "plugin:gloview:ws_exit_style", "slide"},
-    {&anim.ws_enter_curve, "plugin:gloview:ws_enter_curve", "easeout"},
-    {&anim.ws_exit_curve, "plugin:gloview:ws_exit_curve", "easeout"},
-    {&anim.swap_main_curve, "plugin:gloview:swap_main_curve", "easeinout"},
-    {&anim.swap_partner_curve, "plugin:gloview:swap_partner_curve", "easeinout"},
-    {&anim.expo_in_curve, "plugin:gloview:expo_in_curve", "easeout"},
-    {&anim.expo_out_curve, "plugin:gloview:expo_out_curve", "easeout"},
-    {&anim.lift_curve, "plugin:gloview:lift_curve", "easeout"},
-    {&anim.open_curve, "plugin:gloview:open_curve", "easeout"},
-    {&anim.close_curve, "plugin:gloview:close_curve", "easeout"},
-    {&anim.glide_curve, "plugin:gloview:glide_curve", "easeout"},
-    {&anim.new_card_curve, "plugin:gloview:new_card_curve", "back"},
-    {&anim.pulse_curve, "plugin:gloview:pulse_curve", "back"},
-    {&anim.strip_step_curve, "plugin:gloview:strip_step_curve", "easeinout"},
-    {&anim.appear_curve, "plugin:gloview:appear_curve", "easeout"},
+    {&anim::grid_swap_style, "plugin:gloview:grid_swap_style", "horizontal"},
+    {&anim::strip_swap_style, "plugin:gloview:strip_swap_style", "horizontal"},
+    {&anim::ws_enter_style, "plugin:gloview:ws_enter_style", "slide"},
+    {&anim::ws_exit_style, "plugin:gloview:ws_exit_style", "slide"},
     {&behavior.cursor_mode, "plugin:gloview:cursor_mode", "auto"},
     {&behavior.workspace_key_mode, "plugin:gloview:key_workspace_mode", "switch"},
     {&behavior.new_workspace_mode, "plugin:gloview:new_workspace_mode", "fill"},
@@ -256,6 +223,53 @@ constexpr ColorSpec kColors[] = {
 
 } // namespace
 
+// ---- animation leaves ---------------------------------------------------------
+// One row per leaf: handles, built-in base duration (what speed 1.0 means) and
+// the default curve. The resolver (anim/clocks.cpp) reads ONLY this table and
+// the imperative rules — adding a leaf is one row here plus consumers.
+constexpr LeafSpec kLeaves[] = {
+    {"open", &anim::open, 300, "easeout"},         {"close", &anim::close, 300, "easeout"},
+    {"glide", &anim::glide, 300, "easeout"},       {"appear", &anim::appear, 250, "easeout"},
+    {"card", &anim::card, 250, "back"},            {"pulse", &anim::pulse, 180, "back"},
+    {"strip_step", &anim::strip_step, 200, "easeinout"},
+    {"ws_enter", &anim::ws_enter, 250, "easeout"}, {"ws_exit", &anim::ws_exit, 250, "easeout"},
+    {"expo_in", &anim::expo_in, 250, "easeout"},   {"expo_out", &anim::expo_out, 250, "easeout"},
+    {"swap_main", &anim::swap_main, 320, "easeinout"},
+    {"swap_partner", &anim::swap_partner, 320, "easeinout"},
+    {"drag", &anim::drag, 150, "easeout"},
+};
+
+void registerLeaf(HANDLE handle, const LeafSpec &l) {
+  // deque: element addresses stay valid across appends — the keys MUST
+  // outlive registration (CIntValue/CStringValue keep them as const char*).
+  static std::deque<std::string> keys;
+  const auto key = [&](const char *suffix) {
+    keys.emplace_back(std::string("plugin:gloview:") + l.name + "_" + suffix);
+    return keys.back().c_str();
+  };
+  auto reg = [](HANDLE h, const char *k, auto v) {
+    HyprlandAPI::addConfigValueV2(h, v);
+  };
+  // clang-format off
+  l.leaf->enabled.v = makeShared<Config::Values::CIntValue>(key("enabled"), "", static_cast<Config::INTEGER>(1));
+  l.leaf->enabled.def = 1;
+  reg(handle, key("enabled"), l.leaf->enabled.v);
+  l.leaf->speed.v = makeShared<Config::Values::CFloatValue>(key("speed"), "", 1.0F);
+  l.leaf->speed.def = 1.0F;
+  reg(handle, key("speed"), l.leaf->speed.v);
+  l.leaf->curve.v = makeShared<Config::Values::CStringValue>(key("curve"), "", l.curveDef);
+  l.leaf->curve.def = l.curveDef;
+  reg(handle, key("curve"), l.leaf->curve.v);
+  // clang-format on
+}
+
+const LeafSpec *animLeaf(const char *name) {
+  for (const auto &l : kLeaves)
+    if (std::strcmp(l.name, name) == 0)
+      return &l;
+  return nullptr;
+}
+
 void registerAll(HANDLE handle) {
   for (auto &s : kInts) {
     s.h->v = makeShared<Config::Values::CIntValue>(s.key, "",
@@ -281,51 +295,71 @@ void registerAll(HANDLE handle) {
     s.h->def = s.def;
     HyprlandAPI::addConfigValueV2(handle, s.h->v);
   }
+  // Leaf keys are BUILT here, not written as literals — but the names are
+  // kept alive in a deque (stable element addresses) because CIntValue stores
+  // the key as const char*; a dangling c_str() of a temporary is the
+  // session-fatal trap documented at the schema tables above.
+  for (const auto &l : kLeaves)
+    registerLeaf(handle, l);
 }
 
-const Int *anim::leafEnabled(std::string_view name) {
-  static const std::unordered_map<std::string_view, const Int *> k = {
-      {"open", &open_enabled},         {"close", &close_enabled},
-      {"glide", &glide_enabled},     {"new_card", &new_card_enabled},
-      {"pulse", &pulse_enabled},
-      {"strip_step", &strip_step_enabled}, {"appear", &appear_enabled},
-      {"ws_enter", &ws_enter_enabled},     {"ws_exit", &ws_exit_enabled},
-      {"swap_main", &swap_main_enabled}, {"swap_partner", &swap_partner_enabled},
-      {"expo_in", &expo_in_enabled},    {"expo_out", &expo_out_enabled},
-      {"lift", &lift_enabled},
+
+namespace {
+std::unordered_map<std::string, AnimRule> g_rules;
+} // namespace
+
+void setAnimRule(const std::string &leaf, const AnimRule &rule) { g_rules[leaf] = rule; }
+const AnimRule *animRule(const std::string &leaf) {
+  const auto it = g_rules.find(leaf);
+  return it == g_rules.end() ? nullptr : &it->second;
+}
+
+std::string animStyle(const std::string &thing) {
+  static const std::unordered_map<std::string, const Str *> k = {
+      {"ws_enter", &anim::ws_enter_style},  {"ws_exit", &anim::ws_exit_style},
+      {"grid_swap", &anim::grid_swap_style},{"strip_swap", &anim::strip_swap_style},
   };
-  const auto it = k.find(name);
-  return it == k.end() ? nullptr : it->second;
+  if (const auto *r = animRule(thing); r && r->style)
+    return *r->style;
+  const auto it = k.find(thing);
+  return it == k.end() ? std::string() : it->second->get();
 }
 
-const Int *anim::leafMs(std::string_view name) {
-  static const std::unordered_map<std::string_view, const Int *> k = {
-      {"open", &open_ms},     {"close", &close_ms},
-      {"glide", &glide_ms}, {"new_card", &new_card_ms},
-      {"pulse", &pulse_ms}, {"strip_step", &strip_step_ms},
-      {"appear", &appear_ms},
-      {"ws_enter", &ws_enter_ms},          {"ws_exit", &ws_exit_ms},
-      {"swap_main", &swap_main_ms},     {"swap_partner", &swap_partner_ms},
-      {"expo_in", &expo_in_ms},         {"expo_out", &expo_out_ms},
-      {"lift", &lift_ms},
+// gloview.animation({ leaf = "...", enabled = bool, speed = n, ms = n,
+//                     curve = "...", style = "..." }) — an imperative rule
+// layered over the schema keys; whatever it sets wins.
+int luaSetAnimRule(::lua_State *L) {
+  const char *leaf = luaL_checkstring(L, 1);
+  luaL_checktype(L, 2, LUA_TTABLE);
+  lua_settop(L, 2);
+  AnimRule r;
+  auto num = [&](const char *k) -> std::optional<double> {
+    lua_getfield(L, 2, k);
+    const bool ok = lua_isnumber(L, -1);
+    const double v = ok ? lua_tonumber(L, -1) : 0.0;
+    lua_pop(L, 1);
+    return ok ? std::optional(v) : std::nullopt;
   };
-  const auto it = k.find(name);
-  return it == k.end() ? nullptr : it->second;
-}
-
-const Str *anim::leafCurve(std::string_view name) {
-  static const std::unordered_map<std::string_view, const Str *> k = {
-      {"open", &open_curve},     {"close", &close_curve},
-      {"glide", &glide_curve}, {"new_card", &new_card_curve},
-      {"pulse", &pulse_curve}, {"strip_step", &strip_step_curve},
-      {"appear", &appear_curve},
-      {"ws_enter", &ws_enter_curve},       {"ws_exit", &ws_exit_curve},
-      {"swap_main", &swap_main_curve},  {"swap_partner", &swap_partner_curve},
-      {"expo_in", &expo_in_curve},      {"expo_out", &expo_out_curve},
-      {"lift", &lift_curve},
+  auto str = [&](const char *k) -> std::optional<std::string> {
+    lua_getfield(L, 2, k);
+    const bool ok = lua_isstring(L, -1);
+    const std::string v = ok ? lua_tostring(L, -1) : "";
+    lua_pop(L, 1);
+    return ok ? std::optional(v) : std::nullopt;
   };
-  const auto it = k.find(name);
-  return it == k.end() ? nullptr : it->second;
+  if ((lua_getfield(L, 2, "enabled"), lua_pop(L, 1), false)) {}
+  lua_getfield(L, 2, "enabled");
+  if (lua_isboolean(L, -1))
+    r.enabled = lua_toboolean(L, -1) != 0;
+  lua_pop(L, 1);
+  if (const auto v = num("speed"))
+    r.speed = *v;
+  if (const auto v = num("ms"))
+    r.ms = static_cast<int>(*v);
+  r.curve = str("curve");
+  r.style = str("style");
+  setAnimRule(leaf, r);
+  return 0;
 }
 
-} // namespace gloview::cfg
+} // namespace gloview

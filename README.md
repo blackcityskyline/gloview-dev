@@ -123,57 +123,66 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `padding_top` | int (px) | `40` | Extra gap between the strip and the previews |
 | `padding_bottom` | int (px) | `70` | Bottom outer margin |
 | `max_scale` | float | `1.0` | Never enlarge a preview past real size × this |
-| `duration` | int (ms) | `360` | Legacy shared animation length — followed by every `<leaf>_ms` left at `-1` |
 
 ### Animations
 
-One master switch plus a registry of leaves, mirroring Hyprland's own
-animation model. Every leaf expands to three options: `<leaf>_enabled` (0/1),
-`<leaf>_ms` (-1 = follow `duration`; otherwise its own length), and
-`<leaf>_curve` (`linear` / `easeout` / `easeinout` / `back`, or the name of
-any custom curve registered from Lua — see below). Setting
-`animations_enabled = 0` makes the ENTIRE plugin instant — open/close, glides,
-pulses, everything — through a single choke point.
+One master switch (`animations_enabled`, 0 = the whole plugin is instant) and
+a set of LEAVES mirroring Hyprland's own animation model. Every leaf reads
+exactly three options:
 
-| Leaf | Default ms | Default curve | What it drives |
+| field | type | meaning |
+|---|---|---|
+| `<leaf>_enabled` | 0/1 | kill-switch for that one motion |
+| `<leaf>_speed` | float | multiplier over the leaf's built-in base duration — `2.0` is twice as fast, `0.5` twice as slow (floor: one frame) |
+| `<leaf>_curve` | name | any registry curve: native (`linear`/`easeout`/`easeinout`/`back`) or registered from Lua |
+
+Motions with selectable TYPES also read a `<thing>_style` key (listed below).
+
+The imperative twin of these keys is the Lua API
+`gloview.animation{ leaf = "...", enabled = bool, speed = n, ms = n, curve = "...", style = "..." }`
+— whatever it sets wins over the static keys; unset fields fall through.
+
+| Leaf | base @ speed 1.0 | default curve | What it drives |
 |---|---|---|---|
-| `open` | via duration | easeout | entry reveal (chrome + tiles) |
-| `close` | via duration | easeout | exit collapse |
-| `glide` | via duration | easeout | tile glide between slots on drops, swaps, syncs, close-home |
-| `new_card` | via duration | back | "+" card pop-in |
-| `pulse` | 180 | back | success ring after swaps and moves |
-| `strip_step` | 200 | easeinout | animated strip scroll per workspace step |
-| `appear` | 250 | easeout | staggered entry of brand-new tiles; ghost fade-out fallback (window close) |
-| `lift` | 150 | easeout | the drag cycle in BOTH directions: the pickup flight when a grab lifts (preview flies from its slot to the cursor anchor) and the release flight back into the slot; bends toward the moving cursor; disabled → instant |
-| `expo_in` | 250 | easeout | one→all spread: tile glide + newcomers during the all↔one flip (`gloview:allworkspaces`) |
-| `expo_out` | 250 | easeout | all→one collapse: tile glide + dispersing ghosts during the flip |
-| `swap_main` | 320 | easeinout | the swap INITIATOR's flight |
-| `swap_partner` | 320 | easeinout | the swap PARTNER's flight |
-| `ws_enter` | 250 | easeout | incoming tiles' timing on a workspace switch (styles via `ws_enter_style`; the flip above uses `expo_*` instead) |
-| `ws_exit` | 250 | easeout | outgoing ghosts' timing on a workspace switch (styles via `ws_exit_style`) |
-| `grid_swap_style` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` | how grid tiles choreograph a swap: travel toward each other / exit up + enter from the top / fade out + in / scale-pop in place |
-| `strip_swap_style` | same set | `horizontal` | the same styles for strip card thumbnails (slidevert always uses the strip's top edge) |
-| `ws_enter_style` | `pop` \| `slide` \| `slidevert` \| `fade` | `slide` | how the incoming workspace's tiles appear on a ws switch: scale-pop from the slot center / slide in from the direction side (by ws id order) / drop from the top edge / alpha fade |
-| `ws_exit_style` | `slide` \| `slidevert` \| `fade` | `slide` | how the outgoing workspace's tiles leave: slide out to the opposite side / exit through the top edge / fade+shrink in place |
+| `open` | 300ms | easeout | entry reveal (chrome + tiles) |
+| `close` | 300ms | easeout | exit collapse |
+| `glide` | 300ms | easeout | tile movement slot ↔ slot (drops, syncs, close-home) |
+| `appear` | 250ms | easeout | staggered entry of brand-new tiles |
+| `card` | 250ms | back | "+" card pop-in |
+| `pulse` | 180ms | back | success ring after swaps/moves |
+| `strip_step` | 200ms | easeinout | animated strip scroll per workspace step |
+| `ws_enter` | 250ms | easeout | incoming tiles' timing on a workspace switch (style: `ws_enter_style`) |
+| `ws_exit` | 250ms | easeout | outgoing ghosts on a workspace switch (style: `ws_exit_style`) |
+| `expo_in` | 250ms | easeout | one→all spread during the all↔one flip (`gloview:allworkspaces`) |
+| `expo_out` | 250ms | easeout | all→one collapse during the flip |
+| `swap_main` | 320ms | easeinout | the swap INITIATOR's flight |
+| `swap_partner` | 320ms | easeinout | the swap PARTNER's flight |
+| `drag` | 150ms | easeout | the drag cycle in BOTH directions: pickup flight to the cursor anchor and release flight back into the slot; disabled → instant |
+
+Style keys:
+
+| Key | values | default |
+|---|---|---|
+| `ws_enter_style` | `pop` \| `slide` \| `slidevert` \| `fade` | `slide` |
+| `ws_exit_style` | `slide` \| `slidevert` \| `fade` | `slide` |
+| `grid_swap_style` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` |
+| `strip_swap_style` | same set | `horizontal` |
 
 **Custom curves (Lua).** Register a named curve once (e.g. next to the config
-in `plugins/gloview.lua`) and use its name in any `<leaf>_curve`:
+in `plugins/gloview.lua`) — either as a function or as a cubic bezier:
 
 ```lua
-hl.plugin.gloview.curve("snap", function(t)
-    return 1 - (1 - t) * (1 - t) * (1 - t) * (1 - t) -- quartic out
-end)
--- then: appear_curve = "snap"
+-- function form: receives t in 0..1, returns shaped progress (overshoot OK)
+gloview.curve("snap", function(t) return 1 - (1 - t)^3 end)
+
+-- bezier form (CSS-style control points), both spellings work:
+gloview.curve("fluent_decel", { type = "bezier", points = { {0, 0.2}, {0.4, 1} } })
+gloview.curve("easeOutCubic", { 0.33, 1, 0.68, 1 })
+
+-- then use it anywhere:
+gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 ```
 
-The function receives `t` in `0..1` and returns the shaped progress;
-overshoot beyond `1` is allowed (that is what `back` does). Errors and
-non-number results fall back to `easeout` and are logged once.
-
-```lua
-animations_enabled = 1,
--- appear_ms = 250, appear_curve = "easeout", appear_enabled = 1, ...
-```
 | `preview_round` | int (px) | `12` | Corner radius for every window-shaped preview — main grid tiles AND strip card previews (with their borders/shadows) — clamped down automatically on the smaller strip thumbnails |
 | `preview_round_power` | float | `2.0` | Corner curve exponent (`2` = circular, higher = squarer "squircle"), applied consistently to the same set of elements as `preview_round` |
 | `strip_preview_round` | — | — | **Deprecated**, no longer read — strip window previews now share `preview_round`/`preview_round_power` |

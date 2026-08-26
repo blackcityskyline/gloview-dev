@@ -29,26 +29,41 @@ double staggered(double base, int i, int n) {
 // nothing but its start point (plus the stall guard in updateAnimation:
 // wall-time inside a render hole never counts).
 
-// Resolved animation group: {on, ms >= 1, curve}. One choke point for the
-// config contract: master off -> instant; `<leaf>_enabled = 0` -> instant;
-// `_ms = -1` inherits `duration`; an unknown name falls back to duration +
-// easeout instead of dereferencing null.
+// Resolved animation group: {on, ms >= 16, curve}. Resolution order per field:
+// imperative rule (gloview.animation{...}) > schema key > built-in default.
+// Master off -> 1ms (instant); speed is a multiplier over the leaf's base
+// (2.0 = twice as fast), clamped to a one-frame floor.
 anim::AnimCfg Overview::leaf(const char *name) const {
   anim::AnimCfg a;
-  a.on = cfg::anim.enabled != 0;
-  if (const auto *en = cfg::anim.leafEnabled(name); en && *en == 0)
+  const auto *spec = cfg::animLeaf(name);
+  const auto *rule = cfg::animRule(name);
+  double speed = 1.0;
+  int absMs = -1;
+  a.on = cfg::anim::enabled != 0;
+  if (spec && spec->leaf->enabled == 0)
     a.on = false;
-  int ms = -1;
-  if (const auto *m = cfg::anim.leafMs(name))
-    ms = m->get();
-  if (!a.on)
+  if (rule) {
+    if (rule->enabled)
+      a.on = *rule->enabled;
+    if (rule->speed)
+      speed = *rule->speed;
+    if (rule->ms)
+      absMs = *rule->ms;
+    if (rule->curve)
+      a.curve = *rule->curve;
+  }
+  if (!a.on) {
     a.ms = 1.0;
-  else if (ms >= 0)
-    a.ms = std::max(1.0, static_cast<double>(ms));
+    return a;
+  }
+  if (absMs >= 0)
+    a.ms = std::max(16.0, static_cast<double>(absMs));
   else
-    a.ms = std::max(1.0, static_cast<double>(cfg::anim.duration));
-  if (const auto *c = cfg::anim.leafCurve(name))
-    a.curve = c->get();
+    a.ms = std::max(16.0,
+                    static_cast<double>(spec ? spec->base : 250.0F) /
+                        std::clamp(speed, 0.01, 20.0));
+  if (!rule || !rule->curve)
+    a.curve = spec ? spec->leaf->curve.get() : std::string("easeout");
   return a;
 }
 
@@ -130,9 +145,9 @@ void Overview::updateAnimation() {
   m_glide      = leaf(glideLeaf());
   m_entry      = leaf(entryLeaf());
   m_ghost      = leaf(ghostLeaf());
-  m_lift       = leaf("lift");
-  m_enterStyle = cfg::anim.ws_enter_style.get();
-  m_exitStyle  = cfg::anim.ws_exit_style.get();
+  m_lift       = leaf("drag");
+  m_enterStyle = cfg::animStyle("ws_enter");
+  m_exitStyle  = cfg::animStyle("ws_exit");
 
   const double dur = animDuration();
   // Stall guard: a render hole rewinds EVERY clock to its last-known value so
@@ -149,7 +164,7 @@ void Overview::updateAnimation() {
       if (m_newCardAnim)
         m_newCard.compensateStall(gapMs, newCardDur());
       if (m_drag.lifted)
-        m_dragLiftClock.compensateStall(gapMs, leaf("lift").ms);
+        m_dragLiftClock.compensateStall(gapMs, leaf("drag").ms);
       for (auto &fx : m_swapfx)
         fx.clock.compensateStall(gapMs, fx.ms);
     }
@@ -233,7 +248,7 @@ bool Overview::animBusy() const {
 double Overview::newCardScale() const {
   if (!m_newCardAnim)
     return 1.0;
-  return curves::eval(leaf("new_card").curve, m_newCard.raw(newCardDur()));
+  return curves::eval(leaf("card").curve, m_newCard.raw(newCardDur()));
 }
 
 void Overview::animateStripTo(double from, double to) {
