@@ -54,18 +54,17 @@ bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
     }
   }
 
-  if (m_drag.button == BTN_RIGHT) {
-    if (vj)
-      swapWindows(w, vj); // precise slot swap with the chosen window
-    else
-      swapOnWorkspace(w, it); // empty card / gap: last-focused fallback
-    return true;
-  }
-
+  // The drop takes the CHOSEN window's slot: a swap with it. (A true
+  // half-split insert would need to focus the neighbor on the target
+  // workspace before the move — CFocusState::rawWindowFocus ABORTS on
+  // windows of non-active workspaces, so that path is unavailable until the
+  // layout-insert support lands.)
   if (vj)
-    Desktop::focusState()->fullWindowFocus(
-        vj, Desktop::FOCUS_REASON_OTHER); // dwindle splits the focused one
-  dropOnWorkspace(w, it); // move: the layout halves the focused neighbor
+    swapWindows(w, vj); // precise slot swap with the chosen window
+  else if (m_drag.button == BTN_RIGHT)
+    swapOnWorkspace(w, it); // empty card / gap: last-focused fallback
+  else
+    dropOnWorkspace(w, it); // empty card / gap: plain move
 }
 
 void Overview::dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {

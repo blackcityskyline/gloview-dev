@@ -13,6 +13,7 @@
 #include "gl_util.hpp"
 #include "../config/config.hpp"
 #include "../overview.hpp"
+#include "../debug/log.hpp"
 #include "../anim/curves.hpp"
 #include "window_content.hpp"
 
@@ -328,8 +329,18 @@ void Overview::renderGhosts() const {
   const double eOut  = curves::eval(anim("populate").curve, p); // 0..1 gone
   for (const auto &g : m_ghosts) {
     const auto w = g.win.lock();
-    if (!w || !w->m_isMapped || w->isHidden())
+    if (!w || !w->m_isMapped || w->isHidden()) {
+      debug::dbg("ghost SKIP: win=" + std::to_string((bool)w) +
+                 " mapped=" + std::to_string(w ? w->m_isMapped : false) +
+                 " hidden=" + std::to_string(w ? w->isHidden() : false));
       continue;
+    }
+    if (!g.dbgLogged) {
+      g.dbgLogged = true;
+      debug::dbg("ghost DRAW at " + std::to_string(g.box.x) + "," +
+                 std::to_string(g.box.y) + " " + std::to_string(g.box.w) + "x" +
+                 std::to_string(g.box.h));
+    }
     const double k  = 1.0 - 0.15 * eOut; // shrink toward its own center
     const double cx = g.box.x + g.box.w / 2.0, cy = g.box.y + g.box.h / 2.0;
     const LRect box{cx - g.box.w * k / 2.0, cy - g.box.h * k / 2.0,

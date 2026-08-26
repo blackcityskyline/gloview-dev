@@ -68,6 +68,7 @@ struct LabelTex {
 struct Ghost {
   PHLWINDOWREF win;
   LRect box; // monitor-local logical, frozen at removal
+  mutable bool dbgLogged = false; // TEMP: first-draw trace
 };
 
 // Success pop after a swap (anim_swap_pulse): window-keyed so rebuilds
