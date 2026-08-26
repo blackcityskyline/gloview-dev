@@ -277,6 +277,9 @@ private:
   // (leaf() allocates its curve string — fine once per frame, not per tile).
   anim::AnimCfg m_glide, m_entry, m_ghost, m_lift;
   std::string m_enterStyle, m_exitStyle;
+  bool m_tileGlideDone = false; // true once the tile glide reaches 1.0 —
+                                // prevents a backward jump when the transition
+                                // ends and glideLeaf() changes the effective ms
   // True while ANY animation can still produce motion (master pump predicate).
   bool animBusy() const;
   // True while ANY secondary clock is mid-flight (entries/ghosts, strip

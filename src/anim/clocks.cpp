@@ -99,7 +99,7 @@ double Overview::tileProgress(int i) const {
   // deliberately goes back to riding m_progress DOWN: the tile lerp then has
   // the exact same shape as the collapsing chrome, keeping landing and
   // strip-collapse frame-synced.
-  const double base = m_opening ? m_tileClock.raw(m_glide.ms) : m_progress;
+  const double base = m_opening ? (m_tileGlideDone ? 1.0 : m_tileClock.raw(m_glide.ms)) : m_progress;
   return staggered(base, i, static_cast<int>(m_tiles.size()));
 }
 
@@ -170,6 +170,11 @@ void Overview::updateAnimation() {
     }
   }
   m_lastAnimTick = now;
+
+  // Once the tile clock reaches 1.0, lock it there. Prevents a backward jump
+  // when a transition ends and glideLeaf() changes the effective ms divisor.
+  if (!m_tileGlideDone && m_tileClock.raw(m_glide.ms) >= 1.0)
+    m_tileGlideDone = true;
 
   const auto st = leaf("strip_step");
   if (!m_stripTween.done(st.ms))

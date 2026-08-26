@@ -93,7 +93,7 @@ void Overview::renderDragTile() const {
   }
   if (m_drag.press == model::Drag::Press::StripWin && !m_drag.win.expired())
     drawDragStripChrome();
-  if (m_drag.press == model::Drag::Press::StripCard)
+  if (m_drag.press == model::Drag::Press::StripCard && m_drag.lifted)
     drawDragStripCardChrome();
 }
 
@@ -174,7 +174,7 @@ void Overview::renderDragWindow() const {
     return;
 
   // StripCard: no window — render the wallpaper thumbnail instead
-  if (m_drag.press == model::Drag::Press::StripCard) {
+  if (m_drag.press == model::Drag::Press::StripCard && m_drag.lifted) {
     if (m_drag.idx < 0 || m_drag.idx >= static_cast<int>(m_strip.size()))
       return;
     const auto &it = m_strip[static_cast<size_t>(m_drag.idx)];
