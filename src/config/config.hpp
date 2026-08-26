@@ -185,6 +185,23 @@ struct anim {
   Str strip_swap_anim;
   Str ws_enter_anim;    // ws-switch: pop | slide | slidevert | fade (incoming)
   Str ws_exit_anim;     // ws-switch: slide | slidevert | fade | pop (outgoing)
+  Int ws_enter_enabled;
+  Int ws_enter_ms;
+  Str ws_enter_curve;
+  Int ws_exit_enabled;
+  Int ws_exit_ms;
+  Str ws_exit_curve;
+  Int swap_main_ms;     // the swap initiator's flight
+  Str swap_main_curve;
+  Int swap_partner_ms;  // the swap partner's flight
+  Str swap_partner_curve;
+  Int expo_in_ms;       // one->all: the tiles spreading
+  Str expo_in_curve;
+  Int expo_out_ms;      // all->one: the tiles collapsing
+  Str expo_out_curve;
+  Int drag_lift_enabled; // the preview lift on grab
+  Int drag_lift_ms;
+  Str drag_lift_curve;
 
   // built-ins only; null if unknown
   const Int *leafEnabled(std::string_view name);

@@ -316,7 +316,11 @@ void Overview::renderMainWindows() const {
 // close-window). Same populate clock as Tile.appear — the mirror direction.
 // Softer than the incoming pop: ghosts are a motion cue, not the main event.
 void Overview::renderGhosts() const {
-  if (m_ghosts.empty() || m_populate.done(populateMs()))
+  if (m_ghosts.empty())
+    return;
+  const bool wsSlide = m_wsSlideDir != 0;
+  const auto cfgLeaf = wsSlide ? anim("ws_out") : anim("populate");
+  if (m_populate.done(cfgLeaf.ms))
     return;
   const auto m = m_monitor.lock();
   if (!m)
@@ -325,8 +329,8 @@ void Overview::renderGhosts() const {
   const auto when    = Time::steadyNow();
   const int round    = pxr(cfg::look.preview_round, scale);
   const float roundPow = cfg::look.preview_round_power;
-  const double p    = std::min(1.0, m_populate.raw(populateMs()));
-  const double eOut = curves::eval(anim("populate").curve, p); // 0..1 gone
+  const double p    = std::min(1.0, m_populate.raw(cfgLeaf.ms));
+  const double eOut = curves::eval(cfgLeaf.curve, p); // 0..1 gone
   for (const auto &g : m_ghosts) {
     const auto w = g.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())

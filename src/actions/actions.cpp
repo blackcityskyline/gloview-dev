@@ -172,8 +172,12 @@ bool Overview::swapWindows(const PHLWINDOW &wa, const PHLWINDOW &wb) {
   // tile glide for grid tiles; the other styles replace it with an FX
   // flight; strip thumbs always fly.
   for (const auto &[win, box] : oldBoxes)
-    if (win == wa || win == wb)
-      landAfterMove(win, box);
+    if (win == wa)
+      landAfterMove(win, box, animMs("swap_main"),
+                    anim("swap_main").curve); // the initiator
+    else if (win == wb)
+      landAfterMove(win, box, animMs("swap_partner"),
+                    anim("swap_partner").curve); // the partner
   kickPulse(wa);
   kickPulse(wb);
   damage();       // this frame's snapshot may already be taken — schedule
@@ -219,7 +223,8 @@ model::SwapStyle Overview::gridSwapStyle() const {
 }
 
 void Overview::beginSwapFX(const PHLWINDOW &w, const LRect &from,
-                           model::SwapStyle style) {
+                           model::SwapStyle style, double ms,
+                           const std::string &curve) {
   if (!w || !w->m_isMapped || w->isHidden())
     return;
   std::erase_if(m_swapfx, [&w](const model::SwapFX &f) { return f.win.lock() == w; });
@@ -227,6 +232,8 @@ void Overview::beginSwapFX(const PHLWINDOW &w, const LRect &from,
   fx.win   = w;
   fx.from  = from;
   fx.style = style;
+  fx.ms    = ms;
+  fx.curve = curve;
   fx.clock.begin();
   m_swapfx.push_back(std::move(fx));
   ensureAnimPump();
@@ -240,7 +247,8 @@ bool Overview::swapfxActive(const PHLWINDOW &w) const {
   return false;
 }
 
-void Overview::landAfterMove(const PHLWINDOW &w, const LRect &oldBox) {
+void Overview::landAfterMove(const PHLWINDOW &w, const LRect &oldBox,
+                             double ms, const std::string &curve) {
   if (!w)
     return;
   bool strip = false;
@@ -252,13 +260,13 @@ void Overview::landAfterMove(const PHLWINDOW &w, const LRect &oldBox) {
         strip = true;
   }
   if (strip) { // strip thumbs have no glide machinery — always an FX flight
-    beginSwapFX(w, oldBox, stripSwapStyle());
+    beginSwapFX(w, oldBox, stripSwapStyle(), ms, curve);
     return;
   }
   // grid tile: Horizontal keeps the natural->target tile glide (chrome flies
   // with it); the other styles replace the glide with an FX flight.
   if (gridSwapStyle() != model::SwapStyle::Horizontal) {
-    beginSwapFX(w, oldBox, gridSwapStyle());
+    beginSwapFX(w, oldBox, gridSwapStyle(), ms, curve);
     return;
   }
   for (auto &t : m_tiles)
@@ -328,10 +336,11 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   replayReflow(oldBoxes);
   // landings: w flew from the drag preview (m_lastDragBox), the partner flew
   // from its old grid slot into w's old card (a strip thumb now).
-  landAfterMove(w, m_lastDragBox);
+  landAfterMove(w, m_lastDragBox, animMs("drop"), anim("drop").curve);
   for (const auto &[win, box] : oldBoxes)
     if (win == partner)
-      landAfterMove(partner, box);
+      landAfterMove(partner, box, animMs("swap_partner"),
+                    anim("swap_partner").curve);
   damage();
 }
 

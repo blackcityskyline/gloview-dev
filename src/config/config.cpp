@@ -142,6 +142,16 @@ constexpr IntSpec kInts[] = {
     {&anim.populate_ms, "plugin:gloview:populate_ms", 250},
     {&anim.drop_enabled, "plugin:gloview:drop_enabled", 1},
     {&anim.drop_ms, "plugin:gloview:drop_ms", 320},
+    {&anim.ws_enter_enabled, "plugin:gloview:ws_enter_enabled", 1},
+    {&anim.ws_enter_ms, "plugin:gloview:ws_enter_ms", 250},
+    {&anim.ws_exit_enabled, "plugin:gloview:ws_exit_enabled", 1},
+    {&anim.ws_exit_ms, "plugin:gloview:ws_exit_ms", 250},
+    {&anim.swap_main_ms, "plugin:gloview:swap_main_ms", 320},
+    {&anim.swap_partner_ms, "plugin:gloview:swap_partner_ms", 320},
+    {&anim.expo_in_ms, "plugin:gloview:expo_in_ms", 250},
+    {&anim.expo_out_ms, "plugin:gloview:expo_out_ms", 250},
+    {&anim.drag_lift_enabled, "plugin:gloview:drag_lift_enabled", 1},
+    {&anim.drag_lift_ms, "plugin:gloview:drag_lift_ms", 150},
     // keys
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     // behavior
@@ -199,6 +209,13 @@ constexpr StrSpec kStrs[] = {
     {&anim.strip_swap_anim, "plugin:gloview:strip_swap_anim", "horizontal"},
     {&anim.ws_enter_anim, "plugin:gloview:ws_enter_anim", "slide"},
     {&anim.ws_exit_anim, "plugin:gloview:ws_exit_anim", "slide"},
+    {&anim.ws_enter_curve, "plugin:gloview:ws_enter_curve", "easeout"},
+    {&anim.ws_exit_curve, "plugin:gloview:ws_exit_curve", "easeout"},
+    {&anim.swap_main_curve, "plugin:gloview:swap_main_curve", "easeinout"},
+    {&anim.swap_partner_curve, "plugin:gloview:swap_partner_curve", "easeinout"},
+    {&anim.expo_in_curve, "plugin:gloview:expo_in_curve", "easeout"},
+    {&anim.expo_out_curve, "plugin:gloview:expo_out_curve", "easeout"},
+    {&anim.drag_lift_curve, "plugin:gloview:drag_lift_curve", "easeout"},
     {&anim.open_curve, "plugin:gloview:open_curve", "easeout"},
     {&anim.close_curve, "plugin:gloview:close_curve", "easeout"},
     {&anim.reflow_curve, "plugin:gloview:reflow_curve", "easeout"},
@@ -282,6 +299,10 @@ const Int *anim::leafMs(std::string_view name) {
       {"reflow", &reflow_ms}, {"new_card", &new_card_ms},
       {"swap_pulse", &swap_pulse_ms}, {"strip_step", &strip_step_ms},
       {"populate", &populate_ms}, {"drop", &drop_ms},
+      {"ws_in", &ws_enter_ms},          {"ws_out", &ws_exit_ms},
+      {"swap_main", &swap_main_ms},     {"swap_partner", &swap_partner_ms},
+      {"expo_in", &expo_in_ms},         {"expo_out", &expo_out_ms},
+      {"drag_lift", &drag_lift_ms},
   };
   const auto it = k.find(name);
   return it == k.end() ? nullptr : it->second;
@@ -293,6 +314,10 @@ const Str *anim::leafCurve(std::string_view name) {
       {"reflow", &reflow_curve}, {"new_card", &new_card_curve},
       {"swap_pulse", &swap_pulse_curve}, {"strip_step", &strip_step_curve},
       {"populate", &populate_curve}, {"drop", &drop_curve},
+      {"ws_in", &ws_enter_curve},       {"ws_out", &ws_exit_curve},
+      {"swap_main", &swap_main_curve},  {"swap_partner", &swap_partner_curve},
+      {"expo_in", &expo_in_curve},      {"expo_out", &expo_out_curve},
+      {"drag_lift", &drag_lift_curve},
   };
   const auto it = k.find(name);
   return it == k.end() ? nullptr : it->second;

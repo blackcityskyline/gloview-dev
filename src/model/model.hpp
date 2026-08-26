@@ -132,6 +132,8 @@ struct SwapFX {
   PHLWINDOWREF win;
   LRect from;    // monitor-local logical
   SwapStyle style = SwapStyle::Horizontal;
+  double ms = 320;               // the flight duration (the leaf's _ms)
+  std::string curve = "easeinout"; // the leaf's _curve
   anim::Tween clock;
   mutable bool dbgLogged = false; // TEMP: first-frame trace
 };

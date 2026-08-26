@@ -285,15 +285,18 @@ private:
   }
   double tileAppear(int i) const; // staggered 0..1 for tile i
   void kickPulse(const PHLWINDOW &w);
-  // Landing animations (anim leaf "drop"): beginSwapFX flies a window that
-  // now renders as a STRIP thumb from `from` into its slot; landAfterMove
-  // dispatches per landing surface (strip -> flight, grid -> tile glide from
-  // oldBox). Called from the drop/swap handlers after the rebuild.
+  // Swap/drop transitions (anim leaves "drop"/"swap_main"/"swap_partner"):
+  // beginSwapFX flies a window that now renders as a STRIP thumb from `from`
+  // into its slot; landAfterMove dispatches per landing surface (strip ->
+  // flight, grid -> tile glide from oldBox). Called from the drop/swap
+  // handlers after the rebuild; ms/curve come from the caller's leaf.
   void beginSwapFX(const PHLWINDOW &w, const LRect &from,
-                   model::SwapStyle style);
+                   model::SwapStyle style, double ms,
+                   const std::string &curve);
   [[nodiscard]] model::SwapStyle gridSwapStyle() const;
   [[nodiscard]] model::SwapStyle stripSwapStyle() const;
-  void landAfterMove(const PHLWINDOW &w, const LRect &oldBox);
+  void landAfterMove(const PHLWINDOW &w, const LRect &oldBox, double ms,
+                     const std::string &curve);
   [[nodiscard]] bool swapfxActive(const PHLWINDOW &w) const;
   void renderSwapFX() const; // Z2.5: flying windows, above the strip
   double dropDur() const { return animMs("drop"); }
@@ -474,6 +477,8 @@ private:
   // drop/swap rebuild). Newcomer tiles slide in from that side, the removed
   // ones slide out to the opposite side.
   int m_wsSlideDir = 0;
+  // The lift clock: the drag preview's appearance ramp (drag_lift leaf).
+  anim::Tween m_dragLiftClock;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
                      const CHyprColor &col, double p) const;
   void addWorkspace();          // "+" card: create a workspace (animate it in,

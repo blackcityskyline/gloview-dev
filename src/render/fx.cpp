@@ -114,6 +114,11 @@ void Overview::renderDragWindow() const {
   const auto m = m_monitor.lock();
   if (!m)
     return;
+  // The drag_lift leaf: the preview ramps in when the drag lifts (scale
+  // 0.7 -> 1 around the box center + alpha), then rides at 1. Disabled leaf
+  // -> instant (ms 1).
+  const double liftT = m_dragLiftClock.raw(animMs("drag_lift"));
+  const double liftK = curves::eval(anim("drag_lift").curve, liftT);
   if (dragIdx >= 0) {
     const auto w = m_tiles[dragIdx].win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
@@ -121,10 +126,13 @@ void Overview::renderDragWindow() const {
     const double e     = eased();
     const double scale = m->m_scale;
     const LRect  lb    = tileContentBox(static_cast<size_t>(dragIdx), dragBox());
-    const CBox   px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
+    const double cw    = lb.w * (0.7 + 0.3 * liftK);
+    const double ch    = lb.h * (0.7 + 0.3 * liftK);
+    const LRect  lbr{lb.cx() - cw / 2.0, lb.cy() - ch / 2.0, cw, ch};
+    const CBox   px(lbr.x * scale, lbr.y * scale, lbr.w * scale, lbr.h * scale);
     const int    round = pxr(cfg::look.preview_round, scale);
-    renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(),
-                     round, cfg::look.preview_round_power);
+    renderWindowLive(w, m, px, px, static_cast<float>(e * liftK),
+                     Time::steadyNow(), round, cfg::look.preview_round_power);
     return;
   }
   if (m_drag.press == model::Drag::Press::StripWin) {
@@ -232,7 +240,6 @@ void Overview::renderSwapFX() const {
   const auto when      = Time::steadyNow();
   const int  round     = cfg::look.preview_round;
   const float roundPow = cfg::look.preview_round_power;
-  const double dur     = dropDur();
 
   for (const auto &fx : m_swapfx) {
     const auto w = fx.win.lock();
@@ -264,7 +271,8 @@ void Overview::renderSwapFX() const {
     if (!found)
       continue;
 
-    const double t = fx.clock.raw(dur);
+    const double t   = fx.clock.raw(fx.ms);
+    const double p   = curves::eval(fx.curve, t);
     double bx = 0, by = 0, bw = 0, bh = 0;
     float alpha = 1.0F;
     bool ring = false; // the release-point ring: only the direct flight keeps it
@@ -272,13 +280,13 @@ void Overview::renderSwapFX() const {
     if (fx.style == model::SwapStyle::SlideVert) {
       constexpr double LIFT = 12.0; // clearance above the zone's top edge
       if (t < 0.5) { // exit: straight up from the old box
-        const double q = curves::eval(anim("drop").curve, t / 0.5);
+        const double q = curves::eval(fx.curve, t / 0.5);
         bx = fx.from.x;
         by = fx.from.y - (fx.from.h + LIFT) * q;
         bw = fx.from.w;
         bh = fx.from.h;
       } else { // enter: drops down from the top edge into the new box
-        const double q = curves::eval(anim("drop").curve, (t - 0.5) / 0.5);
+        const double q = curves::eval(fx.curve, (t - 0.5) / 0.5);
         bx = to.x;
         by = to.y - (to.h + LIFT) * (1.0 - q);
         bw = to.w;
@@ -307,7 +315,6 @@ void Overview::renderSwapFX() const {
         alpha = static_cast<float>(std::min(1.0, q * 3.0));
       }
     } else { // Horizontal: the direct flight, windows travel toward each other
-      const double p = curves::eval(anim("drop").curve, t);
       bx = lerp(fx.from.x, to.x, p);
       by = lerp(fx.from.y, to.y, p);
       bw = lerp(fx.from.w, to.w, p);
