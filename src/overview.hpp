@@ -453,8 +453,9 @@ private:
   tileContentBox(size_t i,
                  const LRect &slot) const; // slot fitted to the window's aspect
   LRect dragBox() const; // the picked-up tile's TARGET box at the cursor
-  LRect dragStripBox() const; // the picked-up strip thumb's TARGET box
-  LRect dragVisualBox() const; // where the preview IS: pickup flight or target
+  LRect dragStripBox() const;    // the picked-up strip thumb's TARGET box
+  LRect dragStripCardBox() const; // the picked-up strip card's TARGET box
+  LRect dragVisualBox() const;  // where the preview IS: pickup flight or target
   int draggedTile()
       const; // m_drag.idx while a grid drag is lifted (bounds-checked), else -1
   void
@@ -529,7 +530,9 @@ private:
   stripWinSlotRect(const model::StripItem &it, const LRect &card,
                    size_t j) const; // a strip window's on-screen slot rect
   void drawDragStripChrome()
-      const; // chrome for a strip-window drag (shadow/border/backing)
+      const; // chrome for a strip-window drag
+  void drawDragStripCardChrome()
+      const; // chrome for a strip-card drag (shadow/border/backing)
   // keyboard navigation
   bool keyMatches(int keycode, uint32_t mods, const std::string &combo)
       const; // keycode+held mods ∈ the combo list (names or "shift+tab"

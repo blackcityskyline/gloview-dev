@@ -122,8 +122,9 @@ void Overview::updateHover() {
   const double lx = mc.x - m->m_position.x;
   const double ly = mc.y - m->m_position.y;
 
-  // drag tracking: promote an armed press (tile or strip-window slot) to a
-  // real drag once the pointer passes a small threshold, then follow it.
+  // drag tracking: promote an armed press (tile, strip-window slot, or strip
+  // card) to a real drag once the pointer passes a small threshold, then follow
+  // it.
   if (m_drag.armed()) {
     const double dx = lx - m_drag.pressX;
     const double dy = ly - m_drag.pressY;
@@ -135,6 +136,8 @@ void Overview::updateHover() {
         m_drag.fromBox =
             tileContentBox(static_cast<size_t>(m_drag.idx),
                            currentBox(m_tiles[m_drag.idx], m_drag.idx));
+      else if (m_drag.press == model::Drag::Press::StripCard)
+        m_drag.fromBox = stripCardAt(static_cast<size_t>(m_drag.idx));
       else
         m_drag.fromBox = stripWinSlotRect(
             m_strip[m_drag.idx], stripCardAt(m_drag.idx),
@@ -142,6 +145,8 @@ void Overview::updateHover() {
       debug::dbg("DRAG LIFT kind=" +
                  std::string(m_drag.press == model::Drag::Press::Tile
                                  ? "tile"
+                             : m_drag.press == model::Drag::Press::StripCard
+                                 ? "stripcard"
                                  : "strip") +
                  " from=" + std::to_string(m_drag.fromBox.w) + "x" +
                  std::to_string(m_drag.fromBox.h));
@@ -305,13 +310,22 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           }
         }
       }
-      m_drag.press = model::Drag::Press::StripCard;
-      if (it.kind == model::StripItem::Kind::All)
+      if (it.kind == model::StripItem::Kind::All) {
+        m_drag.press = model::Drag::Press::Consumed;
         toggleAllWorkspaces();
-      else if (it.kind == model::StripItem::Kind::Plus)
+      } else if (it.kind == model::StripItem::Kind::Plus) {
+        m_drag.press = model::Drag::Press::Consumed;
         addWorkspace();
-      else
-        switchToWorkspace(it);
+      } else {
+        // arm drag candidate — click vs drag decided on release, mirroring
+        // grid tile behavior
+        m_drag.press   = model::Drag::Press::StripCard;
+        m_drag.idx     = static_cast<int>(i);
+        m_drag.pressX  = m_drag.x = lx;
+        m_drag.pressY  = m_drag.y = ly;
+        m_drag.grabDX  = lx - c.x;
+        m_drag.grabDY  = ly - c.y;
+      }
       return true;
     }
     // window tile → arm a drag candidate; click vs drag decided on release
@@ -335,9 +349,18 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     return true; // middle was fully handled on press
 
   switch (m_drag.press) {
-  case model::Drag::Press::StripCard:
   case model::Drag::Press::Consumed: { // switch / ✕ already handled on press
     m_drag = {};
+    return true;
+  }
+  case model::Drag::Press::StripCard: {
+    const int press = m_drag.idx;
+    m_drag = {};
+    if (press >= 0 && press < static_cast<int>(m_strip.size())) {
+      const auto &it = m_strip[static_cast<size_t>(press)];
+      if (it.kind == model::StripItem::Kind::Ws)
+        switchToWorkspace(it);
+    }
     return true;
   }
   case model::Drag::Press::Tile: {

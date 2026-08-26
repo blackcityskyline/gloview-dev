@@ -92,8 +92,8 @@ struct Drag {
     Tile,      // pressed on a main-grid tile: idx = m_tiles index
     StripWin,  // pressed on a strip card's window slot: idx = m_strip index,
                // winIdx = index into its wins, win = the window
-    StripCard, // pressed elsewhere on a strip card — switch already happened
-               // on press; release must do nothing
+    StripCard, // pressed on a strip card: idx = m_strip index; arms a drag
+               // candidate — click without move → switch on release
     Empty,     // empty space → close on release unless consumed
     Consumed,  // press fully handled on the spot (e.g. a ✕ button)
   };
@@ -107,7 +107,10 @@ struct Drag {
   bool lifted = false;             // moved past the threshold → a real drag
   LRect fromBox;                   // the grabbed preview's box at lift time —
                                    // the pickup flight's origin
-  bool armed() const { return press == Press::Tile || press == Press::StripWin; }
+  bool armed() const {
+    return press == Press::Tile || press == Press::StripWin ||
+           press == Press::StripCard;
+  }
 };
 
 // A drag/swap landing: the window's content flies from `from` (the box it

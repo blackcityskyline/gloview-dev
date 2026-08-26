@@ -83,6 +83,11 @@ void Overview::renderStrip() const {
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
+    // Suppress the dragged card at its original position — it's rendered
+    // separately via drawDragStripCardChrome + renderDragWindow.
+    if (m_drag.press == model::Drag::Press::StripCard &&
+        static_cast<int>(i) == m_drag.idx && m_drag.lifted)
+      continue;
     const bool hover = static_cast<int>(i) == m_hoveredStrip;
     LRect card = it.card;
     card.x += slide.x + scroll.x; // follow the strip slide-in and scroll

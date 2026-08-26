@@ -49,6 +49,15 @@ LRect Overview::dragBox() const {
   return LRect{m_drag.x + offX, m_drag.y + offY, full.w * k, full.h * k};
 }
 
+// The picked-up strip card's target box: the full card scaled by drag_size.
+LRect Overview::dragStripCardBox() const {
+  if (m_drag.idx < 0 || m_drag.idx >= static_cast<int>(m_strip.size()))
+    return LRect{0, 0, 0, 0};
+  const LRect card = stripCardAt(static_cast<size_t>(m_drag.idx));
+  const double k   = dragScale();
+  return LRect{m_drag.x + offX, m_drag.y + offY, card.w * k, card.h * k};
+}
+
 // The picked-up strip thumb's target box: its slot scaled by drag_size,
 // aspect preserved, anchored like the grid preview.
 LRect Overview::dragStripBox() const {
@@ -65,15 +74,16 @@ LRect Overview::dragStripBox() const {
 // cursor anchor during pickup (the lift leaf shapes time; the destination
 // moves with the cursor, so the flight bends naturally), riding at 1 after.
 LRect Overview::dragVisualBox() const {
-  const LRect to =
-      m_drag.press == model::Drag::Press::Tile ? dragBox() : dragStripBox();
+  const LRect to = m_drag.press == model::Drag::Press::Tile     ? dragBox()
+                 : m_drag.press == model::Drag::Press::StripCard ? dragStripCardBox()
+                                                                  : dragStripBox();
   const double p = curves::eval(m_lift.curve, m_dragLiftClock.raw(m_lift.ms));
   if (p < 1.0 && m_drag.lifted)
     return lerp(m_drag.fromBox, to, p);
   return to;
 }
 
-// Z3: chrome for whichever drag is live (grid tile or strip window).
+// Z3: chrome for whichever drag is live (grid tile, strip window, or strip card).
 void Overview::renderDragTile() const {
   const int dragIdx = draggedTile();
   if (dragIdx >= 0) {
@@ -83,6 +93,8 @@ void Overview::renderDragTile() const {
   }
   if (m_drag.press == model::Drag::Press::StripWin && !m_drag.win.expired())
     drawDragStripChrome();
+  if (m_drag.press == model::Drag::Press::StripCard)
+    drawDragStripCardChrome();
 }
 
 // Chrome for a window dragged straight off the strip — same visual language
@@ -121,13 +133,93 @@ void Overview::drawDragStripChrome() const {
                 roundPow);
 }
 
+// Chrome for a strip CARD dragged off the strip — border + shadow around the
+// scaled card, same visual language as tile/strip-window drags.
+void Overview::drawDragStripCardChrome() const {
+  const auto m = m_monitor.lock();
+  if (!m)
+    return;
+  const double s        = m->m_scale;
+  const double e        = eased();
+  const LRect  lb       = dragVisualBox();
+  const int    round    = clampRound(cfg::strip.card_round, lb.w, lb.h);
+  const float  roundPow = cfg::look.preview_round_power;
+  const auto   shadowCol = cfg::colors.shadow.get(1.0);
+  const auto   hoverCol  = cfg::colors.hover_border.get(e);
+
+  g_pHyprOpenGL->renderRoundedShadow(
+      pxb(LRect{lb.x, lb.y + 14.0, lb.w, lb.h}, s), pxr(round, s), roundPow,
+      static_cast<int>(30.0 * s), Config::CGradientValueData(shadowCol),
+      e * 0.18);
+
+  const int th = cfg::look.hover_border_size;
+  const Config::CGradientValueData grad(hoverCol);
+  g_pHyprOpenGL->renderBorder(pxb(lb, s), grad,
+                              {.round = pxr(round, s),
+                               .roundingPower = roundPow,
+                               .borderSize = th,
+                               .a = 1.0F,
+                               .outerRound = outerRoundPx(round, th, roundPow, s)});
+
+  safetyBacking(lb, s, cfg::colors.backing.get(), 0.08, round, roundPow);
+}
+
 // Z3: the dragged window's live content, right after its chrome. Grid tile
 // and strip thumb share one flow: both fly from their source box to the
 // cursor anchor on the lift leaf (see dragVisualBox), fully opaque.
+// StripCard: render the card's wallpaper thumbnail at the drag position.
 void Overview::renderDragWindow() const {
   const auto m = m_monitor.lock();
   if (!m)
     return;
+
+  // StripCard: no window — render the wallpaper thumbnail instead
+  if (m_drag.press == model::Drag::Press::StripCard) {
+    if (m_drag.idx < 0 || m_drag.idx >= static_cast<int>(m_strip.size()))
+      return;
+    const auto &it = m_strip[static_cast<size_t>(m_drag.idx)];
+    if (it.kind != model::StripItem::Kind::Ws)
+      return;
+    bool live = false;
+    auto tex = backdropSource(live);
+    if ((!tex || !tex->ok()) && m_backdropSrcFB && m_backdropSrcFB->isAllocated())
+      tex = m_backdropSrcFB->getTexture();
+    if (!tex || !tex->ok())
+      return;
+    const double e     = eased();
+    const double scale = m->m_scale;
+    const LRect  lb    = dragVisualBox();
+    const double texW  = std::max(1.0, static_cast<double>(tex->m_size.x));
+    const double texH  = std::max(1.0, static_cast<double>(tex->m_size.y));
+    const double cardRatio = lb.w / std::max(1.0, lb.h);
+    const double texRatio  = texW / texH;
+    double u0 = 0.0, v0 = 0.0, u1 = 1.0, v1 = 1.0;
+    if (cardRatio > texRatio) {
+      const double f = texRatio / cardRatio;
+      v0 = (1.0 - f) / 2.0;
+      v1 = (1.0 + f) / 2.0;
+    } else {
+      const double f = cardRatio / texRatio;
+      u0 = (1.0 - f) / 2.0;
+      u1 = (1.0 + f) / 2.0;
+    }
+    CTexPassElement::SRenderData td{};
+    td.tex           = tex;
+    td.box           = pxb(lb, scale);
+    td.a             = static_cast<float>(e);
+    td.round         = pxr(clampRound(cfg::strip.card_round, lb.w, lb.h), scale);
+    td.roundingPower = cfg::look.preview_round_power;
+    td.allowCustomUV = true;
+    auto &uvTL = g_pHyprRenderer->m_renderData.primarySurfaceUVTopLeft;
+    auto &uvBR = g_pHyprRenderer->m_renderData.primarySurfaceUVBottomRight;
+    uvTL = Vector2D{u0, v0};
+    uvBR = Vector2D{u1, v1};
+    g_pHyprRenderer->draw(td, g_pHyprRenderer->m_renderData.damage);
+    uvTL = Vector2D{-1.0, -1.0};
+    uvBR = Vector2D{-1.0, -1.0};
+    return;
+  }
+
   PHLWINDOW w;
   if (const int dragIdx = draggedTile(); dragIdx >= 0)
     w = m_tiles[dragIdx].win.lock();
