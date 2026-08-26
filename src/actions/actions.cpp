@@ -202,7 +202,7 @@ void Overview::swapTiles(int a, int b) {
 // the other's workspace. Falls back to a plain move when there's nothing on the
 // target to swap with (empty workspace, or a fullscreen partner with no
 // well-defined slot).
-// Landing animations (anim leaf "drop"). beginSwapFX: the window now renders
+// Landing flights. beginSwapFX: the window now renders
 // as a STRIP thumb (strip has no glide machinery of its own) — fly it from
 // `from` into its slot. landAfterMove: dispatches per landing surface — strip
 // -> flight, grid tile -> natural = oldBox so the existing tile glide flies it
@@ -332,7 +332,7 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   replayReflow(oldBoxes);
   // landings: w flew from the drag preview (m_lastDragBox), the partner flew
   // from its old grid slot into w's old card (a strip thumb now).
-  landAfterMove(w, m_lastDragBox, leaf("drop").ms, leaf("drop").curve);
+  landAfterMove(w, m_lastDragBox, leaf("lift").ms, leaf("lift").curve);
   for (const auto &[win, box] : oldBoxes)
     if (win == partner)
       landAfterMove(partner, box, leaf("swap_partner").ms,

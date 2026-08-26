@@ -339,27 +339,13 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const double grabDX = m_drag.grabDX, grabDY = m_drag.grabDY;
     if (m_drag.lifted) {
       const bool rmb = m_drag.button == BTN_RIGHT;
-      // the dragged preview lands: the tile glides from the CURSOR box into
-      // its slot (captureCurrentBoxes below picks this up, so every
-      // replayReflow-based path flies it in; the preview vanishes and the
-      // tile appears at the same box — no discontinuity). The origin is the
-      // VISUAL box — mid-pickup releases fly in from wherever the preview is.
-      if (press < static_cast<int>(m_tiles.size())) {
-        m_tiles[press].natural = dragVisualBox();
-        m_tiles[press].appear = 1.0;
-      }
-      m_lastDragBox = m_drag.press == model::Drag::Press::Tile &&
-                              press < static_cast<int>(m_tiles.size())
-                          ? m_tiles[press].natural
-                          : dragVisualBox();
-      auto oldBoxes = captureCurrentBoxes();
-      // captureCurrentBoxes reads currentBox = lerp(natural, target, e) —
-      // the tile clock is DONE at release (e = 1), so the dragged tile
-      // captures its TARGET, not the drag visual. Overwrite it: the whole
-      // point is flying that tile in from the cursor box.
-      for (auto &[win, box] : oldBoxes)
-        if (win == w)
-          box = m_tiles[press].natural;
+      // Wherever the release lands, the preview must travel there VISIBLY:
+      // the origin is where it IS right now, and every landing below flies
+      // it on the lift leaf — the same knobs as the pickup, reversed.
+      m_lastDragBox = dragVisualBox();
+      // The dragged tile flies via its own SwapFX; everything ELSE glides
+      // from the boxes it shows right now.
+      auto oldBoxes = captureCurrentBoxes(w);
       m_drag = {};
       // dropped onto a strip card: LMB moves the window to that workspace,
       // RMB SWAPS it with the card's window (the grid-tile counterpart of
@@ -377,7 +363,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         else
           dropOnStripCard(w, lx, ly, -1);
         kickPulse(w); // success ring: pops on its NEW strip card slot
-        landAfterMove(w, m_lastDragBox, leaf("drop").ms, leaf("drop").curve);
+        landAfterMove(w, m_lastDragBox, leaf("lift").ms, leaf("lift").curve);
         return true;
       }
       // grid mode: dropped onto (or near) another preview → swap the two
@@ -425,8 +411,20 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         damage();
         return true;
       }
-      replayReflow(oldBoxes); // dropped in empty space → the tile GLIDES
-                              // back to its slot from the cursor
+      // default: dropped in empty space → the preview FLIES back to its
+      // slot on the lift leaf (reverse of the pickup). Everything else may
+      // relayout; the dragged tile itself settles instantly and lets the
+      // flight carry it in, so the FX lands exactly on its slot.
+      replayReflow(oldBoxes);
+      if (press < static_cast<int>(m_tiles.size())) {
+        auto &t = m_tiles[press];
+        t.natural = t.target;
+        t.appear = 1.0;
+      }
+      beginSwapFX(w, m_lastDragBox, model::SwapStyle::Horizontal,
+                  leaf("lift").ms, leaf("lift").curve);
+      ensureAnimPump();
+      damage();
       return true;
     }
     // A plain click activates that window — normally immediately (focus +
@@ -515,7 +513,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         // drop (RMB: swap with that workspace's window instead — task #8)
         if (dropOnStripCard(w, lx, ly, stripItem)) {
           kickPulse(w);
-          landAfterMove(w, fromBox, leaf("drop").ms, leaf("drop").curve);
+          landAfterMove(w, fromBox, leaf("lift").ms, leaf("lift").curve);
           return true;
         }
         // dropped in the main preview area → send it to whichever workspace is
@@ -538,13 +536,18 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               else
                 dropOnWorkspace(w, it);
               kickPulse(w);
-              landAfterMove(w, fromBox, leaf("drop").ms, leaf("drop").curve);
+              landAfterMove(w, fromBox, leaf("lift").ms, leaf("lift").curve);
               return true;
             }
           }
         }
       }
-      damage(); // dropped elsewhere (its own card, empty space) → snaps back
+      // released over its own card / nothing in particular → the thumb FLIES
+      // back into its slot on the lift leaf (reverse of the pickup)
+      if (lifted)
+        beginSwapFX(w, fromBox, model::SwapStyle::Horizontal,
+                    leaf("lift").ms, leaf("lift").curve);
+      damage();
       return true;
     }
     // plain click on a strip window (no drag) → switch to its workspace, like

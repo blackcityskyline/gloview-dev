@@ -144,14 +144,13 @@ pulses, everything — through a single choke point.
 | `pulse` | 180 | back | success ring after swaps and moves |
 | `strip_step` | 200 | easeinout | animated strip scroll per workspace step |
 | `appear` | 250 | easeout | staggered entry of brand-new tiles; ghost fade-out fallback (window close) |
-| `drop` | 320 | easeinout | drag/swap landings: the dragged preview flies from the release point into its new slot; strip thumbs fly between slots on swaps |
-| `swap_main` | 320 | easeinout | the swap INITIATOR's flight (overrides `drop` for it) |
-| `swap_partner` | 320 | easeinout | the swap PARTNER's flight |
+| `lift` | 150 | easeout | the drag cycle in BOTH directions: the pickup flight when a grab lifts (preview flies from its slot to the cursor anchor) and the release flight back into the slot; bends toward the moving cursor; disabled → instant |
 | `expo_in` | 250 | easeout | one→all spread: tile glide + newcomers during the all↔one flip (`gloview:allworkspaces`) |
 | `expo_out` | 250 | easeout | all→one collapse: tile glide + dispersing ghosts during the flip |
+| `swap_main` | 320 | easeinout | the swap INITIATOR's flight |
+| `swap_partner` | 320 | easeinout | the swap PARTNER's flight |
 | `ws_enter` | 250 | easeout | incoming tiles' timing on a workspace switch (styles via `ws_enter_style`; the flip above uses `expo_*` instead) |
 | `ws_exit` | 250 | easeout | outgoing ghosts' timing on a workspace switch (styles via `ws_exit_style`) |
-| `lift` | 150 | easeout | the pickup flight when a drag grabs a preview (grid tile or strip thumb): it flies from its slot to the cursor anchor, bending toward the moving cursor; disabled → instant jump |
 | `grid_swap_style` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` | how grid tiles choreograph a swap: travel toward each other / exit up + enter from the top / fade out + in / scale-pop in place |
 | `strip_swap_style` | same set | `horizontal` | the same styles for strip card thumbnails (slidevert always uses the strip's top edge) |
 | `ws_enter_style` | `pop` \| `slide` \| `slidevert` \| `fade` | `slide` | how the incoming workspace's tiles appear on a ws switch: scale-pop from the slot center / slide in from the direction side (by ws id order) / drop from the top edge / alpha fade |

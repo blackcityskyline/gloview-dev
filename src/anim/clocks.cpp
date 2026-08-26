@@ -198,7 +198,7 @@ void Overview::updateAnimation() {
   }
 
   // Done flights (and vanished windows) leave the Model by their OWN clock —
-  // pruning against live config cut mid-flight landings on a drop_ms change.
+  // pruning against live config cut mid-flight landings on a config change.
   for (auto it = m_swapfx.begin(); it != m_swapfx.end();) {
     if (it->win.expired() || it->clock.raw(it->ms) >= 1.0)
       it = m_swapfx.erase(it);

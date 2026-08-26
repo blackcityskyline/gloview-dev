@@ -179,9 +179,6 @@ struct anim {
   Int appear_enabled;
   Int appear_ms;
   Str appear_curve;
-  Int drop_enabled;
-  Int drop_ms;
-  Str drop_curve;
   Str grid_swap_style;   // horizontal | slidevert | fade | pop
   Str strip_swap_style;
   Str ws_enter_style;    // ws-switch: pop | slide | slidevert | fade (incoming)
