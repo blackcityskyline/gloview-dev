@@ -96,6 +96,22 @@ LRect Overview::tileContentBox(size_t i, const LRect &slot) const {
   return fitInside(slot, aspect);
 }
 
+// Content/chrome alpha multiplier for a populating tile: 1 everywhere except
+// the ws_enter_anim == "fade" entry (ws switches and the all<->one flip,
+// both carry m_wsSlideDir), where the preview ramps in with its appear
+// progress — chrome and content fade together so no full-strength ring ever
+// sits under a transparent body.
+double Overview::entryFade(size_t i) const {
+  if (i >= m_tiles.size())
+    return 1.0;
+  const auto &t = m_tiles[i];
+  if (t.appear >= 1.0 || m_wsSlideDir == 0)
+    return 1.0;
+  if (cfg::anim.ws_enter_anim.get() != "fade")
+    return 1.0;
+  return tileAppear(static_cast<int>(i));
+}
+
 // One grid tile's chrome: shadow → rings → frost → backing → title pill.
 // Runs in the painter's Z1, BEFORE the tile's content — everything here sits
 // under the live surface by construction, so no ordering tricks are needed.
@@ -105,10 +121,11 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
     return;
   const double s        = m->m_scale;
   const double e        = eased();
+  const float  f        = static_cast<float>(entryFade(i));
   const int    round    = cfg::look.preview_round;
   const float  roundPow = cfg::look.preview_round_power;
   const auto shadowCol  = cfg::colors.shadow.get(1.0);
-  const auto hoverCol   = cfg::colors.hover_border.get(e);
+  const auto hoverCol   = cfg::colors.hover_border.get(e * f);
 
   const auto &t = m_tiles[i];
   const auto w  = t.win.lock();
@@ -122,7 +139,7 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
   // genuinely transparent windows, so the alpha is cut hard (×0.18) — depth
   // cue, not a second layer. roundingPower matches the content's.
   dropShadow(lb, s, shadowCol, lift ? 14.0 : 6.0, lift ? 30.0 : 16.0,
-             e * 0.18F, round, roundPow);
+             e * 0.18F * f, round, roundPow);
 
   const bool framed   = (static_cast<int>(i) == m_hovered || lift);
   const bool selected = (static_cast<int>(i) == m_selected) && !lift;
@@ -131,7 +148,7 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
   // show_border — an always-on base ring on EVERY tile; show_focus_border —
   // the hover/keyboard-selection ring on top (hover wins over selection).
   if (cfg::look.show_border != 0) {
-    strokeRing(lb, s, cfg::colors.border.get(e),
+    strokeRing(lb, s, cfg::colors.border.get(e * f),
                cfg::look.border_size, round, roundPow);
   }
   if (cfg::look.show_focus_border != 0) {
@@ -140,7 +157,7 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
                  cfg::look.hover_border_size, round,
                  roundPow);
     else if (selected)
-      strokeRing(lb, s, cfg::colors.select_border.get(e),
+      strokeRing(lb, s, cfg::colors.select_border.get(e * f),
                  cfg::look.select_border_size, round,
                  roundPow);
   }
@@ -206,10 +223,11 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
     const double px   = std::clamp(lb.cx() - pw / 2.0, 6.0, m->m_size.x - pw - 6.0);
     const double py   = std::min(lb.y + lb.h + 10.0, m->m_size.y - ph - 6.0);
     g_pHyprOpenGL->renderRect(pxb(CBox(px, py, pw, ph), s),
-                              cfg::colors.title_pill.get(e),
+                              cfg::colors.title_pill.get(e * f),
                               {.round = pxr(ph / 2.0, s)});
-    g_pHyprOpenGL->renderTexture(t.label, pxb(CBox(px + padX, py + padY, lw, lh), s),
-                                 {.a = static_cast<float>(e)});
+    g_pHyprOpenGL->renderTexture(t.label,
+                                 pxb(CBox(px + padX, py + padY, lw, lh), s),
+                                 {.a = static_cast<float>(e * f)});
   }
 }
 
@@ -285,10 +303,11 @@ void Overview::renderTileButtons() const {
 
 // Z1: the non-dragged tiles' live content, immediately after ALL tile chrome
 // (and after ghosts, which the painter draws first). Previews render fully
-// OPAQUE the whole time (only backdrop/strip chrome fade with e): at progress
-// 0 currentBox == natural == the real window's settled geometry, so the
-// opaque preview overlays it pixel-perfect — fading would flicker the close
-// tail. Population is expressed by the box scale in currentBox() alone.
+// OPAQUE except the ws_enter_anim == "fade" entry (entryFade): at progress 0
+// currentBox == natural == the real window's settled geometry, so the opaque
+// preview overlays it pixel-perfect — fading would flicker the close tail.
+// Population is otherwise expressed by the box scale/translate in
+// currentBox() alone.
 void Overview::renderMainWindows() const {
   const auto m = m_monitor.lock();
   if (!m)
@@ -308,7 +327,8 @@ void Overview::renderMainWindows() const {
       continue; // flying via a landing (Z2.5) — suppressed here
     const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
     const CBox  px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
-    renderWindowLive(w, m, px, px, 1.0F, when, round, roundPow);
+    renderWindowLive(w, m, px, px,
+                     static_cast<float>(entryFade(i)), when, round, roundPow);
   }
 }
 
@@ -318,8 +338,7 @@ void Overview::renderMainWindows() const {
 void Overview::renderGhosts() const {
   if (m_ghosts.empty())
     return;
-  const bool wsSlide = m_wsSlideDir != 0;
-  const auto cfgLeaf = wsSlide ? anim("ws_out") : anim("populate");
+  const auto cfgLeaf = ghostLeaf();
   if (m_populate.done(cfgLeaf.ms))
     return;
   const auto m = m_monitor.lock();

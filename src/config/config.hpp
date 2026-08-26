@@ -195,8 +195,10 @@ struct anim {
   Str swap_main_curve;
   Int swap_partner_ms;  // the swap partner's flight
   Str swap_partner_curve;
+  Int expo_in_enabled;  // one->all spread
   Int expo_in_ms;       // one->all: the tiles spreading
   Str expo_in_curve;
+  Int expo_out_enabled; // all->one collapse
   Int expo_out_ms;      // all->one: the tiles collapsing
   Str expo_out_curve;
   Int drag_lift_enabled; // the preview lift on grab

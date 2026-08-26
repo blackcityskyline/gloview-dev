@@ -404,11 +404,15 @@ void Overview::toggleAllWorkspaces() {
       m_allOverride = -1;
     return;
   }
-  m_allOverride = showAllWorkspaces() ? 0 : 1;
+  const bool wasAll = showAllWorkspaces();
+  m_allOverride = wasAll ? 0 : 1;
   // The all<->one collapse/expansion slides horizontally (new content from
   // the right, the displaced tiles exit left) — the ws-switch slide with a
   // fixed direction: an all<->one flip has no natural left/right ws order.
   m_wsSlideDir = 1;
+  // The flip's own animation halves (expo_in = spreading, expo_out =
+  // collapsing) drive the glide, newcomers and ghosts for this transition.
+  m_expoFlip = wasAll ? -1 : 1;
   // rebuild from the new membership and glide tiles into place (chrome settled
   // at progress 1).
   auto oldBoxes = captureCurrentBoxes();

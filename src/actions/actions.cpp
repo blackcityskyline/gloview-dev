@@ -67,6 +67,7 @@ bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
     swapOnWorkspace(w, it); // empty card / gap: last-focused fallback
   else
     dropOnWorkspace(w, it); // empty card / gap: plain move
+  return true;
 }
 
 void Overview::dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
@@ -378,6 +379,11 @@ void Overview::switchToWorkspace(const model::StripItem &it) {
   // (renderWindowLive), bypassing Hyprland's normal per-frame render path
   // entirely, so an inactive workspace's windows draw exactly like an active
   // one's — no real slide needed.
+  // Capture the PREVIOUS workspace BEFORE the reassignment: this comparison
+  // feeds m_wsSlideDir, and reading it after `m_workspace = ws` made the ids
+  // always equal — the direction flag never armed and every ws switch fell
+  // back to the style-less populate pop (the "slide renders as fade/pop" bug).
+  const auto oldWs = m_workspace.lock();
   m_workspace = ws;
   // The identity check inside renderBackdrop handles re-blurring when the
   // backdrop SOURCE changes (a featured fullscreen mpv window appearing or
@@ -391,7 +397,6 @@ void Overview::switchToWorkspace(const model::StripItem &it) {
   // The ws-switch slide: direction by the ws id order (higher id = from the
   // right). The old workspace's tiles become ghosts that slide OUT to the
   // opposite side; the newcomers slide IN from `dir`.
-  const auto oldWs = m_workspace.lock();
   if (oldWs && ws && ws->m_id != oldWs->m_id)
     m_wsSlideDir = ws->m_id > oldWs->m_id ? 1 : -1;
   const auto oldBoxes = captureCurrentBoxes();

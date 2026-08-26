@@ -157,6 +157,8 @@ void Overview::renderStage(eRenderStage stage) {
       // "tiles jerk then settle" on ctrl-jump and cross-workspace LMB drops.
       debug::dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
           " tiles=" + std::to_string(m_tiles.size()));
+      if (const auto prev = m_workspace.lock())
+        m_wsSlideDir = m->m_activeWorkspace->m_id > prev->m_id ? 1 : -1;
       m_workspace = m->m_activeWorkspace;
       const auto shown = captureCurrentBoxes();
       buildTiles();

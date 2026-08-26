@@ -284,10 +284,20 @@ private:
   // frames commit with EMPTY damage over stale buffers, and the transition
   // visibly shakes.
   bool secondaryAnimsActive() const {
-    return !m_populate.done(populateMs()) ||
+    return !m_populate.done(entryLeaf().ms) ||
+           !m_populate.done(ghostLeaf().ms) ||
            !m_stripTween.done(animMs("strip_step"));
   }
   double tileAppear(int i) const; // staggered 0..1 for tile i
+  // Leaf selectors for the populate-clock choreography (Clocks domain,
+  // implemented in anim/clocks.cpp). Precedence everywhere: the expo flip
+  // (expo_in/expo_out) > a genuine ws switch (ws_in/ws_out) > plain populate.
+  anim::AnimCfg entryLeaf() const; // newcomer tiles' appear timing/curve
+  anim::AnimCfg ghostLeaf() const; // outgoing ghosts' exit timing/curve
+  const char *glideLeaf() const;   // tile-glide family: reflow | expo_in/out
+  // Content/chrome alpha multiplier for a populating tile: 1 everywhere
+  // except the ws_enter_anim == "fade" entry, where it ramps with appear.
+  double entryFade(size_t i) const;
   void kickPulse(const PHLWINDOW &w);
   // Swap/drop transitions (anim leaves "drop"/"swap_main"/"swap_partner"):
   // beginSwapFX flies a window that now renders as a STRIP thumb from `from`
@@ -434,9 +444,10 @@ private:
   // plugin:gloview:duration with the shared floor (ms), read LIVE so config
   // changes apply to in-flight animations.
   double animDuration() const;
-  // Tile-glide leaf (entry, reflow, close-home all ride one clock).
+  // Tile-glide leaf (entry, reflow, close-home all ride one clock). During an
+  // expo flip the glide IS the spread/collapse — it reads the expo halves.
   double reflowDur() const {
-    return animMs("reflow");
+    return animMs(glideLeaf());
   }
   // "+" card pop-in duration: never shorter than the tile glide it overlaps.
   double newCardDur() const {
@@ -481,6 +492,13 @@ private:
   // drop/swap rebuild). Newcomer tiles slide in from that side, the removed
   // ones slide out to the opposite side.
   int m_wsSlideDir = 0;
+  // The all<->one expo flip riding the same populate clock as a ws switch:
+  // +1 = one->all spreading (expo_in leaf), -1 = all->one collapsing
+  // (expo_out). Set by toggleAllWorkspaces, cleared with m_wsSlideDir when
+  // both transition windows finish. Takes precedence over m_wsSlideDir in
+  // every leaf selector — an expo flip is not a ws switch (no directional
+  // styles, its own timing).
+  int m_expoFlip = 0;
   // TEMP: renderWindowLive logs its geometry/alpha while this is set
   // (renderGhosts arms it around the ghost loop).
   mutable bool m_dbgRWL = false;

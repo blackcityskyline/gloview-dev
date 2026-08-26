@@ -126,8 +126,10 @@ void Overview::updateHover() {
   if (m_drag.armed()) {
     const double dx = lx - m_drag.pressX;
     const double dy = ly - m_drag.pressY;
-    if (!m_drag.lifted && (dx * dx + dy * dy) > 64.0) // ~8px
+    if (!m_drag.lifted && (dx * dx + dy * dy) > 64.0) { // ~8px
       m_drag.lifted = true;
+      m_dragLiftClock.begin(); // drag_lift leaf: the preview's lift ramp
+    }
     if (m_drag.lifted) {
       m_drag.x = lx;
       m_drag.y = ly;

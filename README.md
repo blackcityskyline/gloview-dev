@@ -143,8 +143,15 @@ pulses, everything — through a single choke point.
 | `new_card` | via duration | back | "+" card pop-in |
 | `swap_pulse` | 180 | back | success ring after swaps/moves |
 | `strip_step` | 200 | easeinout | animated strip scroll per workspace step |
-| `populate` | 250 | easeout | staggered tile population + ghost fade-out (all↔one, ws switch, window close) |
+| `populate` | 250 | easeout | staggered tile population + ghost fade-out fallback (window close etc.) |
 | `drop` | 320 | easeinout | drag/swap landings: the dragged preview flies from the release point into its new slot; strip thumbs fly between slots on swaps |
+| `swap_main` | 320 | easeinout | the swap INITIATOR's flight (overrides `drop` for it) |
+| `swap_partner` | 320 | easeinout | the swap PARTNER's flight |
+| `expo_in` | 250 | easeout | one→all spread: tile glide + newcomers during the all↔one flip (`gloview:allworkspaces`) |
+| `expo_out` | 250 | easeout | all→one collapse: tile glide + dispersing ghosts during the flip |
+| `ws_in` | 250 | easeout | incoming tiles' timing on a workspace switch (styles via `ws_enter_anim`; the flip above uses `expo_*` instead) |
+| `ws_out` | 250 | easeout | outgoing ghosts' timing on a workspace switch (styles via `ws_exit_anim`) |
+| `drag_lift` | 150 | easeout | the dragged preview's lift ramp when a grid-tile drag picks up (scale 0.7→1 + alpha); disabled → instant |
 | `grid_swap_anim` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` | how grid tiles choreograph a swap: travel toward each other / exit up + enter from the top / fade out + in / scale-pop in place |
 | `strip_swap_anim` | same set | `horizontal` | the same styles for strip card thumbnails (slidevert always uses the strip's top edge) |
 | `ws_enter_anim` | `pop` \| `slide` \| `slidevert` \| `fade` | `slide` | how the incoming workspace's tiles appear on a ws switch: scale-pop from the slot center / slide in from the direction side (by ws id order) / drop from the top edge / alpha fade |

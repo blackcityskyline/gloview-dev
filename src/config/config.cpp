@@ -148,7 +148,9 @@ constexpr IntSpec kInts[] = {
     {&anim.ws_exit_ms, "plugin:gloview:ws_exit_ms", 250},
     {&anim.swap_main_ms, "plugin:gloview:swap_main_ms", 320},
     {&anim.swap_partner_ms, "plugin:gloview:swap_partner_ms", 320},
+    {&anim.expo_in_enabled, "plugin:gloview:expo_in_enabled", 1},
     {&anim.expo_in_ms, "plugin:gloview:expo_in_ms", 250},
+    {&anim.expo_out_enabled, "plugin:gloview:expo_out_enabled", 1},
     {&anim.expo_out_ms, "plugin:gloview:expo_out_ms", 250},
     {&anim.drag_lift_enabled, "plugin:gloview:drag_lift_enabled", 1},
     {&anim.drag_lift_ms, "plugin:gloview:drag_lift_ms", 150},
@@ -288,6 +290,9 @@ const Int *anim::leafEnabled(std::string_view name) {
       {"swap_pulse", &swap_pulse_enabled},
       {"strip_step", &strip_step_enabled}, {"populate", &populate_enabled},
       {"drop", &drop_enabled},
+      {"ws_in", &ws_enter_enabled},     {"ws_out", &ws_exit_enabled},
+      {"expo_in", &expo_in_enabled},    {"expo_out", &expo_out_enabled},
+      {"drag_lift", &drag_lift_enabled},
   };
   const auto it = k.find(name);
   return it == k.end() ? nullptr : it->second;

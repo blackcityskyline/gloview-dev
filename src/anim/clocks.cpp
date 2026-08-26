@@ -36,6 +36,45 @@ AnimCfg Overview::anim(const char *leaf) const {
   return a;
 }
 
+// ---- transition leaf selectors ----------------------------------------------
+// Which config group drives each side of a populate-clock transition.
+// Precedence: the all<->one expo flip owns both halves; a genuine ws switch
+// uses its enter/exit groups; everything else falls back to plain populate
+// (the pre-group behavior, kept pixel-identical). Both selectors return a
+// RESOLVED window — animMs semantics: master/group off → 1ms (instant),
+// _ms = -1 sentinel → the legacy duration knob.
+
+namespace {
+void resolveLeaf(AnimCfg &a, double fallbackDur) {
+  if (!a.on) {
+    a.ms = 1.0;
+    return;
+  }
+  if (a.ms < 0)
+    a.ms = std::max(1.0, fallbackDur);
+}
+} // namespace
+
+AnimCfg Overview::entryLeaf() const {
+  const bool flip = m_expoFlip != 0, slide = m_wsSlideDir != 0;
+  AnimCfg a = flip ? anim(m_expoFlip > 0 ? "expo_in" : "expo_out")
+                   : slide ? anim("ws_in") : anim("populate");
+  resolveLeaf(a, static_cast<double>(cfg::anim.duration));
+  return a;
+}
+
+AnimCfg Overview::ghostLeaf() const {
+  const bool flip = m_expoFlip != 0, slide = m_wsSlideDir != 0;
+  AnimCfg a = flip ? anim(m_expoFlip > 0 ? "expo_in" : "expo_out")
+                   : slide ? anim("ws_out") : anim("populate");
+  resolveLeaf(a, static_cast<double>(cfg::anim.duration));
+  return a;
+}
+
+const char *Overview::glideLeaf() const {
+  return m_expoFlip > 0 ? "expo_in" : m_expoFlip < 0 ? "expo_out" : "reflow";
+}
+
 double Overview::eased() const {
   // Chrome reveal/collapse curve follows its own leaf: open while entering,
   // close while exiting (m_progress is the LINEAR clock value either way).
@@ -69,24 +108,26 @@ double Overview::tileProgress(int i) const {
 }
 
 double Overview::tileAppear(int i) const {
-  // Same tight stagger as the position glide, on the populate clock.
+  // Same tight stagger as the position glide, on the entry leaf (expo flip >
+  // ws switch > populate).
+  const auto leaf = entryLeaf();
   const int n = static_cast<int>(m_tiles.size());
   if (n <= 1)
-    return curves::eval(anim("populate").curve,
-                     m_populate.raw(populateMs()));
-  const double base  = m_populate.raw(populateMs());
+    return curves::eval(leaf.curve, m_populate.raw(leaf.ms));
+  const double base  = m_populate.raw(leaf.ms);
   const double spread = std::min(0.08, 0.015 * n);
-  const double start  = spread * (static_cast<double>(i) / (n - 1));
+  const double start = spread * (static_cast<double>(i) / (n - 1));
   const double span   = std::max(0.001, 1.0 - spread);
-  return curves::eval(anim("populate").curve,
+  return curves::eval(leaf.curve,
                    std::clamp((base - start) / span, 0.0, 1.0));
 }
 
 LRect Overview::currentBox(const model::Tile &t, int i) const {
   // Plain smooth deceleration: easeOutBack's per-tile bounce landed at
   // visibly different moments and read as jerky; one shared curve with no
-  // overshoot reads as "monolithic".
-  const double e = curves::eval(anim("reflow").curve, tileProgress(i));
+  // overshoot reads as "monolithic". During an expo flip the glide IS the
+  // spread/collapse — it reads its own half's curve.
+  const double e = curves::eval(anim(glideLeaf()).curve, tileProgress(i));
   const auto &a = t.natural;
   const auto &b = t.target;
   LRect r{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
@@ -94,6 +135,23 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
   // population scale: a brand-new tile grows from its slot center
   const double ap = t.appear < 1.0 ? tileAppear(i) : 1.0;
   if (ap < 1.0) {
+    // Entry styles read ws_enter_anim on ANY populate-clock transition —
+    // ws switches AND the all<->one flip (dir is fixed +1 there: new content
+    // from the right, per the flip's contract). slide arrives from the
+    // ws-id-order side, a full monitor width out; slidevert drops from the
+    // top edge — the mirror of the exit paths in renderGhosts.
+    const bool styled = m_wsSlideDir != 0;
+    const std::string enterAnim = styled ? cfg::anim.ws_enter_anim.get()
+                                         : std::string();
+    if (enterAnim == "slide" || enterAnim == "slidevert") {
+      if (const auto m = m_monitor.lock()) {
+        if (enterAnim == "slide")
+          r.x += static_cast<double>(m_wsSlideDir) * m->m_size.x * (1.0 - ap);
+        else
+          r.y -= static_cast<double>(m->m_size.y) * (1.0 - ap);
+      }
+      return r;
+    }
     const double k  = 0.85 + 0.15 * ap;
     const double cx = r.x + r.w / 2.0, cy = r.y + r.h / 2.0;
     r = LRect{cx - r.w * k / 2.0, cy - r.h * k / 2.0, r.w * k, r.h * k};
@@ -129,7 +187,9 @@ void Overview::updateAnimation() {
   else
     m_stripScroll = m_stripScrollTarget;
 
-  if (m_populate.done(populateMs()) && !m_ghosts.empty())
+  // Ghosts ride their own leaf's window (expo_out/ws_out may differ from
+  // populate's) — clearing them on populateMs() cut long exits mid-flight.
+  if (m_populate.done(ghostLeaf().ms) && !m_ghosts.empty())
     m_ghosts.clear();
 
   // Advance/prune swap pulses. Progress accumulates per animated frame with
@@ -150,8 +210,12 @@ void Overview::updateAnimation() {
   std::erase_if(m_pulses,
                 [](const model::WinPulse &p) { return p.w.expired() || p.p >= 1.0; });
 
-  if (m_populate.done(populateMs()))
-    m_wsSlideDir = 0; // the slide transition is over
+  // Transition over only when BOTH sides finished (each on its own leaf's
+  // window). Compute the leaves BEFORE clearing the state they read.
+  if (m_populate.done(ghostLeaf().ms) && m_populate.done(entryLeaf().ms)) {
+    m_wsSlideDir = 0;
+    m_expoFlip = 0;
+  }
 
   // Swap/drop FX: done flights (and windows that vanished mid-flight) leave
   // the Model. WITHOUT this prune the record lingers forever, the animation
