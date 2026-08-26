@@ -370,7 +370,13 @@ void Overview::switchToWorkspace(const model::StripItem &it) {
   // Rebuild around the displayed workspace and keep the overview visually
   // settled; clicking strip cards should not replay the opening animation.
   m_hovered = m_hoveredStrip = -1;
-  captureCurrentBoxes(); // ghosts fade where the old workspace's tiles were
+  // The ws-switch slide: direction by the ws id order (higher id = from the
+  // right). The old workspace's tiles become ghosts that slide OUT to the
+  // opposite side; the newcomers slide IN from `dir`.
+  const auto oldWs = m_workspace.lock();
+  if (oldWs && ws && ws->m_id != oldWs->m_id)
+    m_wsSlideDir = ws->m_id > oldWs->m_id ? 1 : -1;
+  const auto oldBoxes = captureCurrentBoxes();
   buildTiles();
   buildStrip();
   layoutTiles();
@@ -383,11 +389,19 @@ void Overview::switchToWorkspace(const model::StripItem &it) {
   // snap old->new the instant their population settles and blur-behind
   // kicks in. Invalidate explicitly; the next frame re-captures.
 
-  // Every new-workspace tile is a newcomer here: staggered fade/scale-in
+  // Every new-workspace tile is a newcomer here: staggered slide/fade-in
   // replaces the old one-frame content swap (cards, digits, jump alike).
+  // The old workspace's tiles slide out as ghosts instead of vanishing.
   for (auto &t : m_tiles)
     t.appear = 0.0;
   m_ghosts.clear();
+  for (const auto &[oldWin, oldBox] : oldBoxes) {
+    bool kept = false;
+    for (const auto &t : m_tiles)
+      if (t.win.lock() == oldWin) { kept = true; break; }
+    if (!kept)
+      m_ghosts.push_back(model::Ghost{oldWin, oldBox});
+  }
   m_populate.begin();
   ensureAnimPump();
   m_tileClock.pinEnd(reflowDur());

@@ -325,28 +325,32 @@ void Overview::renderGhosts() const {
   const auto when    = Time::steadyNow();
   const int round    = pxr(cfg::look.preview_round, scale);
   const float roundPow = cfg::look.preview_round_power;
-  const double p     = std::min(1.0, m_populate.raw(populateMs()) / 0.6);
-  const double eOut  = curves::eval(anim("populate").curve, p); // 0..1 gone
+  const double p    = std::min(1.0, m_populate.raw(populateMs()));
+  const double eOut = curves::eval(anim("populate").curve, p); // 0..1 gone
   for (const auto &g : m_ghosts) {
     const auto w = g.win.lock();
-    if (!w || !w->m_isMapped || w->isHidden()) {
-      debug::dbg("ghost SKIP: win=" + std::to_string((bool)w) +
-                 " mapped=" + std::to_string(w ? w->m_isMapped : false) +
-                 " hidden=" + std::to_string(w ? w->isHidden() : false));
+    if (!w || !w->m_isMapped || w->isHidden())
       continue;
-    }
     if (!g.dbgLogged) {
       g.dbgLogged = true;
       debug::dbg("ghost DRAW at " + std::to_string(g.box.x) + "," +
                  std::to_string(g.box.y) + " " + std::to_string(g.box.w) + "x" +
                  std::to_string(g.box.h));
     }
-    const double k  = 1.0 - 0.15 * eOut; // shrink toward its own center
+    // The exit mirrors the entry's pop-in vividly: scale 1 -> 0.7, alpha
+    // 0.85 -> 0, over the FULL populate window (the old subtle 15% shrink
+    // over 60% of it read as an instant vanish). A ws-switch slide moves
+    // the ghosts OUT to the opposite side instead of shrinking them.
+    const double k  = 1.0 - 0.3 * eOut; // shrink toward its own center
     const double cx = g.box.x + g.box.w / 2.0, cy = g.box.y + g.box.h / 2.0;
     const LRect box{cx - g.box.w * k / 2.0, cy - g.box.h * k / 2.0,
                     g.box.w * k, g.box.h * k};
-    const CBox px(box.x * scale, box.y * scale, box.w * scale, box.h * scale);
-    renderWindowLive(w, m, px, px, static_cast<float>((1.0 - eOut) * 0.65),
+    double gx = box.x, gy = box.y;
+    if (m_wsSlideDir != 0)
+      if (const auto mm = m_monitor.lock())
+        gx -= static_cast<double>(m_wsSlideDir) * mm->m_size.x * eOut;
+    const CBox px(gx * scale, gy * scale, box.w * scale, box.h * scale);
+    renderWindowLive(w, m, px, px, static_cast<float>((1.0 - eOut) * 0.85),
                      when, round, roundPow);
   }
 }

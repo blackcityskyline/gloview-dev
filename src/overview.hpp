@@ -469,6 +469,11 @@ private:
   // Strip thumbnails have no glide machinery of their own — this is their
   // motion; grid tiles fly via natural->target and skip landings.
   std::vector<model::SwapFX> m_swapfx;
+  // Workspace-switch slide: the direction (sign of the new-vs-old ws id) of
+  // the CURRENT ws-switch transition. 0 = no slide (transitions end, or a
+  // drop/swap rebuild). Newcomer tiles slide in from that side, the removed
+  // ones slide out to the opposite side.
+  int m_wsSlideDir = 0;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
                      const CHyprColor &col, double p) const;
   void addWorkspace();          // "+" card: create a workspace (animate it in,

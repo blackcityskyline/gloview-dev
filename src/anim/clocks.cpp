@@ -150,6 +150,9 @@ void Overview::updateAnimation() {
   std::erase_if(m_pulses,
                 [](const model::WinPulse &p) { return p.w.expired() || p.p >= 1.0; });
 
+  if (m_populate.done(populateMs()))
+    m_wsSlideDir = 0; // the slide transition is over
+
   // Swap/drop FX: done flights (and windows that vanished mid-flight) leave
   // the Model. WITHOUT this prune the record lingers forever, the animation
   // pump never disarms and the compositor recomposites the full monitor at
