@@ -149,10 +149,6 @@ public:
                                  // non-tile windows in hkDamageSurface)
 
   [[nodiscard]] bool active() const { return m_active; }
-  // TEMP probes (renderWindowLive ghost-draw diagnostics)
-  void dbgRWLOn() const { m_dbgRWL = true; }
-  void dbgRWLOff() const { m_dbgRWL = false; }
-  [[nodiscard]] bool dbgRWLOnCheck() const { return m_dbgRWL; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
@@ -272,29 +268,28 @@ private:
   double m_stripScrollFrom = 0.0;
   anim::Tween m_stripTween;
   void animateStripTo(double from, double to);
-  // Population (populate leaf): drives Tile.appear for newcomers and the
-  // ghost fade-out for tiles removed by a rebuild.
-  anim::Tween m_populate;
+  // One rebuild-transition clock: entries (Tile.appear) and ghost exits both
+  // ride it, each side in its own leaf's window.
+  anim::Tween m_rebuildClock;
   std::vector<model::Ghost> m_ghosts;
-  double populateMs() const { return animMs("populate"); }
-  // True while ANY secondary clock is mid-flight (population/ghosts, strip
+  // True while ANY secondary clock is mid-flight (entries/ghosts, strip
   // scroll). The animation-pump predicates MUST include this: after a card/
   // digit workspace switch the master timeline sits pinned at 1 and tiles'
   // clock is done — without these terms the pump never arms, the following
   // frames commit with EMPTY damage over stale buffers, and the transition
   // visibly shakes.
   bool secondaryAnimsActive() const {
-    return !m_populate.done(entryLeaf().ms) ||
-           !m_populate.done(ghostLeaf().ms) ||
-           !m_stripTween.done(animMs("strip_step"));
+    return !m_rebuildClock.done(leaf(entryLeaf()).ms) ||
+           !m_rebuildClock.done(leaf(ghostLeaf()).ms) ||
+           !m_stripTween.done(leaf("strip_step").ms);
   }
   double tileAppear(int i) const; // staggered 0..1 for tile i
-  // Leaf selectors for the populate-clock choreography (Clocks domain,
+  // Leaf-name selectors for the rebuild choreography (Clocks domain,
   // implemented in anim/clocks.cpp). Precedence everywhere: the expo flip
-  // (expo_in/expo_out) > a genuine ws switch (ws_in/ws_out) > plain populate.
-  anim::AnimCfg entryLeaf() const; // newcomer tiles' appear timing/curve
-  anim::AnimCfg ghostLeaf() const; // outgoing ghosts' exit timing/curve
-  const char *glideLeaf() const;   // tile-glide family: reflow | expo_in/out
+  // (expo_in/expo_out) > a workspace switch (ws_in/ws_out) > plain populate.
+  const char *entryLeaf() const; // newcomer tiles' group
+  const char *ghostLeaf() const; // outgoing ghosts' group
+  const char *glideLeaf() const; // tile-glide family: reflow | expo halves
   // Content/chrome alpha multiplier for a populating tile: 1 everywhere
   // except the ws_enter_anim == "fade" entry, where it ramps with appear.
   double entryFade(size_t i) const;
@@ -313,7 +308,6 @@ private:
                      const std::string &curve);
   [[nodiscard]] bool swapfxActive(const PHLWINDOW &w) const;
   void renderSwapFX() const; // Z2.5: flying windows, above the strip
-  double dropDur() const { return animMs("drop"); }
 
   // plugin:gloview:close_trigger == "doubleclick": a plain click on a tile
   // normally activates it IMMEDIATELY (focusAndClose), which leaves no room to
@@ -392,14 +386,11 @@ private:
   // per move, zero framebuffer pollution, zero trails.
   std::string cursorMode() const;
 
-  // ---- animation registry (AN1) -----------------------------------------
-  // Resolve one animation leaf's config (see anim/clocks.hpp for the
-  // snapshot type, config.cpp for the schema, anim/curves.hpp for curves).
-  anim::AnimCfg anim(const char *leaf) const;
-  // Effective duration for a leaf: 1ms when master/leaf disabled (every clock
-  // then completes within one frame — the whole plugin goes static without
-  // any per-site branching), else <leaf>_ms or its fallback.
-  double animMs(const char *leaf) const;
+  // ---- animation registry -------------------------------------------------
+  // Resolve one animation group to {on, ms >= 1, curve} — the single choke
+  // point for the <leaf>_enabled/_ms/_curve contract (see anim/clocks.cpp,
+  // config.cpp for the schema, anim/curves.hpp for curves).
+  anim::AnimCfg leaf(const char *name) const;
 
   // Which monitor edge the workspace strip is anchored to. Top/Bottom give a
   // horizontal strip (cards in a row); Left/Right give a vertical strip (cards
@@ -444,15 +435,11 @@ private:
   // plugin:gloview:duration with the shared floor (ms), read LIVE so config
   // changes apply to in-flight animations.
   double animDuration() const;
-  // Tile-glide leaf (entry, reflow, close-home all ride one clock). During an
-  // expo flip the glide IS the spread/collapse — it reads the expo halves.
-  double reflowDur() const {
-    return animMs(glideLeaf());
-  }
+  // Tile-glide window (entry, reflow, close-home all ride one clock). During
+  // an expo flip the glide IS the spread/collapse — it reads the expo halves.
+  double glideDur() const { return leaf(glideLeaf()).ms; }
   // "+" card pop-in duration: never shorter than the tile glide it overlaps.
-  double newCardDur() const {
-    return std::max(120.0, animMs("new_card"));
-  }
+  double newCardDur() const { return std::max(120.0, leaf("new_card").ms); }
   double tileProgress(int i) const; // staggered raw progress for tile i
   LRect
   currentBox(const model::Tile &t,
@@ -499,9 +486,6 @@ private:
   // every leaf selector — an expo flip is not a ws switch (no directional
   // styles, its own timing).
   int m_expoFlip = 0;
-  // TEMP: renderWindowLive logs its geometry/alpha while this is set
-  // (renderGhosts arms it around the ghost loop).
-  mutable bool m_dbgRWL = false;
   // The lift clock: the drag preview's appearance ramp (drag_lift leaf).
   anim::Tween m_dragLiftClock;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,

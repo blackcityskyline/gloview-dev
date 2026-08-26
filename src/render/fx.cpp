@@ -117,8 +117,8 @@ void Overview::renderDragWindow() const {
   // The drag_lift leaf: the preview ramps in when the drag lifts (scale
   // 0.7 -> 1 around the box center + alpha), then rides at 1. Disabled leaf
   // -> instant (ms 1).
-  const double liftT = m_dragLiftClock.raw(animMs("drag_lift"));
-  const double liftK = curves::eval(anim("drag_lift").curve, liftT);
+  const double liftT = m_dragLiftClock.raw(leaf("drag_lift").ms);
+  const double liftK = curves::eval(leaf("drag_lift").curve, liftT);
   if (dragIdx >= 0) {
     const auto w = m_tiles[dragIdx].win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
@@ -154,7 +154,7 @@ void Overview::renderDragWindow() const {
 // ---- swap pulses (Z1 tail for grid, Z2 tail for strip) ----------------------
 
 void Overview::kickPulse(const PHLWINDOW &w) {
-  if (!w || !anim("swap_pulse").on)
+  if (!w || !leaf("swap_pulse").on)
     return;
   std::erase_if(m_pulses, [&w](const model::WinPulse &p) { return p.w.lock() == w; });
   m_pulses.push_back(model::WinPulse{w, 0.0, std::chrono::steady_clock::now()});
@@ -245,10 +245,6 @@ void Overview::renderSwapFX() const {
     const auto w = fx.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;
-    if (!fx.dbgLogged) {
-      fx.dbgLogged = true;
-      debug::dbg("swapfx FRAME0 style=" + std::to_string((int)fx.style));
-    }
     // the CURRENT slot box (it may itself be gliding — the FX targets the
     // live slot and bends toward a moving destination naturally)
     LRect to;
@@ -307,7 +303,7 @@ void Overview::renderSwapFX() const {
         alpha = static_cast<float>(1.0 - t / 0.3);
       } else { // pop into the new box: scale 0.7 -> 1 with a slight overshoot
         const double q = (t - 0.3) / 0.7;
-        const double k = 0.7 + 0.3 * curves::eval(anim("new_card").curve, q);
+        const double k = 0.7 + 0.3 * curves::eval(leaf("new_card").curve, q);
         bx = to.x + to.w * (1.0 - k) / 2.0;
         by = to.y + to.h * (1.0 - k) / 2.0;
         bw = to.w * k;

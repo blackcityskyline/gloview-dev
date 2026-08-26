@@ -131,7 +131,7 @@ void Overview::renderStage(eRenderStage stage) {
         " sfx=" + std::to_string(m_swapfx.size()) +
         " dir=" + std::to_string(m_wsSlideDir) +
         " gh=" + std::to_string(m_ghosts.size()) +
-        " pop=" + std::to_string(!m_populate.done(populateMs())));
+        " pop=" + std::to_string(!m_rebuildClock.done(leaf("populate").ms)));
   }
 
   updateHover();  // keep hover fresh even when the pointer is warped, not moved
@@ -189,7 +189,7 @@ void Overview::renderStage(eRenderStage stage) {
   // "tile divided in half, one side brighter" artifact).
   {
     const bool busy = secondaryAnimsActive() ||
-                      !m_tileClock.done(reflowDur()) || m_newCardAnim ||
+                      !m_tileClock.done(glideDur()) || m_newCardAnim ||
                       m_drag.lifted || !m_pulses.empty() ||
                       !m_swapfx.empty() ||
                       (m_opening ? m_progress < 1.0 : m_progress > 0.0);

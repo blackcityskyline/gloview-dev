@@ -338,8 +338,8 @@ void Overview::renderMainWindows() const {
 void Overview::renderGhosts() const {
   if (m_ghosts.empty())
     return;
-  const auto cfgLeaf = ghostLeaf();
-  if (m_populate.done(cfgLeaf.ms))
+  const auto lf = leaf(ghostLeaf());
+  if (m_rebuildClock.done(lf.ms))
     return;
   const auto m = m_monitor.lock();
   if (!m)
@@ -348,23 +348,16 @@ void Overview::renderGhosts() const {
   const auto when    = Time::steadyNow();
   const int round    = pxr(cfg::look.preview_round, scale);
   const float roundPow = cfg::look.preview_round_power;
-  const double p    = std::min(1.0, m_populate.raw(cfgLeaf.ms));
-  const double eOut = curves::eval(cfgLeaf.curve, p); // 0..1 gone
-  dbgRWLOn();
+  const double p    = std::min(1.0, m_rebuildClock.raw(lf.ms));
+  const double eOut = curves::eval(lf.curve, p); // 0..1 gone
+
   for (const auto &g : m_ghosts) {
     const auto w = g.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;
-    if (!g.dbgLogged) {
-      g.dbgLogged = true;
-      debug::dbg("ghost DRAW at " + std::to_string(g.box.x) + "," +
-                 std::to_string(g.box.y) + " " + std::to_string(g.box.w) + "x" +
-                 std::to_string(g.box.h));
-    }
     // The exit mirrors the entry's pop-in vividly: scale 1 -> 0.7, alpha
-    // 0.85 -> 0, over the FULL populate window (the old subtle 15% shrink
-    // over 60% of it read as an instant vanish). A ws-switch slide moves
-    // the ghosts OUT to the opposite side instead of shrinking them.
+    // 0.85 -> 0, over the FULL window. A ws-switch slide moves the ghosts
+    // OUT to the opposite side instead of shrinking them.
     const double k  = 1.0 - 0.3 * eOut; // shrink toward its own center
     const double cx = g.box.x + g.box.w / 2.0, cy = g.box.y + g.box.h / 2.0;
     const LRect box{cx - g.box.w * k / 2.0, cy - g.box.h * k / 2.0,

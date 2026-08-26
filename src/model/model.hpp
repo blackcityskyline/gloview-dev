@@ -68,7 +68,6 @@ struct LabelTex {
 struct Ghost {
   PHLWINDOWREF win;
   LRect box; // monitor-local logical, frozen at removal
-  mutable bool dbgLogged = false; // TEMP: first-draw trace
 };
 
 // Success pop after a swap (anim_swap_pulse): window-keyed so rebuilds
@@ -135,7 +134,6 @@ struct SwapFX {
   double ms = 320;               // the flight duration (the leaf's _ms)
   std::string curve = "easeinout"; // the leaf's _curve
   anim::Tween clock;
-  mutable bool dbgLogged = false; // TEMP: first-frame trace
 };
 
 } // namespace gloview::model

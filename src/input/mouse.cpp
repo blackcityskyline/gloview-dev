@@ -364,7 +364,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         else
           dropOnStripCard(w, lx, ly, -1);
         kickPulse(w); // success ring: pops on its NEW strip card slot
-        landAfterMove(w, m_lastDragBox, animMs("drop"), anim("drop").curve);
+        landAfterMove(w, m_lastDragBox, leaf("drop").ms, leaf("drop").curve);
         return true;
       }
       // grid mode: dropped onto (or near) another preview → swap the two
@@ -484,10 +484,10 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               break; // LMB cross-card: keep move/insert behavior
             const LRect vOld = stripWinSlotRect(it, stripCardAt(i), j);
             if (swapWindows(w, v)) {
-              landAfterMove(w, fromBox, animMs("swap_main"),
-                            anim("swap_main").curve); // the initiator
-              landAfterMove(v, vOld, animMs("swap_partner"),
-                            anim("swap_partner").curve); // the partner
+              landAfterMove(w, fromBox, leaf("swap_main").ms,
+                            leaf("swap_main").curve); // the initiator
+              landAfterMove(v, vOld, leaf("swap_partner").ms,
+                            leaf("swap_partner").curve); // the partner
               kickPulse(w);
               kickPulse(v);
               return true;
@@ -502,7 +502,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         // drop (RMB: swap with that workspace's window instead — task #8)
         if (dropOnStripCard(w, lx, ly, stripItem)) {
           kickPulse(w);
-          landAfterMove(w, fromBox, animMs("drop"), anim("drop").curve);
+          landAfterMove(w, fromBox, leaf("drop").ms, leaf("drop").curve);
           return true;
         }
         // dropped in the main preview area → send it to whichever workspace is
@@ -525,7 +525,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               else
                 dropOnWorkspace(w, it);
               kickPulse(w);
-              landAfterMove(w, fromBox, animMs("drop"), anim("drop").curve); // strip thumb -> flight; grid tile -> glide
+              landAfterMove(w, fromBox, leaf("drop").ms, leaf("drop").curve); // strip thumb -> flight; grid tile -> glide
               return true;
             }
           }

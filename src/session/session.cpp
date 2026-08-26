@@ -855,7 +855,7 @@ void Overview::rearmanim() const {
 
 void Overview::ensureAnimPump() {
   const bool stillAnimating =
-      m_active && (secondaryAnimsActive() || !m_tileClock.done(reflowDur()) ||
+      m_active && (secondaryAnimsActive() || !m_tileClock.done(glideDur()) ||
                    m_newCardAnim ||
                    m_drag.lifted ||
                    (m_opening && m_progress < 1.0) ||
@@ -878,7 +878,7 @@ void Overview::ensureAnimPump() {
       [this](SP<CEventLoopTimer> self, void *) {
         const bool go = m_active && g_pHyprRenderer &&
                         (secondaryAnimsActive() ||
-                         !m_tileClock.done(reflowDur()) || m_newCardAnim || m_drag.lifted ||
+                         !m_tileClock.done(glideDur()) || m_newCardAnim || m_drag.lifted ||
                          (m_opening && m_progress < 1.0) ||
                          (!m_opening && m_progress > 0.0));
         if (!go) {

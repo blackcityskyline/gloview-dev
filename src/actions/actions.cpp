@@ -174,11 +174,11 @@ bool Overview::swapWindows(const PHLWINDOW &wa, const PHLWINDOW &wb) {
   // flight; strip thumbs always fly.
   for (const auto &[win, box] : oldBoxes)
     if (win == wa)
-      landAfterMove(win, box, animMs("swap_main"),
-                    anim("swap_main").curve); // the initiator
+      landAfterMove(win, box, leaf("swap_main").ms,
+                    leaf("swap_main").curve); // the initiator
     else if (win == wb)
-      landAfterMove(win, box, animMs("swap_partner"),
-                    anim("swap_partner").curve); // the partner
+      landAfterMove(win, box, leaf("swap_partner").ms,
+                    leaf("swap_partner").curve); // the partner
   kickPulse(wa);
   kickPulse(wb);
   damage();       // this frame's snapshot may already be taken — schedule
@@ -337,11 +337,11 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   replayReflow(oldBoxes);
   // landings: w flew from the drag preview (m_lastDragBox), the partner flew
   // from its old grid slot into w's old card (a strip thumb now).
-  landAfterMove(w, m_lastDragBox, animMs("drop"), anim("drop").curve);
+  landAfterMove(w, m_lastDragBox, leaf("drop").ms, leaf("drop").curve);
   for (const auto &[win, box] : oldBoxes)
     if (win == partner)
-      landAfterMove(partner, box, animMs("swap_partner"),
-                    anim("swap_partner").curve);
+      landAfterMove(partner, box, leaf("swap_partner").ms,
+                    leaf("swap_partner").curve);
   damage();
 }
 
@@ -425,9 +425,9 @@ void Overview::switchToWorkspace(const model::StripItem &it) {
     if (!kept)
       m_ghosts.push_back(model::Ghost{oldWin, oldBox});
   }
-  m_populate.begin();
+  m_rebuildClock.begin();
   ensureAnimPump();
-  m_tileClock.pinEnd(reflowDur());
+  m_tileClock.pinEnd(glideDur());
   m_progress = 1.0;
   m_opening = true;
   m_timeline.pinEnd(animDuration()); // keep the overview visually settled

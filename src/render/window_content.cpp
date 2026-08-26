@@ -219,14 +219,6 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
         data.texture     = s->m_current.texture;
         data.surface     = s;
         data.mainSurface = s == w->wlSurface()->resource();
-        if (g_overview && g_overview->dbgRWLOnCheck() && data.mainSurface) {
-          const CBox &dpx = destPx;
-          debug::dbg("rWL win box=" + std::to_string(dpx.w) + "x" +
-                     std::to_string(dpx.h) + " at " + std::to_string(dpx.x) +
-                     "," + std::to_string(dpx.y) + " a=" +
-                     std::to_string(data.alpha * data.fadeAlpha) +
-                     " texOK=" + std::to_string(data.texture->ok()));
-        }
         g_pHyprRenderer->draw(data, g_pHyprRenderer->m_renderData.damage);
         data.surfaceCounter++;
       },

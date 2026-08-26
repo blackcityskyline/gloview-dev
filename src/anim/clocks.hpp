@@ -65,11 +65,11 @@ private:
   using clock = std::chrono::steady_clock;
 };
 
-// Snapshot of one animation leaf's config, resolved per frame by
-// Overview::anim() from cfg::anim.
+// Snapshot of one animation group's config, resolved per frame by
+// Overview::leaf() from cfg::anim.
 struct AnimCfg {
   bool on = false;
-  int ms = 1;
+  double ms = 1.0; // resolved window: >= 1, never the -1 sentinel
   std::string curve = "easeout";
 };
 
