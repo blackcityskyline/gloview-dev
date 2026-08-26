@@ -87,20 +87,19 @@ double Overview::tileProgress(int i) const {
   // deliberately goes back to riding m_progress DOWN: the tile lerp then has
   // the exact same shape as the collapsing chrome, keeping landing and
   // strip-collapse frame-synced.
-  const double base =
-      m_opening ? m_tileClock.raw(glideDur()) : m_progress;
+  const double base = m_opening ? m_tileClock.raw(m_glide.ms) : m_progress;
   return staggered(base, i, static_cast<int>(m_tiles.size()));
 }
 
 double Overview::tileAppear(int i) const {
-  const auto lf = leaf(entryLeaf());
   return curves::eval(
-      lf.curve,
-      staggered(m_rebuildClock.raw(lf.ms), i, static_cast<int>(m_tiles.size())));
+      m_entry.curve,
+      staggered(m_rebuildClock.raw(m_entry.ms), i,
+                static_cast<int>(m_tiles.size())));
 }
 
 LRect Overview::currentBox(const model::Tile &t, int i) const {
-  const double e = curves::eval(leaf(glideLeaf()).curve, tileProgress(i));
+  const double e = curves::eval(m_glide.curve, tileProgress(i));
   const auto &a = t.natural;
   const auto &b = t.target;
   LRect r{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
@@ -111,87 +110,103 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
   // Entry style on any rebuild transition that carries a direction (ws
   // switches and the all<->one flip, dir fixed +1 there): slide arrives from
   // the ws-id-order side a full monitor width out; slidevert drops from the
-  // top edge — mirrors of the ghost exits in renderGhosts.
-  if (m_wsSlideDir != 0) {
-    const std::string style = cfg::anim.ws_enter_anim.get();
-    if (style == "slide" || style == "slidevert") {
-      if (const auto m = m_monitor.lock()) {
-        if (style == "slide")
-          r.x += static_cast<double>(m_wsSlideDir) * m->m_size.x * (1.0 - ap);
-        else
-          r.y -= static_cast<double>(m->m_size.y) * (1.0 - ap);
-      }
-      return r;
+  // top edge — mirrors of the ghost exits in renderGhosts; fade is a pure
+  // alpha ramp (entryFade), no geometry; anything else pops from the center.
+  if (m_wsSlideDir != 0 && m_enterStyle != "pop") {
+    if (const auto m = m_monitor.lock()) {
+      if (m_enterStyle == "slide")
+        r.x += static_cast<double>(m_wsSlideDir) * m->m_size.x * (1.0 - ap);
+      else if (m_enterStyle == "slidevert")
+        r.y -= static_cast<double>(m->m_size.y) * (1.0 - ap);
     }
+    if (m_enterStyle == "slide" || m_enterStyle == "slidevert" ||
+        m_enterStyle == "fade")
+      return r;
   }
-  // Default entry: grow from the slot center.
   const double k  = 0.85 + 0.15 * ap;
   const double cx = r.x + r.w / 2.0, cy = r.y + r.h / 2.0;
   return LRect{cx - r.w * k / 2.0, cy - r.h * k / 2.0, r.w * k, r.h * k};
 }
 
 void Overview::updateAnimation() {
+  // Resolve this frame's leaves ONCE; paint (per-tile) reads the caches.
+  m_glide      = leaf(glideLeaf());
+  m_entry      = leaf(entryLeaf());
+  m_ghost      = leaf(ghostLeaf());
+  m_enterStyle = cfg::anim.ws_enter_anim.get();
+  m_exitStyle  = cfg::anim.ws_exit_anim.get();
+
   const double dur = animDuration();
-  // Stall guard first: a render hole rewinds active clocks to their last-known
-  // position so wall-time inside the hole never counts.
-  const auto nowTick = std::chrono::steady_clock::now();
+  // Stall guard: a render hole rewinds EVERY clock to its last-known value so
+  // wall-time inside the hole never counts.
+  const auto now = std::chrono::steady_clock::now();
   if (m_lastAnimTick.time_since_epoch().count() != 0) {
     const double gapMs =
-        std::chrono::duration<double, std::milli>(nowTick - m_lastAnimTick)
-            .count();
+        std::chrono::duration<double, std::milli>(now - m_lastAnimTick).count();
     if (gapMs > 100.0) {
       m_timeline.compensateStall(gapMs, dur);
-      m_tileClock.compensateStall(gapMs, glideDur());
+      m_tileClock.compensateStall(gapMs, m_glide.ms);
+      m_rebuildClock.compensateStall(gapMs, std::max(m_entry.ms, m_ghost.ms));
+      m_stripTween.compensateStall(gapMs, leaf("strip_step").ms);
       if (m_newCardAnim)
         m_newCard.compensateStall(gapMs, newCardDur());
+      if (m_drag.lifted)
+        m_dragLiftClock.compensateStall(gapMs, leaf("lift").ms);
+      for (auto &fx : m_swapfx)
+        fx.clock.compensateStall(gapMs, fx.ms);
     }
   }
-  m_lastAnimTick = nowTick;
+  m_lastAnimTick = now;
 
-  const auto stepMs = leaf("strip_step");
-  if (!m_stripTween.done(stepMs.ms))
+  const auto st = leaf("strip_step");
+  if (!m_stripTween.done(st.ms))
     m_stripScroll =
         lerp(m_stripScrollFrom, m_stripScrollTarget,
-             curves::eval(stepMs.curve, m_stripTween.raw(stepMs.ms)));
+             curves::eval(st.curve, m_stripTween.raw(st.ms)));
   else
     m_stripScroll = m_stripScrollTarget;
 
-  // Ghosts exit in their own leaf's window — clearing them in the entries'
-  // window cut long exits mid-flight.
-  const auto ghostsMs = leaf(ghostLeaf()).ms;
-  if (!m_ghosts.empty() && m_rebuildClock.done(ghostsMs))
+  // Each side of the transition closes in its own window...
+  if (!m_ghosts.empty() && m_rebuildClock.done(m_ghost.ms))
     m_ghosts.clear();
+  // ...and entries settle explicitly, or every newcomer tile keeps resolving
+  // config and evaluating curves forever after.
+  if (m_rebuildClock.done(m_entry.ms) &&
+      std::any_of(m_tiles.begin(), m_tiles.end(),
+                  [](const model::Tile &t) { return t.appear < 1.0; }))
+    for (auto &t : m_tiles)
+      t.appear = 1.0;
 
   // Swap pulses accumulate per animated frame with the delta CAPPED, so a
   // post-drop render hole cannot jump the ring through its overshoot plateau.
-  const double pulseMs = leaf("pulse").ms;
-  const auto nowTickP  = std::chrono::steady_clock::now();
+  const auto pulse = leaf("pulse");
   for (auto &p : m_pulses) {
     if (p.w.expired())
       continue;
-    p.p += std::min(34.0, std::chrono::duration<double, std::milli>(
-                              nowTickP - p.last).count()) /
-           pulseMs;
-    p.last = nowTickP;
+    p.p += std::min(34.0, std::chrono::duration<double, std::milli>(now - p.last)
+                              .count()) /
+           pulse.ms;
+    p.last = now;
   }
   std::erase_if(m_pulses, [](const model::WinPulse &p) {
     return p.w.expired() || p.p >= 1.0;
   });
 
-  // Transition over only when BOTH sides finished (each on its own window);
-  // compute the leaves before clearing the state they read.
-  if (m_rebuildClock.done(ghostsMs) && m_rebuildClock.done(leaf(entryLeaf()).ms)) {
+  // Transition over only when BOTH sides finished (flags must outlive the
+  // caches computed from them).
+  if (m_rebuildClock.done(m_ghost.ms) && m_rebuildClock.done(m_entry.ms)) {
     m_wsSlideDir = 0;
     m_expoFlip = 0;
   }
 
-  // Done flights (and vanished windows) leave the Model — without this prune
-  // the pump never disarms and full-monitor recomposition runs forever.
-  const auto dropMs = leaf("drop").ms;
-  for (auto it = m_swapfx.begin(); it != m_swapfx.end();)
-    it->win.expired() || it->clock.raw(dropMs) >= 1.0
-        ? it = m_swapfx.erase(it)
-        : ++it;
+  // Done flights (and vanished windows) leave the Model by their OWN clock —
+  // pruning against live config cut mid-flight landings on a drop_ms change.
+  for (auto it = m_swapfx.begin(); it != m_swapfx.end();) {
+    if (it->win.expired() || it->clock.raw(it->ms) >= 1.0)
+      it = m_swapfx.erase(it);
+    else
+      ++it;
+  }
 
   const double t = m_timeline.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
@@ -199,13 +214,22 @@ void Overview::updateAnimation() {
     m_newCardAnim = false;
     m_newCardId = 0;
   }
-  // Close completion needs BOTH clocks done: chrome finishes early, but
-  // flipping anything off before the tiles have landed would pop them
-  // mid-air. Teardown runs from the painter tail after the final frame.
+  // Close completion waits for the timeline AND any tile clock still draining
+  // (a reflow begun during close would otherwise pop its landing tiles).
   if (!m_opening && t >= 1.0 && m_tileClock.done(dur)) {
     m_progress = 0.0;
     m_pendingDeactivate = true;
   }
+}
+
+// The single pump predicate: anything that can still produce motion. Every
+// site (paint tail, pump arm, pump tick) asks this one function — a new clock
+// registers here exactly once.
+bool Overview::animBusy() const {
+  return m_active &&
+         (secondaryAnimsActive() || !m_tileClock.done(glideDur()) ||
+          m_newCardAnim || m_drag.lifted || !m_swapfx.empty() ||
+          (m_opening && m_progress < 1.0) || (!m_opening && m_progress > 0.0));
 }
 
 double Overview::newCardScale() const {

@@ -839,28 +839,14 @@ void Overview::finishPendingDeactivate() {
 }
 
 void Overview::rearmanim() const {
-  if (!m_active)
-    return;
-  const double dur = animDuration();
-  const bool animating = secondaryAnimsActive() ||
-                         !m_tileClock.done(dur) || m_newCardAnim ||
-                         m_drag.lifted || !m_swapfx.empty() ||
-                         (m_opening && m_progress < 1.0) ||
-                         (!m_opening && m_progress > 0.0);
-  if (!animating)
+  if (!animBusy())
     return;
   if (g_pEventLoopManager)
     const_cast<Overview *>(this)->ensureAnimPump();
 }
 
 void Overview::ensureAnimPump() {
-  const bool stillAnimating =
-      m_active && (secondaryAnimsActive() || !m_tileClock.done(glideDur()) ||
-                   m_newCardAnim ||
-                   m_drag.lifted ||
-                   (m_opening && m_progress < 1.0) ||
-                   (!m_opening && m_progress > 0.0));
-  if (!stillAnimating) {
+  if (!animBusy()) {
     if (m_animPump) {
       m_animPump->cancel();
       m_animPump.reset();
@@ -876,12 +862,7 @@ void Overview::ensureAnimPump() {
   m_animPump = makeShared<CEventLoopTimer>(
       std::chrono::milliseconds(8),
       [this](SP<CEventLoopTimer> self, void *) {
-        const bool go = m_active && g_pHyprRenderer &&
-                        (secondaryAnimsActive() ||
-                         !m_tileClock.done(glideDur()) || m_newCardAnim || m_drag.lifted ||
-                         (m_opening && m_progress < 1.0) ||
-                         (!m_opening && m_progress > 0.0));
-        if (!go) {
+        if (!animBusy()) {
           self->cancel();
           return;
         }

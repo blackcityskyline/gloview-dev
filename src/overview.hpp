@@ -272,6 +272,13 @@ private:
   // ride it, each side in its own leaf's window.
   anim::Tween m_rebuildClock;
   std::vector<model::Ghost> m_ghosts;
+  // Per-frame resolved animation state, refreshed at the top of
+  // updateAnimation; paint reads these and never resolves config itself
+  // (leaf() allocates its curve string — fine once per frame, not per tile).
+  anim::AnimCfg m_glide, m_entry, m_ghost;
+  std::string m_enterStyle, m_exitStyle;
+  // True while ANY animation can still produce motion (master pump predicate).
+  bool animBusy() const;
   // True while ANY secondary clock is mid-flight (entries/ghosts, strip
   // scroll). The animation-pump predicates MUST include this: after a card/
   // digit workspace switch the master timeline sits pinned at 1 and tiles'

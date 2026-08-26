@@ -97,17 +97,15 @@ LRect Overview::tileContentBox(size_t i, const LRect &slot) const {
 }
 
 // Content/chrome alpha multiplier for a populating tile: 1 everywhere except
-// the ws_enter_anim == "fade" entry (ws switches and the all<->one flip,
-// both carry m_wsSlideDir), where the preview ramps in with its appear
-// progress — chrome and content fade together so no full-strength ring ever
-// sits under a transparent body.
+// the "fade" entry style (ws switches and the all<->one flip, both carry
+// m_wsSlideDir), where the preview ramps in with its appear progress — chrome
+// and content fade together so no full-strength ring ever sits under a
+// transparent body.
 double Overview::entryFade(size_t i) const {
   if (i >= m_tiles.size())
     return 1.0;
   const auto &t = m_tiles[i];
-  if (t.appear >= 1.0 || m_wsSlideDir == 0)
-    return 1.0;
-  if (cfg::anim.ws_enter_anim.get() != "fade")
+  if (t.appear >= 1.0 || m_wsSlideDir == 0 || m_enterStyle != "fade")
     return 1.0;
   return tileAppear(static_cast<int>(i));
 }
@@ -336,10 +334,7 @@ void Overview::renderMainWindows() const {
 // close-window). Same rebuild clock as Tile.appear — the mirror direction.
 // Softer than the incoming pop: ghosts are a motion cue, not the main event.
 void Overview::renderGhosts() const {
-  if (m_ghosts.empty())
-    return;
-  const auto lf = leaf(ghostLeaf());
-  if (m_rebuildClock.done(lf.ms))
+  if (m_ghosts.empty() || m_rebuildClock.done(m_ghost.ms))
     return;
   const auto m = m_monitor.lock();
   if (!m)
@@ -348,31 +343,26 @@ void Overview::renderGhosts() const {
   const auto when    = Time::steadyNow();
   const int round    = pxr(cfg::look.preview_round, scale);
   const float roundPow = cfg::look.preview_round_power;
-  const double p    = std::min(1.0, m_rebuildClock.raw(lf.ms));
-  const double eOut = curves::eval(lf.curve, p); // 0..1 gone
+  const double p    = std::min(1.0, m_rebuildClock.raw(m_ghost.ms));
+  const double eOut = curves::eval(m_ghost.curve, p); // 0..1 gone
 
   for (const auto &g : m_ghosts) {
     const auto w = g.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;
     // The exit mirrors the entry's pop-in vividly: scale 1 -> 0.7, alpha
-    // 0.85 -> 0, over the FULL window. A ws-switch slide moves the ghosts
-    // OUT to the opposite side instead of shrinking them.
+    // 0.85 -> 0, over the FULL window. A slide exit moves the ghosts OUT to
+    // the opposite side / through the top edge instead of shrinking them.
     const double k  = 1.0 - 0.3 * eOut; // shrink toward its own center
     const double cx = g.box.x + g.box.w / 2.0, cy = g.box.y + g.box.h / 2.0;
     const LRect box{cx - g.box.w * k / 2.0, cy - g.box.h * k / 2.0,
                     g.box.w * k, g.box.h * k};
     double gx = box.x, gy = box.y;
     float gAlpha = static_cast<float>((1.0 - eOut) * 0.85);
-    const auto exitAnim = cfg::anim.ws_exit_anim.get();
-    if (m_wsSlideDir != 0 && exitAnim == "slide") {
-      // horizontal ws-switch slide: out to the opposite side
-      if (const auto mm = m_monitor.lock())
-        gx -= static_cast<double>(m_wsSlideDir) * mm->m_size.x * eOut;
-    } else if (m_wsSlideDir != 0 && exitAnim == "slidevert") {
-      // vertical: exits through the top edge
-      if (const auto mm = m_monitor.lock())
-        gy -= static_cast<double>(mm->m_size.y) * eOut;
+    if (m_wsSlideDir != 0 && m_exitStyle == "slide") {
+      gx -= static_cast<double>(m_wsSlideDir) * m->m_size.x * eOut;
+    } else if (m_wsSlideDir != 0 && m_exitStyle == "slidevert") {
+      gy -= static_cast<double>(m->m_size.y) * eOut;
     }
     const CBox px(gx * scale, gy * scale, box.w * scale, box.h * scale);
     renderWindowLive(w, m, px, px, gAlpha, when, round, roundPow);

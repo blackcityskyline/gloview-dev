@@ -191,9 +191,11 @@ struct anim {
   Int ws_exit_enabled;
   Int ws_exit_ms;
   Str ws_exit_curve;
-  Int swap_main_ms;     // the swap initiator's flight
+  Int swap_main_enabled;   // the swap initiator's flight
+  Int swap_main_ms;
   Str swap_main_curve;
-  Int swap_partner_ms;  // the swap partner's flight
+  Int swap_partner_enabled; // the swap partner's flight
+  Int swap_partner_ms;
   Str swap_partner_curve;
   Int expo_in_enabled;  // one->all spread
   Int expo_in_ms;       // one->all: the tiles spreading
