@@ -167,6 +167,13 @@ bool Overview::swapWindows(const PHLWINDOW &wa, const PHLWINDOW &wb) {
   g_layoutManager->switchTargets(ta, tb);
   // Rebuild the overview from the swapped real geometry and glide in.
   replayReflow(oldBoxes);
+  // SwapFX dispatch: the swapped windows fly per their ZONE's style
+  // (grid_swap_anim / strip_swap_anim). Horizontal keeps the chrome-carrying
+  // tile glide for grid tiles; the other styles replace it with an FX
+  // flight; strip thumbs always fly.
+  for (const auto &[win, box] : oldBoxes)
+    if (win == wa || win == wb)
+      landAfterMove(win, box);
   kickPulse(wa);
   kickPulse(wb);
   damage();       // this frame's snapshot may already be taken — schedule
