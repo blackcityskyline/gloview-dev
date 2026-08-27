@@ -12,7 +12,9 @@
 #include <hyprland/src/desktop/state/GlobalWindowController.hpp>
 #include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
+#include <hyprland/src/layout/space/Space.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
@@ -50,10 +52,6 @@ bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
   }
 
   // Ws card: resolve the SLOT under the cursor — the drop is positional.
-  // The half-zone the cursor is in names the NEIGHBOR window; dwindle splits
-  // the last-focused window on the target workspace, so focusing the
-  // neighbor right before the move gives a TRUE half-split (the moved
-  // window takes one half of the neighbor, the neighbor keeps the other).
   PHLWINDOW vj;
   for (size_t j = 0; j < it.wins.size(); ++j) {
     const auto v = it.wins[j].win.lock();
@@ -65,11 +63,29 @@ bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
     }
   }
 
-  // The drop takes the CHOSEN window's slot: a swap with it. (A true
-  // half-split insert would need to focus the neighbor on the target
-  // workspace before the move — CFocusState::rawWindowFocus ABORTS on
-  // windows of non-active workspaces, so that path is unavailable until the
-  // layout-insert support lands.)
+  // tile_layout == "dwindle": use assignToSpace(focalPoint) to let dwindle
+  // do a real half-split beside vj WITHOUT focusing it (avoids the
+  // rawWindowFocus RASSERT on inactive workspaces).
+  if (vj && cfg::behavior.tile_layout.get() == "dwindle") {
+    const auto tvj = vj->layoutTarget();
+    const auto tw  = w->layoutTarget();
+    if (tw && tvj && tvj->space()) {
+      auto oldBoxes = captureCurrentBoxes(w);
+      // focalPoint = centre of vj's current slot → dwindle splits AT vj.
+      const auto vjPos  = vj->positionAnimation()->goal();
+      const auto vjSize = vj->sizeAnimation()->goal();
+      const Vector2D focalPoint{vjPos.x + vjSize.x / 2.0,
+                                vjPos.y + vjSize.y / 2.0};
+      tw->assignToSpace(tvj->space(), focalPoint);
+      replayReflow(oldBoxes);
+      damage();
+      ensureAnimPump();
+      return true;
+    }
+    // assignToSpace not available (shouldn't happen on v0.56+) — fall through.
+  }
+
+  // Default (tile_layout == "none" or no vj): legacy swap/move behaviour.
   if (vj)
     swapWindows(w, vj); // precise slot swap with the chosen window
   else if (m_drag.button == BTN_RIGHT)

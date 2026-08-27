@@ -258,6 +258,11 @@ struct behavior {
   Int show_all_workspaces; // expo
   Int show_special;        // scratchpad as a strip card
   Int hold_lift_ms;        // ms to hold before lift animation triggers
+  // tile_layout: how windows are arranged on drop.
+  // "none"    — legacy swap/move (default)
+  // "dwindle" — use assignToSpace(focalPoint) for a dwindle half-split
+  // future:     "bsp", "master", "columns"
+  Str tile_layout;
 };
 
 inline behavior behavior;

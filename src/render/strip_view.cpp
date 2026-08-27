@@ -355,6 +355,7 @@ void Overview::renderStripButtons() const {
     if (dropping && static_cast<int>(i) == m_hoveredStrip) {
       const auto hoverCol = argb(cfg::colors.hover_border.get(e));
       const auto hintCol  = argb(cfg::colors.drop_hint.get(e));
+      const bool dwindle  = cfg::behavior.tile_layout.get() == "dwindle";
       bool slotFound = false;
       for (size_t j = 0; j < it.wins.size(); ++j) {
         const auto v = it.wins[j].win.lock();
@@ -365,11 +366,37 @@ void Overview::renderStripButtons() const {
           continue;
         slotFound = true;
         const int sr = clampRound(cfg::look.preview_round, sl.w, sl.h);
-        // The drop takes the chosen window's slot (swap): highlight its full
-        // perimeter. (A true half-split visual awaits the layout-insert
-        // support — the halves were a promise the drop couldn't keep.)
-        strokeRingPx(pxb(sl, s), hoverCol, 0.9F * static_cast<float>(e), sr,
-                     roundPow);
+        if (dwindle) {
+          // Show the half where the dropped window will land.
+          // Axis: slots wider than tall → vertical split (left/right);
+          // taller than wide → horizontal split (top/bottom).
+          // This mirrors what dwindle actually does with the focal point.
+          LRect half = sl;
+          if (sl.w >= sl.h) {
+            // Vertical split: left or right half.
+            half.w = sl.w / 2.0;
+            if (m_drag.x >= sl.cx())
+              half.x = sl.cx();
+          } else {
+            // Horizontal split: top or bottom half.
+            half.h = sl.h / 2.0;
+            if (m_drag.y >= sl.cy())
+              half.y = sl.cy();
+          }
+          const int hr = clampRound(cfg::look.preview_round, half.w, half.h);
+          // Tinted fill on the landing half.
+          safeRenderRect("dwindlehalf",
+                         pxb(CBox{half.x, half.y, half.w, half.h}, s),
+                         hintCol,
+                         {.round = pxr(hr, s), .roundingPower = roundPow});
+          // Dim ring on the full slot for context.
+          strokeRingPx(pxb(sl, s), hoverCol,
+                       0.45F * static_cast<float>(e), sr, roundPow);
+        } else {
+          // Legacy swap: highlight the full slot ring.
+          strokeRingPx(pxb(sl, s), hoverCol,
+                       0.9F * static_cast<float>(e), sr, roundPow);
+        }
         break;
       }
       if (!slotFound && it.wins.empty()) {
