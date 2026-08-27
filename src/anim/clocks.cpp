@@ -115,7 +115,8 @@ double Overview::tileAppear(int i) const {
 }
 
 LRect Overview::currentBox(const model::Tile &t, int i) const {
-  const double e = curves::eval(m_glide.curve, tileProgress(i));
+  const std::string &curve = m_tileClockCurve.empty() ? m_glide.curve : m_tileClockCurve;
+  const double e = curves::eval(curve, tileProgress(i));
   const auto &a = t.natural;
   const auto &b = t.target;
   LRect r{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
@@ -240,8 +241,10 @@ void Overview::updateAnimation() {
 
   // Glide done: clear the snapshotted duration so glideDur() reads live
   // config again on the next startTileGlide() call.
-  if (m_tileClockMs > 0 && m_tileClock.done(m_tileClockMs))
+  if (m_tileClockMs > 0 && m_tileClock.done(m_tileClockMs)) {
     m_tileClockMs = 0;
+    m_tileClockCurve.clear();
+  }
 
   // Done flights (and vanished windows) leave the Model by their OWN clock —
   // pruning against live config cut mid-flight landings on a config change.

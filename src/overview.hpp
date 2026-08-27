@@ -499,7 +499,8 @@ private:
   // every leaf selector — an expo flip is not a ws switch (no directional
   // styles, its own timing).
   int m_expoFlip = 0;
-  double m_tileClockMs = 0; // snapshotted glide duration at startTileGlide()
+  double m_tileClockMs = 0;       // snapshotted glide duration at startTileGlide()
+  std::string m_tileClockCurve;   // snapshotted glide curve  at startTileGlide()
   // The lift clock: the drag preview's appearance ramp (drag_lift leaf).
   anim::Tween m_dragLiftClock;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,

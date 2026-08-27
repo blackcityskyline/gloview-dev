@@ -487,9 +487,8 @@ void Overview::startTileGlide(
     for (auto &t : m_tiles)
       t.appear = 1.0;
   m_tileClock.begin();
-  m_tileClockMs = m_glide.ms; // snapshot: glideDur() must return THIS value
-                               // for the lifetime of this glide, even after
-                               // m_expoFlip resets and glideLeaf() changes.
+  m_tileClockMs    = m_glide.ms;    // snapshot: glideDur() must return THIS value
+  m_tileClockCurve = m_glide.curve; // snapshot: currentBox() must use THIS curve
   if (newcomers || !m_ghosts.empty()) {
     m_rebuildClock.begin();
     ensureAnimPump(); // frames must keep coming while population runs
