@@ -153,7 +153,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         .name        = "GloView",
         .description = "macOS Mission Control-style overview",
         .author      = "Vergil",
-        .version     = "0.3.0",
+        .version     = "0.3.1-test",
     };
 }
 

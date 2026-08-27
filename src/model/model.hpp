@@ -87,13 +87,16 @@ struct WinPulse {
 // outcome. One value instead of the old eleven scattered members — a stale
 // half-armed drag can no longer exist across sessions (open() just resets
 // it), and release logic switches on `press` instead of decoding sentinels.
+//
+// RULE: Drag visual state (renderDragWindow, drawDragStripChrome,
+// suppressContent, WIN_SUPPRESS) MUST be gated on m_drag.lifted everywhere
+// except the grab-indicator ring.  Press alone means "armed, nothing drawn
+// yet" — lift is promoted by hold_lift_ms timer.
 struct Drag {
   enum class Press : int {
     Tile,      // pressed on a main-grid tile: idx = m_tiles index
     StripWin,  // pressed on a strip card's window slot: idx = m_strip index,
                // winIdx = index into its wins, win = the window
-    StripCard, // pressed on a strip card: idx = m_strip index; arms a drag
-               // candidate — click without move → switch on release
     Empty,     // empty space → close on release unless consumed
     Consumed,  // press fully handled on the spot (e.g. a ✕ button)
   };
@@ -105,11 +108,15 @@ struct Drag {
   double grabDX = 0, grabDY = 0;   // cursor offset inside the grabbed box
   double x = 0, y = 0;             // current cursor, kept fresh by updateHover
   bool lifted = false;             // moved past the threshold → a real drag
+  std::chrono::steady_clock::time_point holdStartMs; // press timestamp for hold timer
   LRect fromBox;                   // the grabbed preview's box at lift time —
                                    // the pickup flight's origin
   bool armed() const {
-    return press == Press::Tile || press == Press::StripWin ||
-           press == Press::StripCard;
+    return press == Press::Tile || press == Press::StripWin;
+  }
+  double travelSq() const {
+    const double dx = x - pressX, dy = y - pressY;
+    return dx * dx + dy * dy;
   }
 };
 

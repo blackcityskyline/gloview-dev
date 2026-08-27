@@ -148,6 +148,7 @@ constexpr IntSpec kInts[] = {
     {&behavior.switch_on_new_workspace, "plugin:gloview:switch_on_new_workspace", 1},
     {&behavior.show_all_workspaces, "plugin:gloview:show_all_workspaces", 0},
     {&behavior.show_special, "plugin:gloview:show_special", 0},
+    {&behavior.hold_lift_ms, "plugin:gloview:hold_lift_ms", 400},
     // layer
     {&layer.hide_top, "plugin:gloview:hide_top_layers", 0},
     {&layer.hide_overlay, "plugin:gloview:hide_overlay_layers", 0},
@@ -236,7 +237,7 @@ constexpr LeafSpec kLeaves[] = {
     {"expo_in", &anim::expo_in, 250, "easeout"},   {"expo_out", &anim::expo_out, 250, "easeout"},
     {"swap_main", &anim::swap_main, 320, "easeinout"},
     {"swap_partner", &anim::swap_partner, 320, "easeinout"},
-    {"drag", &anim::drag, 150, "easeout"},
+    {"drag", &anim::drag, 400, "easeout"},
 };
 
 void registerLeaf(HANDLE handle, const LeafSpec &l) {

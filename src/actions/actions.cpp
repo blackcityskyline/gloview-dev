@@ -23,6 +23,15 @@ using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
 
+model::StripItem *Overview::homeStripCardFor(const PHLWINDOW &w) {
+  if (!w)
+    return nullptr;
+  for (auto &it : m_strip)
+    if (it.kind == model::StripItem::Kind::Ws && it.ws.lock() == w->m_workspace)
+      return &it;
+  return nullptr;
+}
+
 bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
                                int skipItem) {
   const int idx = stripItemAt(lx, ly);

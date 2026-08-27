@@ -83,11 +83,10 @@ void Overview::renderStrip() const {
 
   for (size_t i = 0; i < m_strip.size(); ++i) {
     const auto &it = m_strip[i];
-    // Suppress the dragged card at its original position — it's rendered
-    // separately via drawDragStripCardChrome + renderDragWindow.
-    if (m_drag.press == model::Drag::Press::StripCard &&
-        static_cast<int>(i) == m_drag.idx && m_drag.lifted)
-      continue;
+    const bool suppressContent =
+        m_drag.lifted &&
+        m_drag.press == model::Drag::Press::StripWin &&
+        static_cast<int>(i) == m_drag.idx;
     const bool hover = static_cast<int>(i) == m_hoveredStrip;
     LRect card = it.card;
     card.x += slide.x + scroll.x; // follow the strip slide-in and scroll
@@ -195,36 +194,38 @@ void Overview::renderStrip() const {
       // transparency, so without it the translucent card band over the
       // blurred backdrop bleeds through. NOT a decorative tint — see the
       // chrome-kernel comment in gl_util.hpp.
-      for (size_t j = 0; j < it.wins.size(); ++j) {
-        const auto &sw = it.wins[j];
-        const auto w = sw.win.lock();
-        if (!w || !w->m_isMapped || w->isHidden())
-          continue;
-        const LRect wbL = stripWinSlotRect(it, card, j);
-        // TEMP: pin the degenerate-slot crash (safetyBacking -> renderRect
-        // RASSERTs on negative dims; NaN slips past the max() clamps)
-        if (!std::isfinite(wbL.w) || !std::isfinite(wbL.h) || wbL.w < 1 ||
-            wbL.h < 1) {
-          debug::dbg("renderStrip BAD slot: " + std::to_string(wbL.w) + "x" +
-                     std::to_string(wbL.h) + " at " + std::to_string(wbL.x) +
-                     "," + std::to_string(wbL.y) + " rel=" +
-                     std::to_string(sw.rel.w) + "x" +
-                     std::to_string(sw.rel.h) + " card=" +
-                     std::to_string(card.w) + "x" + std::to_string(card.h));
-          continue;
+      if (!suppressContent) {
+        for (size_t j = 0; j < it.wins.size(); ++j) {
+          const auto &sw = it.wins[j];
+          const auto w = sw.win.lock();
+          if (!w || !w->m_isMapped || w->isHidden())
+            continue;
+          const LRect wbL = stripWinSlotRect(it, card, j);
+          // TEMP: pin the degenerate-slot crash (safetyBacking -> renderRect
+          // RASSERTs on negative dims; NaN slips past the max() clamps)
+          if (!std::isfinite(wbL.w) || !std::isfinite(wbL.h) || wbL.w < 1 ||
+              wbL.h < 1) {
+            debug::dbg("renderStrip BAD slot: " + std::to_string(wbL.w) + "x" +
+                       std::to_string(wbL.h) + " at " + std::to_string(wbL.x) +
+                       "," + std::to_string(wbL.y) + " rel=" +
+                       std::to_string(sw.rel.w) + "x" +
+                       std::to_string(sw.rel.h) + " card=" +
+                       std::to_string(card.w) + "x" + std::to_string(card.h));
+            continue;
+          }
+          const int wRound = clampRound(previewRound, wbL.w, wbL.h);
+          // Grab indicator: a bright highlight around the exact slot currently
+          // pressed, before it's lifted into a floating drag — static (not a
+          // pulse) so it doesn't force repainting while the mouse sits still.
+          const bool grabbed = !m_drag.lifted &&
+                               static_cast<int>(i) == m_drag.idx &&
+                               static_cast<int>(j) == m_drag.winIdx;
+          if (grabbed)
+            strokeRing(wbL, s, cfg::colors.hover_border.get(e),
+                       2, wRound, roundPow);
+          safetyBacking(wbL, s, cfg::colors.backing.get(),
+                        0.08 * e, wRound, roundPow);
         }
-        const int wRound = clampRound(previewRound, wbL.w, wbL.h);
-        // Grab indicator: a bright highlight around the exact slot currently
-        // pressed, before it's lifted into a floating drag — static (not a
-        // pulse) so it doesn't force repainting while the mouse sits still.
-        const bool grabbed = static_cast<int>(i) == m_drag.idx &&
-                             static_cast<int>(j) == m_drag.winIdx &&
-                             !(m_drag.press == model::Drag::Press::StripWin);
-        if (grabbed)
-          strokeRing(wbL, s, cfg::colors.hover_border.get(e),
-                     2, wRound, roundPow);
-        safetyBacking(wbL, s, cfg::colors.backing.get(),
-                      0.08 * e, wRound, roundPow);
       }
     }
 
@@ -275,7 +276,8 @@ void Overview::renderStripWindows() const {
     card.x += slide.x + scroll.x;
     card.y += slide.y + scroll.y;
     for (size_t j = 0; j < it.wins.size(); ++j) {
-      if (m_drag.press == model::Drag::Press::StripWin &&
+      if (m_drag.lifted &&
+          m_drag.press == model::Drag::Press::StripWin &&
           static_cast<int>(i) == m_drag.idx &&
           static_cast<int>(j) == m_drag.winIdx)
         continue; // being dragged as a floating preview right now
@@ -314,7 +316,8 @@ void Overview::renderStripButtons() const {
   const int cardRound = cfg::strip.card_round;
   const float roundPow = cfg::look.preview_round_power;
   const bool showClose = m_desktopMode || closeButtonsAlwaysOn();
-  const bool dropping = m_drag.armed() && m_drag.lifted;
+  const bool travelling = m_drag.travelSq() > 64.0; // ~8px
+  const bool dropping = m_drag.armed() && m_drag.lifted && travelling;
   // Carrying a STRIP window: hovering an exact slot means swap intent —
   // real-slot rings for ANY button (both swap on slot drop); insert-zone
   // hints only apply away from slots.

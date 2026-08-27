@@ -122,35 +122,9 @@ void Overview::updateHover() {
   const double lx = mc.x - m->m_position.x;
   const double ly = mc.y - m->m_position.y;
 
-  // drag tracking: promote an armed press (tile, strip-window slot, or strip
-  // card) to a real drag once the pointer passes a small threshold, then follow
-  // it.
+  // drag tracking: promote an armed press (tile or strip-window slot) to a
+  // real drag via the hold timer in updateAnimation (hold_lift_ms).
   if (m_drag.armed()) {
-    const double dx = lx - m_drag.pressX;
-    const double dy = ly - m_drag.pressY;
-    if (!m_drag.lifted && (dx * dx + dy * dy) > 64.0) { // ~8px
-      m_drag.lifted = true;
-      m_dragLiftClock.begin(); // lift leaf: the pickup flight
-      // Where the grabbed preview sits RIGHT NOW — the flight's origin.
-      if (m_drag.press == model::Drag::Press::Tile)
-        m_drag.fromBox =
-            tileContentBox(static_cast<size_t>(m_drag.idx),
-                           currentBox(m_tiles[m_drag.idx], m_drag.idx));
-      else if (m_drag.press == model::Drag::Press::StripCard)
-        m_drag.fromBox = stripCardAt(static_cast<size_t>(m_drag.idx));
-      else
-        m_drag.fromBox = stripWinSlotRect(
-            m_strip[m_drag.idx], stripCardAt(m_drag.idx),
-            static_cast<size_t>(std::max(0, m_drag.winIdx)));
-      debug::dbg("DRAG LIFT kind=" +
-                 std::string(m_drag.press == model::Drag::Press::Tile
-                                 ? "tile"
-                             : m_drag.press == model::Drag::Press::StripCard
-                                 ? "stripcard"
-                                 : "strip") +
-                 " from=" + std::to_string(m_drag.fromBox.w) + "x" +
-                 std::to_string(m_drag.fromBox.h));
-    }
     if (m_drag.lifted) {
       m_drag.x = lx;
       m_drag.y = ly;
@@ -291,7 +265,15 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       if (!c.contains(lx, ly))
         continue;
       auto &it = m_strip[i];
-      if (it.kind != model::StripItem::Kind::Plus && it.kind != model::StripItem::Kind::All) {
+      if (it.kind == model::StripItem::Kind::All) {
+        m_drag.press = model::Drag::Press::Consumed;
+        toggleAllWorkspaces();
+      } else if (it.kind == model::StripItem::Kind::Plus) {
+        m_drag.press = model::Drag::Press::Consumed;
+        addWorkspace();
+      } else {
+        // Try every visible window slot — first hit arms StripWin.
+        bool hitSlot = false;
         for (size_t j = 0; j < it.wins.size(); ++j) {
           const auto w = it.wins[j].win.lock();
           if (!w || !w->m_isMapped || w->isHidden())
@@ -306,25 +288,17 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
             m_drag.pressY = m_drag.y = ly;
             m_drag.grabDX = lx - wb.x;
             m_drag.grabDY = ly - wb.y;
-            return true;
+            m_drag.fromBox = stripWinSlotRect(it, c, j);
+            m_drag.holdStartMs = std::chrono::steady_clock::now();
+            hitSlot = true;
+            break;
           }
         }
-      }
-      if (it.kind == model::StripItem::Kind::All) {
-        m_drag.press = model::Drag::Press::Consumed;
-        toggleAllWorkspaces();
-      } else if (it.kind == model::StripItem::Kind::Plus) {
-        m_drag.press = model::Drag::Press::Consumed;
-        addWorkspace();
-      } else {
-        // arm drag candidate — click vs drag decided on release, mirroring
-        // grid tile behavior
-        m_drag.press   = model::Drag::Press::StripCard;
-        m_drag.idx     = static_cast<int>(i);
-        m_drag.pressX  = m_drag.x = lx;
-        m_drag.pressY  = m_drag.y = ly;
-        m_drag.grabDX  = lx - c.x;
-        m_drag.grabDY  = ly - c.y;
+        if (!hitSlot) {
+          // Click on card but not on any window slot → switch workspace
+          m_drag.press = model::Drag::Press::Consumed;
+          switchToWorkspace(it);
+        }
       }
       return true;
     }
@@ -337,6 +311,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       m_drag.pressY = m_drag.y = ly;
       m_drag.grabDX = lx - b.x;
       m_drag.grabDY = ly - b.y;
+      m_drag.fromBox = tileContentBox(static_cast<size_t>(hit), b);
+      m_drag.holdStartMs = std::chrono::steady_clock::now();
       return true;
     }
     // empty space
@@ -350,23 +326,19 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
 
   switch (m_drag.press) {
   case model::Drag::Press::Consumed: { // switch / ✕ already handled on press
+    debug::dbg("[REL] press=Consumed");
     m_drag = {};
-    return true;
-  }
-  case model::Drag::Press::StripCard: {
-    const int press = m_drag.idx;
-    m_drag = {};
-    if (press >= 0 && press < static_cast<int>(m_strip.size())) {
-      const auto &it = m_strip[static_cast<size_t>(press)];
-      if (it.kind == model::StripItem::Kind::Ws)
-        switchToWorkspace(it);
-    }
     return true;
   }
   case model::Drag::Press::Tile: {
     const int press = m_drag.idx;
     const auto w = m_tiles[press].win.lock();
     const double grabDX = m_drag.grabDX, grabDY = m_drag.grabDY;
+    debug::dbg("[REL] press=Tile lifted=" + std::to_string(m_drag.lifted) +
+               " rmb=" + std::to_string(m_drag.button == BTN_RIGHT) +
+               " dxMoved=" + std::to_string(m_drag.travelSq()) +
+               " idx=" + std::to_string(press) +
+               " win=" + (w ? "valid" : "expired"));
     if (m_drag.lifted) {
       const bool rmb = m_drag.button == BTN_RIGHT;
       // Wherever the release lands, the preview must travel there VISIBLY:
@@ -388,6 +360,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           break;
         }
       if (cardIdx >= 0) {
+        debug::dbg("[REL] branch=Tile->stripCard(rmb=" + std::to_string(rmb) + ")");
         if (rmb)
           swapOnWorkspace(w, m_strip[cardIdx]);
         else
@@ -423,6 +396,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         const double tol =
             std::max(0.0, cfg::grid.gap / 2.0);
         if (best >= 0 && bestDist2 <= tol * tol) {
+          debug::dbg("[REL] branch=Tile->gridSwap");
           swapTiles(press, best);
           return true;
         }
@@ -431,6 +405,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       // Real window never floated/moved; the parked box lives on the Tile and
       // survives rebuilds via buildTiles()'s target carry.
       if (m_desktopMode && w) {
+        debug::dbg("[REL] branch=Tile->desktopPark");
         const LRect cur =
             m_tiles[press].target; // keep the canvas size, move the corner
         const LRect parked{lx - grabDX, ly - grabDY, cur.w, cur.h};
@@ -445,6 +420,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       // slot on the lift leaf (reverse of the pickup). Everything else may
       // relayout; the dragged tile itself settles instantly and lets the
       // flight carry it in, so the FX lands exactly on its slot.
+      debug::dbg("[REL] branch=Tile->flyback");
       replayReflow(oldBoxes);
       if (press < static_cast<int>(m_tiles.size())) {
         auto &t = m_tiles[press];
@@ -500,6 +476,12 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const bool lifted = m_drag.lifted;
     const LRect fromBox = dragVisualBox(); // the preview's box at release
     m_lastDragBox = fromBox;
+    debug::dbg("[REL] press=StripWin lifted=" + std::to_string(lifted) +
+               " rmb=" + std::to_string(rmb) +
+               " dxMoved=" + std::to_string(m_drag.travelSq()) +
+               " idx=" + std::to_string(m_drag.idx) +
+               " winIdx=" + std::to_string(m_drag.winIdx) +
+               " win=" + (w ? "valid" : "expired"));
     m_drag = {};
     if (lifted) {
       if (w) {
@@ -525,6 +507,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               break; // LMB cross-card: keep move/insert behavior
             const LRect vOld = stripWinSlotRect(it, stripCardAt(i), j);
             if (swapWindows(w, v)) {
+              debug::dbg("[REL] branch=StripWin->slotSwap");
               landAfterMove(w, fromBox, leaf("swap_main").ms,
                             leaf("swap_main").curve); // the initiator
               landAfterMove(v, vOld, leaf("swap_partner").ms,
@@ -533,6 +516,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
               kickPulse(v);
               return true;
             }
+            debug::dbg("[REL] branch=StripWin->slotSwapFailed");
             damage(); // partner ineligible (fullscreen etc.) → snap back
             return true;
           }
@@ -542,6 +526,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         // dropped onto a DIFFERENT card → move it there, same as a grid-tile
         // drop (RMB: swap with that workspace's window instead — task #8)
         if (dropOnStripCard(w, lx, ly, stripItem)) {
+          debug::dbg("[REL] branch=StripWin->dropOnStripCard");
           kickPulse(w);
           landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
           return true;
@@ -565,6 +550,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
                 swapOnWorkspace(w, it);
               else
                 dropOnWorkspace(w, it);
+              debug::dbg("[REL] branch=StripWin->dropOnWorkspace(rmb=" + std::to_string(rmb) + ")");
               kickPulse(w);
               landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
               return true;
@@ -574,21 +560,20 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       }
       // released over its own card / nothing in particular → the thumb FLIES
       // back into its slot on the lift leaf (reverse of the pickup)
-      if (lifted)
+      if (lifted) {
+        debug::dbg("[REL] branch=StripWin->flyback");
+        if (auto *home = homeStripCardFor(w))
+          switchToWorkspace(*home);
         beginSwapFX(w, fromBox, model::SwapStyle::Horizontal,
                     leaf("drag").ms, leaf("drag").curve);
+      }
       damage();
       return true;
     }
-    // plain click on a strip window (no drag) → switch to its workspace, like
-    // the card
-    if (w) {
-      for (auto &it : m_strip)
-        if (it.kind != model::StripItem::Kind::Plus && it.kind != model::StripItem::Kind::All && it.ws.lock() == w->m_workspace) {
-          switchToWorkspace(it);
-          break;
-        }
-    }
+    // short click on a strip window (no lift) → switch to its workspace
+    debug::dbg("[REL] branch=StripWin->shortClick");
+    if (auto *home = homeStripCardFor(w))
+      switchToWorkspace(*home);
     return true;
   }
   default:

@@ -171,6 +171,27 @@ void Overview::updateAnimation() {
   }
   m_lastAnimTick = now;
 
+  // Hold timer: promote armed-but-not-lifted press to lift after hold_lift_ms.
+  if (m_drag.armed() && !m_drag.lifted) {
+    const double elapsedMs = std::chrono::duration<double, std::milli>(
+        now - m_drag.holdStartMs).count();
+    if (elapsedMs >= static_cast<double>(cfg::behavior.hold_lift_ms.get())) {
+      m_drag.lifted = true;
+      m_dragLiftClock.begin();
+      damage();
+    } else {
+      // Stale-repaint: ensure the overlay redraws periodically while
+      // armed-but-not-lifted so the hold timer can tick even without input.
+      static auto lastHoldDamage = std::chrono::steady_clock::time_point{};
+      const auto sinceLast = std::chrono::duration<double, std::milli>(
+          now - lastHoldDamage).count();
+      if (sinceLast >= 50.0) {
+        damage();
+        lastHoldDamage = now;
+      }
+    }
+  }
+
   const auto st = leaf("strip_step");
   if (!m_stripTween.done(st.ms))
     m_stripScroll =

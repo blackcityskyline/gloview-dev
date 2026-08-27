@@ -257,6 +257,7 @@ struct behavior {
   Int switch_on_new_workspace;
   Int show_all_workspaces; // expo
   Int show_special;        // scratchpad as a strip card
+  Int hold_lift_ms;        // ms to hold before lift animation triggers
 };
 
 inline behavior behavior;

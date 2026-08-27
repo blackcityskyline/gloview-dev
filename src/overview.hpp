@@ -454,7 +454,7 @@ private:
                  const LRect &slot) const; // slot fitted to the window's aspect
   LRect dragBox() const; // the picked-up tile's TARGET box at the cursor
   LRect dragStripBox() const;    // the picked-up strip thumb's TARGET box
-  LRect dragStripCardBox() const; // the picked-up strip card's TARGET box
+  double dragLiftProgress() const;  // 0..1 lift animation progress
   LRect dragVisualBox() const;  // where the preview IS: pickup flight or target
   int draggedTile()
       const; // m_drag.idx while a grid drag is lifted (bounds-checked), else -1
@@ -469,6 +469,9 @@ private:
   // point sits on a workspace card other than skipItem, move w there — or swap
   // it with that card's last-focused window on an RMB drop. True if consumed.
   bool dropOnStripCard(const PHLWINDOW &w, double lx, double ly, int skipItem);
+  // Find the strip card that owns workspace w->m_workspace. Returns nullptr if
+  // not found (e.g. scratchpad, workspace not in strip).
+  model::StripItem *homeStripCardFor(const PHLWINDOW &w);
   void swapOnWorkspace(
       const PHLWINDOW &w,
       const model::StripItem &it); // RMB-drop-on-card counterpart to dropOnWorkspace:
@@ -531,8 +534,6 @@ private:
                    size_t j) const; // a strip window's on-screen slot rect
   void drawDragStripChrome()
       const; // chrome for a strip-window drag
-  void drawDragStripCardChrome()
-      const; // chrome for a strip-card drag (shadow/border/backing)
   // keyboard navigation
   bool keyMatches(int keycode, uint32_t mods, const std::string &combo)
       const; // keycode+held mods ∈ the combo list (names or "shift+tab"
