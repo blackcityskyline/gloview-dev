@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <linux/input-event-codes.h>
+
 #include <hyprland/src/desktop/view/Window.hpp>
 #include <hyprland/src/helpers/Color.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
@@ -318,6 +320,8 @@ void Overview::renderStripButtons() const {
   const bool showClose = m_desktopMode || closeButtonsAlwaysOn();
   const bool travelling = m_drag.travelSq() > 64.0; // ~8px
   const bool dropping = m_drag.armed() && m_drag.lifted && travelling;
+  // True when this is an RMB drag (swap intent) from any source.
+  const bool isRmb = dropping && m_drag.button == BTN_RIGHT;
   // Carrying a STRIP window: hovering an exact slot means swap intent —
   // real-slot rings for ANY button (both swap on slot drop); insert-zone
   // hints only apply away from slots.
@@ -345,63 +349,77 @@ void Overview::renderStripButtons() const {
       continue;
     const LRect card = stripCardAt(i);
 
-    // Drop-zone visualization, built around the target workspace's REAL
-    // tiling slots (stripWinSlotRect per window) — not the card aspect:
-    //   RMB swap / any grid-tile drag: the FULL slot perimeter of the window
-    //   under the cursor is the swap partner;
-    //   LMB insert: each occupied slot splits in half on the side the cursor
-    //   is in — that half is the insertion offer;
-    //   an empty card (or a gap between slots) offers the whole card.
-    if (dropping && static_cast<int>(i) == m_hoveredStrip) {
+    // Drop-zone visualization:
+    //   RMB (any source): highlight the exact slot under the cursor on
+    //     EVERY card — the user is picking a swap partner, not a destination,
+    //     so all windows are live targets regardless of which card they're on.
+    //   LMB grid-tile or strip-win on hovered card: dwindle half-hint or
+    //     full-ring depending on tile_layout.
+    if (dropping) {
       const auto hoverCol = argb(cfg::colors.hover_border.get(e));
       const auto hintCol  = argb(cfg::colors.drop_hint.get(e));
-      const bool dwindle  = cfg::behavior.tile_layout.get() == "dwindle";
-      bool slotFound = false;
-      for (size_t j = 0; j < it.wins.size(); ++j) {
-        const auto v = it.wins[j].win.lock();
-        if (!v || v == dragW)
-          continue;
-        const LRect sl = stripWinSlotRect(it, card, j);
-        if (!sl.contains(m_drag.x, m_drag.y))
-          continue;
-        slotFound = true;
-        const int sr = clampRound(cfg::look.preview_round, sl.w, sl.h);
-        if (dwindle) {
-          // Show the half where the dropped window will land.
-          // Axis: slots wider than tall → vertical split (left/right);
-          // taller than wide → horizontal split (top/bottom).
-          // This mirrors what dwindle actually does with the focal point.
-          LRect half = sl;
-          if (sl.w >= sl.h) {
-            // Vertical split: left or right half.
-            half.w = sl.w / 2.0;
-            if (m_drag.x >= sl.cx())
-              half.x = sl.cx();
-          } else {
-            // Horizontal split: top or bottom half.
-            half.h = sl.h / 2.0;
-            if (m_drag.y >= sl.cy())
-              half.y = sl.cy();
-          }
-          const int hr = clampRound(cfg::look.preview_round, half.w, half.h);
-          // Tinted fill on the landing half.
-          safeRenderRect("dwindlehalf",
-                         pxb(CBox{half.x, half.y, half.w, half.h}, s),
+
+      if (isRmb) {
+        // Scan every slot on this card; highlight whichever one the cursor
+        // is currently over. No hovered-card filter — RMB roams freely.
+        for (size_t j = 0; j < it.wins.size(); ++j) {
+          const auto v = it.wins[j].win.lock();
+          if (!v || v == dragW || !v->m_isMapped || v->isHidden())
+            continue;
+          const LRect sl = stripWinSlotRect(it, card, j);
+          if (!sl.contains(m_drag.x, m_drag.y))
+            continue;
+          const int sr = clampRound(cfg::look.preview_round, sl.w, sl.h);
+          // Bright fill + ring: "this is your swap partner".
+          safeRenderRect("rmbswaphint",
+                         pxb(CBox{sl.x, sl.y, sl.w, sl.h}, s),
                          hintCol,
-                         {.round = pxr(hr, s), .roundingPower = roundPow});
-          // Dim ring on the full slot for context.
-          strokeRingPx(pxb(sl, s), hoverCol,
-                       0.45F * static_cast<float>(e), sr, roundPow);
-        } else {
-          // Legacy swap: highlight the full slot ring.
+                         {.round = pxr(sr, s), .roundingPower = roundPow});
           strokeRingPx(pxb(sl, s), hoverCol,
                        0.9F * static_cast<float>(e), sr, roundPow);
+          break;
         }
-        break;
-      }
-      if (!slotFound && it.wins.empty()) {
-        safeRenderRect("emptycard", pxb(card, s), hintCol,
-                       {.round = pxr(cardRound / 2, s), .roundingPower = roundPow});
+      } else if (static_cast<int>(i) == m_hoveredStrip) {
+        // LMB on the hovered card: dwindle half-hint or legacy full ring.
+        const bool dwindle = cfg::behavior.tile_layout.get() == "dwindle";
+        bool slotFound = false;
+        for (size_t j = 0; j < it.wins.size(); ++j) {
+          const auto v = it.wins[j].win.lock();
+          if (!v || v == dragW)
+            continue;
+          const LRect sl = stripWinSlotRect(it, card, j);
+          if (!sl.contains(m_drag.x, m_drag.y))
+            continue;
+          slotFound = true;
+          const int sr = clampRound(cfg::look.preview_round, sl.w, sl.h);
+          if (dwindle) {
+            LRect half = sl;
+            if (sl.w >= sl.h) {
+              half.w = sl.w / 2.0;
+              if (m_drag.x >= sl.cx())
+                half.x = sl.cx();
+            } else {
+              half.h = sl.h / 2.0;
+              if (m_drag.y >= sl.cy())
+                half.y = sl.cy();
+            }
+            const int hr = clampRound(cfg::look.preview_round, half.w, half.h);
+            safeRenderRect("dwindlehalf",
+                           pxb(CBox{half.x, half.y, half.w, half.h}, s),
+                           hintCol,
+                           {.round = pxr(hr, s), .roundingPower = roundPow});
+            strokeRingPx(pxb(sl, s), hoverCol,
+                         0.45F * static_cast<float>(e), sr, roundPow);
+          } else {
+            strokeRingPx(pxb(sl, s), hoverCol,
+                         0.9F * static_cast<float>(e), sr, roundPow);
+          }
+          break;
+        }
+        if (!slotFound && it.wins.empty()) {
+          safeRenderRect("emptycard", pxb(card, s), hintCol,
+                         {.round = pxr(cardRound / 2, s), .roundingPower = roundPow});
+        }
       }
     }
 

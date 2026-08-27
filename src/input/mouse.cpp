@@ -361,12 +361,38 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         }
       if (cardIdx >= 0) {
         debug::dbg("[REL] branch=Tile->stripCard(rmb=" + std::to_string(rmb) + ")");
-        if (rmb)
-          swapOnWorkspace(w, m_strip[cardIdx]);
-        else
+        if (rmb) {
+          // RMB: precise slot swap — find the exact window under the cursor.
+          PHLWINDOW vj;
+          const auto &sit = m_strip[cardIdx];
+          for (size_t j = 0; j < sit.wins.size(); ++j) {
+            const auto v = sit.wins[j].win.lock();
+            if (!v || v == w || !v->m_isMapped || v->isHidden())
+              continue;
+            if (stripWinSlotRect(sit, stripCardAt(cardIdx), j).contains(lx, ly)) {
+              vj = v;
+              break;
+            }
+          }
+          if (vj) {
+            const LRect vOld = stripWinSlotRect(sit,
+                stripCardAt(cardIdx),
+                [&]{ for (size_t j=0;j<sit.wins.size();++j) if(sit.wins[j].win.lock()==vj) return (int)j; return 0; }());
+            if (swapWindows(w, vj)) {
+              landAfterMove(w, m_lastDragBox, leaf("drag").ms, leaf("drag").curve);
+              landAfterMove(vj, vOld, leaf("swap_partner").ms, leaf("swap_partner").curve);
+              kickPulse(w); kickPulse(vj);
+            } else damage();
+          } else {
+            swapOnWorkspace(w, m_strip[cardIdx]); // no slot hit → last-focused fallback
+            kickPulse(w);
+            landAfterMove(w, m_lastDragBox, leaf("drag").ms, leaf("drag").curve);
+          }
+        } else {
           dropOnStripCard(w, lx, ly, -1);
-        kickPulse(w); // success ring: pops on its NEW strip card slot
-        landAfterMove(w, m_lastDragBox, leaf("drag").ms, leaf("drag").curve);
+          kickPulse(w);
+          landAfterMove(w, m_lastDragBox, leaf("drag").ms, leaf("drag").curve);
+        }
         return true;
       }
       // grid mode: dropped onto (or near) another preview → swap the two
@@ -543,17 +569,52 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         const auto mm = m_monitor.lock();
         if (!onBand && mm &&
             LRect{0, 0, mm->m_size.x, mm->m_size.y}.contains(lx, ly)) {
-          for (const auto &it : m_strip) {
-            if (it.kind != model::StripItem::Kind::Plus &&
-                it.kind != model::StripItem::Kind::All && it.active) {
-              if (rmb)
+          if (rmb) {
+            // RMB drop onto grid area: find the exact tile under cursor and swap.
+            int best = -1;
+            double bestDist2 = 1e18;
+            for (size_t i = 0; i < m_tiles.size(); ++i) {
+              const auto tv = m_tiles[i].win.lock();
+              if (!tv || tv == w) continue;
+              const LRect b = currentBox(m_tiles[i], static_cast<int>(i));
+              const double cx = std::clamp(lx, b.x, b.x + b.w);
+              const double cy = std::clamp(ly, b.y, b.y + b.h);
+              const double d2 = (lx-cx)*(lx-cx) + (ly-cy)*(ly-cy);
+              if (d2 < bestDist2) { bestDist2 = d2; best = static_cast<int>(i); }
+            }
+            const double tol = std::max(0.0, cfg::grid.gap / 2.0 + 8.0);
+            if (best >= 0 && bestDist2 <= tol * tol) {
+              const auto vj = m_tiles[best].win.lock();
+              const LRect vOld = currentBox(m_tiles[best], best);
+              if (vj && swapWindows(w, vj)) {
+                debug::dbg("[REL] branch=StripWin->gridTileSwap");
+                landAfterMove(w,  fromBox, leaf("swap_main").ms,    leaf("swap_main").curve);
+                landAfterMove(vj, vOld,   leaf("swap_partner").ms, leaf("swap_partner").curve);
+                kickPulse(w); kickPulse(vj);
+                return true;
+              }
+            }
+            // No tile hit → last-focused fallback.
+            for (const auto &it : m_strip) {
+              if (it.kind != model::StripItem::Kind::Plus &&
+                  it.kind != model::StripItem::Kind::All && it.active) {
                 swapOnWorkspace(w, it);
-              else
+                debug::dbg("[REL] branch=StripWin->swapOnWorkspace(fallback)");
+                kickPulse(w);
+                landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
+                return true;
+              }
+            }
+          } else {
+            for (const auto &it : m_strip) {
+              if (it.kind != model::StripItem::Kind::Plus &&
+                  it.kind != model::StripItem::Kind::All && it.active) {
                 dropOnWorkspace(w, it);
-              debug::dbg("[REL] branch=StripWin->dropOnWorkspace(rmb=" + std::to_string(rmb) + ")");
-              kickPulse(w);
-              landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
-              return true;
+                debug::dbg("[REL] branch=StripWin->dropOnWorkspace");
+                kickPulse(w);
+                landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
+                return true;
+              }
             }
           }
         }
