@@ -99,7 +99,11 @@ double Overview::tileProgress(int i) const {
   // deliberately goes back to riding m_progress DOWN: the tile lerp then has
   // the exact same shape as the collapsing chrome, keeping landing and
   // strip-collapse frame-synced.
-  const double base = m_opening ? m_tileClock.raw(m_glide.ms) : m_progress;
+  // Use the snapshotted duration (m_tileClockMs) while a glide is in flight
+  // so the progress doesn't jump when glideLeaf() changes (e.g. expoFlip
+  // clears mid-flight and m_glide switches from expo_in → glide).
+  const double glideMs = (m_tileClockMs > 0) ? m_tileClockMs : m_glide.ms;
+  const double base = m_opening ? m_tileClock.raw(glideMs) : m_progress;
   return staggered(base, i, static_cast<int>(m_tiles.size()));
 }
 
@@ -157,8 +161,9 @@ void Overview::updateAnimation() {
     const double gapMs =
         std::chrono::duration<double, std::milli>(now - m_lastAnimTick).count();
     if (gapMs > 100.0) {
+      const double glideMs = (m_tileClockMs > 0) ? m_tileClockMs : m_glide.ms;
       m_timeline.compensateStall(gapMs, dur);
-      m_tileClock.compensateStall(gapMs, m_glide.ms);
+      m_tileClock.compensateStall(gapMs, glideMs);
       m_rebuildClock.compensateStall(gapMs, std::max(m_entry.ms, m_ghost.ms));
       m_stripTween.compensateStall(gapMs, leaf("strip_step").ms);
       if (m_newCardAnim)

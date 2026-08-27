@@ -155,7 +155,6 @@ void Overview::updateHover() {
     }
     const auto m = m_monitor.lock();
     if (m) {
-      const double s = m->m_scale;
       auto dmgTile = [&](int idx) {
         if (idx < 0 || idx >= static_cast<int>(m_tiles.size()))
           return;

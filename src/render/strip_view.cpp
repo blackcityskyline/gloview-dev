@@ -225,6 +225,12 @@ void Overview::renderStrip() const {
           if (grabbed)
             strokeRing(wbL, s, cfg::colors.hover_border.get(e),
                        2, wRound, roundPow);
+          // Skip backing while the window is flying via SwapFX: the thumbnail
+          // is suppressed in renderStripWindows during the flight, so backing
+          // without content = one frame of backdrop bleed (the flicker on
+          // LMB drop). The FX renderer draws its own content at Z2.5.
+          if (swapfxActive(w))
+            continue;
           safetyBacking(wbL, s, cfg::colors.backing.get(),
                         0.08 * e, wRound, roundPow);
         }
