@@ -233,6 +233,11 @@ void Overview::updateAnimation() {
     m_expoFlip = 0;
   }
 
+  // Glide done: clear the snapshotted duration so glideDur() reads live
+  // config again on the next startTileGlide() call.
+  if (m_tileClockMs > 0 && m_tileClock.done(m_tileClockMs))
+    m_tileClockMs = 0;
+
   // Done flights (and vanished windows) leave the Model by their OWN clock —
   // pruning against live config cut mid-flight landings on a config change.
   for (auto it = m_swapfx.begin(); it != m_swapfx.end();) {

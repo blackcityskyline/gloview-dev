@@ -169,9 +169,9 @@ void Overview::updateHover() {
           return;
         LRect b = stripCardAt(idx);
         b.grow(40.0); // ring + label above
+        // damageBox takes absolute logical coords (same as dmgTile) — no scale.
         g_pHyprRenderer->damageBox(
-            CBox{(b.x + m->m_position.x) * s, (b.y + m->m_position.y) * s,
-                 b.w * s, b.h * s});
+            CBox{b.x + m->m_position.x, b.y + m->m_position.y, b.w, b.h});
       };
       dmgTile(oldTile);
       dmgTile(newTile);

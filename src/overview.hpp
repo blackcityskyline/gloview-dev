@@ -442,7 +442,7 @@ private:
   double animDuration() const;
   // Tile-glide window (entry, reflow, close-home all ride one clock). During
   // an expo flip the glide IS the spread/collapse — it reads the expo halves.
-  double glideDur() const { return leaf(glideLeaf()).ms; }
+  double glideDur() const { return m_tileClockMs > 0 ? m_tileClockMs : leaf(glideLeaf()).ms; }
   // "+" card pop-in duration: never shorter than the tile glide it overlaps.
   double newCardDur() const { return std::max(120.0, leaf("new_card").ms); }
   double tileProgress(int i) const; // staggered raw progress for tile i
@@ -499,6 +499,7 @@ private:
   // every leaf selector — an expo flip is not a ws switch (no directional
   // styles, its own timing).
   int m_expoFlip = 0;
+  double m_tileClockMs = 0; // snapshotted glide duration at startTileGlide()
   // The lift clock: the drag preview's appearance ramp (drag_lift leaf).
   anim::Tween m_dragLiftClock;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
