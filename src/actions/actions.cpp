@@ -232,14 +232,6 @@ void Overview::swapTiles(int a, int b) {
 // `from` into its slot. landAfterMove: dispatches per landing surface — strip
 // -> flight, grid tile -> natural = oldBox so the existing tile glide flies it
 // in (chrome moves with it).
-namespace {
-model::SwapStyle parseSwapStyle(const std::string &s) {
-  return s == "slidevert"  ? model::SwapStyle::SlideVert
-         : s == "fade"     ? model::SwapStyle::Fade
-         : s == "pop"      ? model::SwapStyle::Pop
-                           : model::SwapStyle::Horizontal;
-}
-} // namespace
 
 void Overview::beginSwapFX(const PHLWINDOW &w, const LRect &from,
                            model::SwapStyle style, double ms,

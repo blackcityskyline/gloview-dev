@@ -41,6 +41,13 @@ class CEventLoopTimer;
 
 namespace gloview {
 
+inline model::SwapStyle parseSwapStyle(const std::string &s) {
+  return s == "slidevert"  ? model::SwapStyle::SlideVert
+       : s == "fade"      ? model::SwapStyle::Fade
+       : s == "pop"       ? model::SwapStyle::Pop
+                          : model::SwapStyle::Horizontal;
+}
+
 // Animation curves are resolved through the registry (anim/curves.hpp):
 // leaves carry a curve NAME from the config, native built-ins and
 // Lua-registered functions (hl.plugin.gloview.curve) live in one namespace.
