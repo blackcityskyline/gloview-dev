@@ -365,7 +365,7 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   damage();
 }
 
-void Overview::switchToWorkspace(const model::StripItem &it) {
+void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
   const auto m = m_monitor.lock();
   if (!m)
     return;
@@ -435,6 +435,23 @@ void Overview::switchToWorkspace(const model::StripItem &it) {
   // Every new-workspace tile is a newcomer here: staggered slide/fade-in
   // replaces the old one-frame content swap (cards, digits, jump alike).
   // The old workspace's tiles slide out as ghosts instead of vanishing.
+  // instant=true (jump mode): skip the ws-slide entirely — no ghosts, no
+  // rebuildClock, tiles already at target. close() will then start from a
+  // fully settled state and won't collide with a mid-flight slide.
+  if (instant) {
+    m_wsSlideDir = 0;
+    m_ghosts.clear();
+    for (auto &t : m_tiles)
+      t.appear = 1.0;
+    m_rebuildClock.pinEnd(std::max(m_entry.ms, m_ghost.ms));
+    m_tileClock.pinEnd(glideDur());
+    m_progress = 1.0;
+    m_opening = true;
+    m_timeline.pinEnd(animDuration());
+    ensureAnimPump();
+    damage();
+    return;
+  }
   for (auto &t : m_tiles)
     t.appear = 0.0;
   m_ghosts.clear();

@@ -556,6 +556,28 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
           return true;
         }
+        // Dropped back onto the SOURCE card (skipItem guard rejected it) or
+        // onto empty space within it — window stays in place but still plays
+        // the release animation so the snap-back feels intentional.
+        const int homeIdx = stripItemAt(lx, ly);
+        if (homeIdx == stripItem || homeIdx < 0) {
+          debug::dbg("[REL] branch=StripWin->snapBack");
+          // Find the window's own slot rect as the landing target.
+          LRect ownSlot = fromBox;
+          if (homeIdx >= 0 && homeIdx < static_cast<int>(m_strip.size())) {
+            const auto &sit = m_strip[homeIdx];
+            for (size_t j = 0; j < sit.wins.size(); ++j) {
+              if (sit.wins[j].win.lock() == w) {
+                ownSlot = stripWinSlotRect(sit, stripCardAt(homeIdx), j);
+                break;
+              }
+            }
+          }
+          landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
+          kickPulse(w);
+          damage();
+          return true;
+        }
         // dropped in the main preview area → send it to whichever workspace is
         // currently displayed there (equivalent to dropping it on that card).
         // The strip band itself does NOT count: releasing back over any card

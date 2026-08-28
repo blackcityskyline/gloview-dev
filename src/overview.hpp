@@ -463,7 +463,10 @@ private:
                   bool lift) const; // tile chrome (shadow/border/backing/title)
   void drawPreviewChrome(size_t i, const LRect &lb,
                          bool lift) const; // same, box already content-fitted
-  void switchToWorkspace(const model::StripItem &it);
+  // instant=true: collapse to the target workspace immediately without playing
+  // the ws-slide animation — used by jump mode so close() starts from a clean
+  // settled state rather than colliding with a mid-flight slide.
+  void switchToWorkspace(const model::StripItem &it, bool instant = false);
   void dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
   // Shared tail of both drag-release paths (grid tile / strip window): if the
   // point sits on a workspace card other than skipItem, move w there — or swap

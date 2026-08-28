@@ -154,7 +154,10 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
       }
       model::StripItem it;
       it.ws = ws;
-      switchToWorkspace(it);
+      const bool jumpMode =
+          cfg::behavior.workspace_key_mode.get() == "jump";
+      const bool ctrlHeld = (mods & HL_MODIFIER_CTRL) != 0;
+      switchToWorkspace(it, jumpMode && !ctrlHeld);
       if (m) {
         if (const auto target = m_workspace.lock();
             target && target != m->m_activeWorkspace) {
@@ -205,9 +208,6 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
       // "switch" (default): stay open, always — Ctrl is a no-op either way.
       // "jump": a bare digit also closes the overview immediately (no Enter
       // needed); Ctrl+digit falls back to the old stay-open behavior.
-      const bool jumpMode =
-          cfg::behavior.workspace_key_mode.get() == "jump";
-      const bool ctrlHeld = (mods & HL_MODIFIER_CTRL) != 0;
       if (jumpMode && !ctrlHeld)
         close();
     }
