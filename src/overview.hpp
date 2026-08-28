@@ -502,6 +502,7 @@ private:
   // every leaf selector — an expo flip is not a ws switch (no directional
   // styles, its own timing).
   int m_expoFlip = 0;
+  bool m_jumpMode = false;           // set by instant switchToWorkspace; drives jump_in/out leaves
   double m_tileClockMs = 0;       // snapshotted glide duration at startTileGlide()
   std::string m_tileClockCurve;   // snapshotted glide curve  at startTileGlide()
   // The lift clock: the drag preview's appearance ramp (drag_lift leaf).

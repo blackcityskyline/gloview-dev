@@ -184,6 +184,8 @@ inline Leaf ws_enter{ {}, {}, {} };    // ws switch: incoming tiles
 inline Leaf ws_exit{ {}, {}, {} };     // ws switch: outgoing ghosts
 inline Leaf expo_in{ {}, {}, {} };     // all<->one flip: spread
 inline Leaf expo_out{ {}, {}, {} };    // all<->one flip: collapse
+inline Leaf jump_in{ {}, {}, {} };     // jump mode: incoming tiles (after instant switch)
+inline Leaf jump_out{ {}, {}, {} };    // jump mode: outgoing close glide
 inline Leaf swap_main{ {}, {}, {} };   // swap exchange: initiator flight
 inline Leaf swap_partner{ {}, {}, {} };// swap exchange: partner flight
 inline Leaf drag{ {}, {}, {} };        // grab pickup AND release return home

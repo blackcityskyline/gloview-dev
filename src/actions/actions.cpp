@@ -440,6 +440,7 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
   // fully settled state and won't collide with a mid-flight slide.
   if (instant) {
     m_wsSlideDir = 0;
+    m_jumpMode   = true;  // use jump_in/jump_out leaves for this transition
     m_ghosts.clear();
     for (auto &t : m_tiles)
       t.appear = 1.0;

@@ -83,16 +83,23 @@ const char *Overview::ghostLeaf() const {
 }
 
 const char *Overview::glideLeaf() const {
+  if (m_jumpMode) return m_opening ? "jump_in" : "jump_out";
   return m_expoFlip > 0 ? "expo_in" : m_expoFlip < 0 ? "expo_out" : "glide";
 }
 
 double Overview::eased() const {
   // Chrome reveal/collapse follows its own leaf: open while entering, close
   // while exiting (m_progress is the LINEAR clock value either way).
-  return curves::eval(leaf(m_opening ? "open" : "close").curve, m_progress);
+  // Jump mode uses jump_out for the close glide so it can have its own feel.
+  const char *leaf_name = (m_jumpMode && !m_opening) ? "jump_out"
+                        : m_opening ? "open" : "close";
+  return curves::eval(leaf(leaf_name).curve, m_progress);
 }
 
-double Overview::animDuration() const { return leaf(m_opening ? "open" : "close").ms; }
+double Overview::animDuration() const {
+  if (m_jumpMode && !m_opening) return leaf("jump_out").ms;
+  return leaf(m_opening ? "open" : "close").ms;
+}
 
 double Overview::tileProgress(int i) const {
   // Slot glides ride the tiles' forward clock (m_tileClock). CLOSE

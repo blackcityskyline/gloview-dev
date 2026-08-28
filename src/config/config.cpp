@@ -236,6 +236,7 @@ constexpr LeafSpec kLeaves[] = {
     {"strip_step", &anim::strip_step, 200, "easeinout"},
     {"ws_enter", &anim::ws_enter, 250, "easeout"}, {"ws_exit", &anim::ws_exit, 250, "easeout"},
     {"expo_in", &anim::expo_in, 250, "easeout"},   {"expo_out", &anim::expo_out, 250, "easeout"},
+    {"jump_in",  &anim::jump_in,  180, "easeout"}, {"jump_out", &anim::jump_out, 220, "easeout"},
     {"swap_main", &anim::swap_main, 320, "easeinout"},
     {"swap_partner", &anim::swap_partner, 320, "easeinout"},
     {"drag", &anim::drag, 400, "easeout"},

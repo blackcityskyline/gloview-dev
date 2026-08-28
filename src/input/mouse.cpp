@@ -562,18 +562,31 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         const int homeIdx = stripItemAt(lx, ly);
         if (homeIdx == stripItem || homeIdx < 0) {
           debug::dbg("[REL] branch=StripWin->snapBack");
-          // Find the window's own slot rect as the landing target.
+          // Find the window's own current slot rect (landing target).
+          // Use beginSwapFX directly so from=dragVisualBox → to=ownSlot,
+          // rather than landAfterMove which may pick up a stale rel from
+          // m_strip that matches fromBox too closely to see.
           LRect ownSlot = fromBox;
-          if (homeIdx >= 0 && homeIdx < static_cast<int>(m_strip.size())) {
-            const auto &sit = m_strip[homeIdx];
+          for (size_t si = 0; si < m_strip.size(); ++si) {
+            const auto &sit = m_strip[si];
+            if (sit.kind != model::StripItem::Kind::Ws)
+              continue;
             for (size_t j = 0; j < sit.wins.size(); ++j) {
               if (sit.wins[j].win.lock() == w) {
-                ownSlot = stripWinSlotRect(sit, stripCardAt(homeIdx), j);
+                ownSlot = stripWinSlotRect(sit, stripCardAt(si), j);
                 break;
               }
             }
           }
-          landAfterMove(w, fromBox, leaf("drag").ms, leaf("drag").curve);
+          beginSwapFX(w, fromBox,
+                      parseSwapStyle(cfg::animStyle("strip_swap")),
+                      leaf("drag").ms, leaf("drag").curve);
+          // Override the FX's `from` so it flies from the visual box (already
+          // set) to ownSlot — patch the last entry's from in case beginSwapFX
+          // reused an existing slot (erase_if runs first so this is always the
+          // last pushed entry).
+          if (!m_swapfx.empty())
+            m_swapfx.back().from = fromBox;
           kickPulse(w);
           damage();
           return true;

@@ -538,6 +538,7 @@ void Overview::open() {
 
   m_active = true;
   m_opening = true;
+  m_jumpMode = false;    // reset: only set by instant switchToWorkspace (jump mode)
   m_openStamp = std::chrono::steady_clock::now();
   m_pendingDeactivate = false;
   m_progress = 0.0;
