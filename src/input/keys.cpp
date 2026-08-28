@@ -154,10 +154,11 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
       }
       model::StripItem it;
       it.ws = ws;
-      const bool jumpMode =
-          cfg::behavior.workspace_key_mode.get() == "jump";
+      const bool jumpMode = cfg::behavior.workspace_key_mode.get() == "jump";
       const bool ctrlHeld = (mods & HL_MODIFIER_CTRL) != 0;
-      switchToWorkspace(it, jumpMode && !ctrlHeld);
+      const bool doJump   = jumpMode && !ctrlHeld;
+      const bool instant  = doJump && cfg::anim::jump_style.get() == "instant";
+      switchToWorkspace(it, instant);
       if (m) {
         if (const auto target = m_workspace.lock();
             target && target != m->m_activeWorkspace) {
@@ -205,11 +206,16 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
           m_liveWsAtOpen = m->m_activeWorkspace;
         }
       }
-      // "switch" (default): stay open, always — Ctrl is a no-op either way.
-      // "jump": a bare digit also closes the overview immediately (no Enter
-      // needed); Ctrl+digit falls back to the old stay-open behavior.
-      if (jumpMode && !ctrlHeld)
-        close();
+      // "switch": stay open always.
+      // "jump" + instant: close immediately (slide was muted).
+      // "jump" + slide/fade/…: set pending — close() fires once the
+      //   ws-slide settles (rebuildClock done in updateAnimation).
+      if (doJump) {
+        if (instant)
+          close();
+        else
+          m_pendingJumpClose = true;
+      }
     }
   } else
     handled = false;

@@ -193,6 +193,9 @@ inline Leaf drag{ {}, {}, {} };        // grab pickup AND release return home
 // Motion TYPE selectors (<thing>_style keys).
 inline Str ws_enter_style;  // pop | slide | slidevert | fade (incoming)
 inline Str ws_exit_style;   // slide | slidevert | fade | pop (outgoing)
+inline Str jump_style;      // instant | slide | slidevert | fade | pop
+                             // instant: mute the ws-slide, go straight to close
+                             // others:  play that style first, then close
 inline Str grid_swap_style; // horizontal | slidevert | fade | pop
 inline Str strip_swap_style;
 

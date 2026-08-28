@@ -189,6 +189,7 @@ private:
   // deactivate AFTER the pass is built, so the NEXT frame's early window
   // decision sees m_active=false and renders the real windows cleanly.
   bool m_pendingDeactivate = false;
+  bool m_pendingJumpClose  = false; // set after jump ws-slide; fires close() when slide settles
   double m_progress = 0.0;
   anim::Tween m_timeline; // master open/close clock (direction via m_opening);
                     // drives the CHROME only (backdrop/strip/buttons)

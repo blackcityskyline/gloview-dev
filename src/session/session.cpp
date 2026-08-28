@@ -538,7 +538,8 @@ void Overview::open() {
 
   m_active = true;
   m_opening = true;
-  m_jumpMode = false;    // reset: only set by instant switchToWorkspace (jump mode)
+  m_jumpMode = false;
+  m_pendingJumpClose = false;
   m_openStamp = std::chrono::steady_clock::now();
   m_pendingDeactivate = false;
   m_progress = 0.0;
@@ -562,6 +563,7 @@ void Overview::close() {
   if (!m_active)
     return;
   m_opening = false;
+  m_pendingJumpClose = false; // Escape or any manual close cancels deferred jump
 
   // Once ANYTHING starts a close (this one included — the doubleclick timer's
   // own callback routes back through here), a still-pending single-click

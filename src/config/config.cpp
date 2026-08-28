@@ -195,6 +195,7 @@ constexpr StrSpec kStrs[] = {
     {&anim::strip_swap_style, "plugin:gloview:strip_swap_style", "horizontal"},
     {&anim::ws_enter_style, "plugin:gloview:ws_enter_style", "slide"},
     {&anim::ws_exit_style, "plugin:gloview:ws_exit_style", "slide"},
+    {&anim::jump_style,    "plugin:gloview:jump_style",    "instant"},
     {&behavior.cursor_mode, "plugin:gloview:cursor_mode", "auto"},
     {&behavior.workspace_key_mode, "plugin:gloview:key_workspace_mode", "switch"},
     {&behavior.new_workspace_mode, "plugin:gloview:new_workspace_mode", "fill"},

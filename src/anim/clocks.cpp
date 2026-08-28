@@ -244,6 +244,11 @@ void Overview::updateAnimation() {
   if (m_rebuildClock.done(m_ghost.ms) && m_rebuildClock.done(m_entry.ms)) {
     m_wsSlideDir = 0;
     m_expoFlip = 0;
+    // Jump slide settled: now start the close glide.
+    if (m_pendingJumpClose) {
+      m_pendingJumpClose = false;
+      close();
+    }
   }
 
   // Glide done: clear the snapshotted duration so glideDur() reads live
@@ -283,6 +288,7 @@ bool Overview::animBusy() const {
   return m_active &&
          (secondaryAnimsActive() || !m_tileClock.done(glideDur()) ||
           m_newCardAnim || m_drag.lifted || !m_swapfx.empty() ||
+          m_pendingJumpClose ||
           (m_opening && m_progress < 1.0) || (!m_opening && m_progress > 0.0));
 }
 
