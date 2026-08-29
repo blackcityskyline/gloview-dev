@@ -275,8 +275,14 @@ void Overview::updateAnimation() {
   }
   // Close completion waits for the timeline AND any tile clock still draining
   // (a reflow begun during close would otherwise pop its landing tiles).
+  // Do NOT set m_progress = 0.0 here — that would make eased() return 0 and
+  // paint one fully-transparent overlay frame before deactivate() fires, which
+  // is the "flash of empty desktop" the user sees as a щелчок.
+  // Pin m_progress at epsilon so the overlay stays just barely visible on this
+  // last frame; deactivate() (called via finishPendingDeactivate after the
+  // frame has painted) zeroes it properly.
   if (!m_opening && t >= 1.0 && m_tileClock.done(dur)) {
-    m_progress = 0.0;
+    m_progress = 1e-6; // epsilon: overlay alpha ≈ 0 but not zero — no flash
     m_pendingDeactivate = true;
   }
 }
@@ -288,7 +294,7 @@ bool Overview::animBusy() const {
   return m_active &&
          (secondaryAnimsActive() || !m_tileClock.done(glideDur()) ||
           m_newCardAnim || m_drag.lifted || !m_swapfx.empty() ||
-          m_pendingJumpClose ||
+          m_pendingJumpClose || m_pendingDeactivate ||
           (m_opening && m_progress < 1.0) || (!m_opening && m_progress > 0.0));
 }
 
