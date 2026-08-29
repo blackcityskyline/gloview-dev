@@ -46,7 +46,15 @@ inline CBox pxb(const CBox &b, double s) {
 inline CBox pxb(const LRect &r, double s) {
   return CBox{r.x * s, r.y * s, r.w * s, r.h * s}.round();
 }
-inline int pxr(double round, double s) { return static_cast<int>(round * s); }
+// Rounds the SAME way outerRoundPx does (std::lround, not truncation).
+// A truncating pxr() here previously disagreed with outerRoundPx's lround by
+// up to 1px whenever `round * s` wasn't a whole number (any non-integer
+// monitor scale) — the border's inner radius and outer radius were then
+// computed from two DIFFERENT rounding conventions. At thick borders (2-3px)
+// the discrepancy was inside the antialiasing fringe and invisible; at 1px
+// it was exactly enough to open a visible gap in the corner arc (the "seam"
+// where the rounded corner meets the straight edge).
+inline int pxr(double round, double s) { return static_cast<int>(std::lround(round * s)); }
 
 // renderBorder's own outerRound == -1 fallback (round + scaledBorderSize, no
 // correction) is what caused thin borders to show gaps near corners: real
