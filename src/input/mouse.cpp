@@ -478,6 +478,13 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // see cancelPendingClick() for how every other path that ends the
     // overview also drops this state so a stale timer can't fire later
     // against a tile that no longer means anything.
+    // Plain click: clear the drag state NOW, before focusAndClose(). Leaving
+    // m_drag armed (press=Tile, stale holdStartMs) let updateAnimation()'s
+    // hold-timer re-fire lifted=true PARTWAY THROUGH the close glide that
+    // focusAndClose() is about to start — the tile would jump into a pickup
+    // lift visual mid-close, then snap to the end. Clearing here means the
+    // close animation runs with no drag state to interfere with it.
+    m_drag = {};
     if (closeOnDoubleClick() && w && g_pEventLoopManager) {
       if (m_clickTimer && m_pendingClickWin.lock() == w) {
         // second click on the same window inside the window → close it
