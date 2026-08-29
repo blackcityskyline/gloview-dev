@@ -338,6 +338,15 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
                " dxMoved=" + std::to_string(m_drag.travelSq()) +
                " idx=" + std::to_string(press) +
                " win=" + (w ? "valid" : "expired"));
+    // If the hold-timer fired (lifted=true) but the user didn't actually move
+    // the cursor, treat this as a plain click: cancel the lift animation and
+    // fall through to focusAndClose. Threshold: same 8px radius used by the
+    // "travelling" check in renderStrip (64 = 8²).
+    if (m_drag.lifted && m_drag.travelSq() < 64.0) {
+      m_drag.lifted = false;
+      m_dragLiftClock = anim::Tween{}; // reset so no pickup visual remains
+      damage();
+    }
     if (m_drag.lifted) {
       const bool rmb = m_drag.button == BTN_RIGHT;
       // Wherever the release lands, the preview must travel there VISIBLY:
@@ -498,6 +507,13 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const int stripItem = m_drag.idx;
     const auto w = m_drag.win.lock();
     const bool rmb = m_drag.button == BTN_RIGHT;
+    // Same click-vs-drag guard as Tile: if hold fired but cursor didn't move,
+    // treat as a plain click (focus + workspace switch, no drag animation).
+    if (m_drag.lifted && m_drag.travelSq() < 64.0) {
+      m_drag.lifted = false;
+      m_dragLiftClock = anim::Tween{};
+      damage();
+    }
     const bool lifted = m_drag.lifted;
     const LRect fromBox = dragVisualBox(); // the preview's box at release
     m_lastDragBox = fromBox;
