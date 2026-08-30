@@ -56,14 +56,30 @@ inline CBox pxb(const LRect &r, double s) {
 // where the rounded corner meets the straight edge).
 inline int pxr(double round, double s) { return static_cast<int>(std::lround(round * s)); }
 
-// renderBorder's own outerRound == -1 fallback (round + scaledBorderSize, no
-// correction) is what caused thin borders to show gaps near corners: real
-// Hyprland window borders NEVER rely on that fallback, they always compute
-// this explicitly (CHyprBorderDecoration::draw()) with a squircle-power
-// correction term. round/borderSize are LOGICAL (unscaled) px, matching that
-// source; the whole expression is scaled once at the end, same as there.
+// renderBorder's outerRound field controls SHADER_RADIUS_OUTER. Passing -1
+// tells the shader to reuse the SAME `round` variable it already computed
+// internally (data.round + scaledBorderSize) for BOTH the inner and outer
+// arc — self-consistent by construction, since it's literally one number
+// used twice.
+//
+// Passing an EXPLICIT outerRound (as this function used to always do)
+// instead gives the shader a SEPARATELY-computed value. For a genuine
+// squircle correction (roundingPower < 2) that's necessary and matches
+// CHyprBorderDecoration::draw(). But when roundingPower >= 2 the correction
+// term is exactly 0 — in that case our own value and the shader's internal
+// round+scaledBorderSize approximate the SAME target through two INDEPENDENT
+// lround() calls on different expressions, which can differ by 1 unit on
+// any non-integer monitor scale. At thick borders that 1px sat inside the
+// antialiasing fringe; at 1px borders it was exactly enough to open a
+// visible gap in the corner arc (the two arcs no longer share an origin).
+//
+// Fix: return -1 (Hyprland's own fallback) whenever no correction is
+// needed, so inner and outer arcs are provably the same number. Only
+// compute a distinct value for the true squircle case.
 inline int outerRoundPx(double round, double borderSize, double roundingPower,
                         double scale) {
+  if (roundingPower >= 2.0)
+    return -1; // let the shader reuse its own round+scaledBorderSize
   const double correction =
       borderSize * (M_SQRT2 - 1.0) * std::max(2.0 - roundingPower, 0.0);
   return static_cast<int>(
