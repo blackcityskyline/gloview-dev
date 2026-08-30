@@ -330,7 +330,13 @@ void Overview::renderMainWindows() const {
     if (swapfxActive(w))
       continue; // flying via a landing (Z2.5) — suppressed here
     const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
-    const CBox  px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
+    // pxb() (NOT a bare *scale) — its trailing .round() pixel-snaps this box
+    // the same way drawPreviewChrome's border/backing are snapped. A bare
+    // multiply leaves the content box at a sub-pixel position/size that can
+    // differ from the border ring's snapped box by a fraction of a pixel —
+    // enough, at the rounded corner, to open a visible sliver between the
+    // content's clipped corner and the border's inner edge.
+    const CBox  px = pxb(lb, scale);
     renderWindowLive(w, m, px, px,
                      static_cast<float>(entryFade(i)), when, round, roundPow);
   }
@@ -363,14 +369,14 @@ void Overview::renderGhosts() const {
     const double cx = g.box.x + g.box.w / 2.0, cy = g.box.y + g.box.h / 2.0;
     const LRect box{cx - g.box.w * k / 2.0, cy - g.box.h * k / 2.0,
                     g.box.w * k, g.box.h * k};
-    double gx = box.x, gy = box.y;
+    LRect slidBox = box;
     float gAlpha = static_cast<float>((1.0 - eOut) * 0.85);
     if (m_wsSlideDir != 0 && m_exitStyle == "slide") {
-      gx -= static_cast<double>(m_wsSlideDir) * m->m_size.x * eOut;
+      slidBox.x -= static_cast<double>(m_wsSlideDir) * m->m_size.x * eOut;
     } else if (m_wsSlideDir != 0 && m_exitStyle == "slidevert") {
-      gy -= static_cast<double>(m->m_size.y) * eOut;
+      slidBox.y -= static_cast<double>(m->m_size.y) * eOut;
     }
-    const CBox px(gx * scale, gy * scale, box.w * scale, box.h * scale);
+    const CBox px = pxb(slidBox, scale);
     renderWindowLive(w, m, px, px, gAlpha, when, round, roundPow);
   }
 }

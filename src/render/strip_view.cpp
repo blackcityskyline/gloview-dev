@@ -297,13 +297,12 @@ void Overview::renderStripWindows() const {
       // window slot inside the card, from its tiled goal position (logical)
       const LRect slot = stripWinSlotRect(it, card, j);
       const int round = pxr(clampRound(previewRound, slot.w, slot.h), scale);
-      // renderWindowLive works in monitor PIXEL coords; the card chrome is
-      // pre-scaled to pixels too (pxb), so surface and backing coincide at
-      // any monitor scale.
-      const CBox slotPx(slot.x * scale, slot.y * scale, slot.w * scale,
-                        slot.h * scale);
-      const CBox cardPx(card.x * scale, card.y * scale, card.w * scale,
-                        card.h * scale);
+      // renderWindowLive works in monitor PIXEL coords; pxb() (not a bare
+      // *scale) pixel-snaps via .round() the same way the card chrome does —
+      // a bare multiply left content at a sub-pixel offset from the chrome,
+      // opening a hairline gap at the rounded corner.
+      const CBox slotPx = pxb(slot, scale);
+      const CBox cardPx = pxb(card, scale);
       renderWindowLive(w, m, slotPx, cardPx, static_cast<float>(e), when,
                        round, roundPow);
     }

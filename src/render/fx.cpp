@@ -153,7 +153,7 @@ void Overview::renderDragWindow() const {
   const double e     = eased();
   const double scale = m->m_scale;
   const LRect  lb    = dragVisualBox();
-  const CBox   px(lb.x * scale, lb.y * scale, lb.w * scale, lb.h * scale);
+  const CBox   px = pxb(lb, scale);
   const int round =
       pxr(clampRound(cfg::look.preview_round, lb.w, lb.h), scale);
   renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(),
@@ -327,7 +327,7 @@ void Overview::renderSwapFX() const {
       ring = true;
     }
 
-    const CBox px(bx * s, by * s, bw * s, bh * s);
+    const CBox px = pxb(LRect{bx, by, bw, bh}, s);
     const int rpx = pxr(clampRound(round, bw, bh), s);
     // Flight chrome: the drag preview carried a shadow — keep it through the
     // flight (fading with the window) so the release reads as continuous.
