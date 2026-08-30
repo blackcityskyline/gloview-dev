@@ -46,44 +46,38 @@ inline CBox pxb(const CBox &b, double s) {
 inline CBox pxb(const LRect &r, double s) {
   return CBox{r.x * s, r.y * s, r.w * s, r.h * s}.round();
 }
-// Rounds the SAME way outerRoundPx does (std::lround, not truncation).
-// A truncating pxr() here previously disagreed with outerRoundPx's lround by
-// up to 1px whenever `round * s` wasn't a whole number (any non-integer
-// monitor scale) — the border's inner radius and outer radius were then
-// computed from two DIFFERENT rounding conventions. At thick borders (2-3px)
-// the discrepancy was inside the antialiasing fringe and invisible; at 1px
-// it was exactly enough to open a visible gap in the corner arc (the "seam"
-// where the rounded corner meets the straight edge).
-inline int pxr(double round, double s) { return static_cast<int>(std::lround(round * s)); }
+// Matches CHyprBorderDecoration::draw()'s own convention EXACTLY: `data.round`
+// there is assigned from a raw float (ROUNDINGBASE * scale) into an int field
+// via C++'s implicit narrowing conversion, i.e. TRUNCATION — never
+// std::round/std::lround. Any call site computing `round`/`outerRound` must
+// truncate the same way, or the two radii the shader receives (SHADER_RADIUS
+// from data.round, SHADER_RADIUS_OUTER from data.outerRound) drift apart by a
+// fraction of a pixel relative to each other, opening a corner gap at thin
+// (1px) border sizes.
+inline int pxr(double round, double s) { return static_cast<int>(round * s); }
 
-// renderBorder's outerRound field controls SHADER_RADIUS_OUTER. Passing -1
-// tells the shader to reuse the SAME `round` variable it already computed
-// internally (data.round + scaledBorderSize) for BOTH the inner and outer
-// arc — self-consistent by construction, since it's literally one number
-// used twice.
+// Always compute an EXPLICIT outerRound, exactly like CHyprBorderDecoration
+// does — never pass -1. The struct's -1 "reuse round" fallback is a
+// degenerate path real Hyprland window borders never exercise (the border
+// decoration always computes and passes OUTERROUND explicitly, even when
+// roundingPower == 2 and the correction term is 0). Forcing radius ==
+// radiusOuter via -1 makes the shader's "solid ring interior" branch
+// unreachable (see border.glsl's 3-way dist/distOuter branching: it only
+// hits case 3, full-alpha, when radiusOuter is strictly the outer of the
+// two), leaving every ring pixel computed via one of the two antialiasing
+// fade formulas instead — visibly thinner coverage at the diagonal even at
+// 2-3px border sizes. Matching Hyprland's real call exactly avoids that
+// degenerate path entirely.
 //
-// Passing an EXPLICIT outerRound (as this function used to always do)
-// instead gives the shader a SEPARATELY-computed value. For a genuine
-// squircle correction (roundingPower < 2) that's necessary and matches
-// CHyprBorderDecoration::draw(). But when roundingPower >= 2 the correction
-// term is exactly 0 — in that case our own value and the shader's internal
-// round+scaledBorderSize approximate the SAME target through two INDEPENDENT
-// lround() calls on different expressions, which can differ by 1 unit on
-// any non-integer monitor scale. At thick borders that 1px sat inside the
-// antialiasing fringe; at 1px borders it was exactly enough to open a
-// visible gap in the corner arc (the two arcs no longer share an origin).
-//
-// Fix: return -1 (Hyprland's own fallback) whenever no correction is
-// needed, so inner and outer arcs are provably the same number. Only
-// compute a distinct value for the true squircle case.
+// round/borderSize are LOGICAL (unscaled) px; the whole expression is
+// truncated to int only ONCE, after scaling — same order of operations as
+// CHyprBorderDecoration's OUTERROUND, and same truncation convention as
+// pxr() above so both radii agree to within the same rounding rule.
 inline int outerRoundPx(double round, double borderSize, double roundingPower,
                         double scale) {
-  if (roundingPower >= 2.0)
-    return -1; // let the shader reuse its own round+scaledBorderSize
   const double correction =
       borderSize * (M_SQRT2 - 1.0) * std::max(2.0 - roundingPower, 0.0);
-  return static_cast<int>(
-      std::lround((round + borderSize - correction) * scale));
+  return static_cast<int>((round + borderSize - correction) * scale);
 }
 
 // preview_round is authored against full-size grid tiles; much smaller slots
