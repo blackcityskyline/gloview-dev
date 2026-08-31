@@ -138,7 +138,22 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
 
   const Vector2D logicalTL = pos + w->m_floatingOffset;
   const Vector2D scaledTL  = (logicalTL - mon->m_position) * mon->m_scale;
-  const Vector2D translate = destPx.pos() / scaleMod - scaledTL;
+  // Anchor the overcover at the box CENTER, not top-left: the pad above
+  // exists to over-cover destPx so no dark seam shows on any edge, but
+  // anchoring the scale-up at top-left means the extra ~1.5px only grows
+  // toward bottom-right. The content's own rounded-corner clip (computed in
+  // the surface's own coordinate frame) then sits up to ~1.5px further out
+  // than the border ring (which is drawn exactly at destPx/lb, unpadded) on
+  // the bottom and right sides specifically — top-left corner lines up
+  // almost perfectly, the other three show a growing mismatch. Anchoring at
+  // center instead spreads that same ~1.5px surplus evenly in all four
+  // directions (~0.75px each), making the residual content/border corner
+  // mismatch small and symmetric across all four corners instead of
+  // concentrated on three of them.
+  const Vector2D scaledSize   = Vector2D(logicalW, logicalH) * mon->m_scale;
+  const Vector2D winCenter    = scaledTL + scaledSize / 2.0;
+  const Vector2D destCenterPx = destPx.pos() + destPx.size() / 2.0;
+  const Vector2D translate    = destCenterPx / scaleMod - winCenter;
 
   Render::SRenderModifData modif;
   modif.modifs.push_back(
