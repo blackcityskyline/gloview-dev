@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <any>
+#include <cmath>
 
 #include <hyprland/src/config/ConfigValue.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
@@ -155,6 +156,31 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   const Vector2D destCenterPx = destPx.pos() + destPx.size() / 2.0;
   const Vector2D translate    = destCenterPx / scaleMod - winCenter;
 
+  // The overcover pad above makes the AS-RENDERED content box bigger than
+  // destPx by design (avoids dark seams). But content's own rounded-corner
+  // clip (rounding.glsl) is a circle whose center sits at
+  // (box.topLeft + radius) — growing the box while leaving `radius` (roundPx)
+  // unchanged moves that circle's center outward with the box, since the
+  // topLeft term grows too. The border ring, drawn separately at the exact
+  // (unpadded) destPx/lb with the SAME roundPx, keeps its circle-center fixed
+  // at destPx's own corner. The two centers drift apart by exactly the
+  // per-side overcover amount — content's corner arc no longer lines up with
+  // the border's, showing as a gap (or content visibly extending past where
+  // the border's curve should read as the edge).
+  //
+  // Fix: increase content's OWN rounding radius by the per-side overcover
+  // amount. Growing radius by the same delta the topLeft shifted by keeps
+  // the circle-center formula (topLeft + radius) exactly where it was —
+  // the corner arc is unaffected by the pad, only the flat straight edges
+  // (which don't depend on a single corner circle) absorb the extra
+  // coverage, which is exactly what the pad was meant to protect there.
+  const Vector2D renderedSize = scaledSize * scaleMod;
+  const Vector2D overcoverPx  = renderedSize - destPx.size();
+  const float roundCompensation =
+      std::max(0.0, std::max(overcoverPx.x, overcoverPx.y)) / 2.0F;
+  const int contentRoundPx =
+      roundPx + static_cast<int>(std::lround(roundCompensation));
+
   Render::SRenderModifData modif;
   modif.modifs.push_back(
       {Render::SRenderModifData::eRenderModifType::RMOD_TYPE_TRANSLATE,
@@ -192,7 +218,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   data.fadeAlpha      = windowRealAlpha(w, mon);
   data.alpha          = std::clamp(alpha, 0.F, 1.F);
   data.decorate       = false;
-  data.rounding       = roundPx;
+  data.rounding       = contentRoundPx;
   data.roundingPower  = roundingPower;
   // Previews never touch Hyprland's blur machinery: the live branch samples
   // currentFB at draw time and bakes ghost copies of sibling previews into
