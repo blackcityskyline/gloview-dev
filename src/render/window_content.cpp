@@ -126,8 +126,9 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // Over-cover the slot (fill BOTH axes via max + ~1.5px pad), don't just fit
   // it: a fit-exact scale rounds the surface edge 1-3px inside the box and
   // the opaque backing peeks through as thin dark seams (worst mid
-  // open-glide, destPx fractional every frame). TL stays anchored (translate
-  // cancels scaleMod); clipPx trims the overflow.
+  // open-glide, destPx fractional every frame). Anchored at destPx's CENTER
+  // (see translate below) so the extra coverage distributes evenly on all
+  // four sides; clipPx trims any remaining overflow.
   const float pad = 1.5F;
   const float sW  = (static_cast<float>(destPx.w) + pad) /
                    std::max(logicalW * mon->m_scale, 5.F);
@@ -178,8 +179,15 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   const Vector2D overcoverPx  = renderedSize - destPx.size();
   const float roundCompensation =
       std::max(0.0, std::max(overcoverPx.x, overcoverPx.y)) / 2.0F;
+  // roundPx == 0 means square corners are intended (preview_round=0, or a
+  // caller that wants no rounding at all) — border.glsl's own `radius > 0.0`
+  // gate skips ALL corner-arc logic in that case. Adding compensation on top
+  // of 0 would introduce UNWANTED rounding on content while the border (not
+  // touched by this compensation) correctly stays perfectly square — a new
+  // content/border mismatch for anyone who explicitly wants square previews.
   const int contentRoundPx =
-      roundPx + static_cast<int>(std::lround(roundCompensation));
+      roundPx <= 0 ? 0
+                   : roundPx + static_cast<int>(std::lround(roundCompensation));
 
   Render::SRenderModifData modif;
   modif.modifs.push_back(
