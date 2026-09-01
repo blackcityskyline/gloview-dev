@@ -18,6 +18,7 @@
 #include <hyprutils/utils/ScopeGuard.hpp>
 
 #include "../overview.hpp"
+#include "../config/config.hpp"
 #include "../debug/log.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -179,8 +180,31 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // coverage, which is exactly what the pad was meant to protect there.
   const Vector2D renderedSize = scaledSize * scaleMod;
   const Vector2D overcoverPx  = renderedSize - destPx.size();
-  const float roundCompensation =
+  const float overcoverCompensation =
       std::max(0.0, std::max(overcoverPx.x, overcoverPx.y)) / 2.0F;
+  // BUG FOUND via runtime diagnostic: border's own circle-center is NOT at
+  // destPx.pos() + roundPx. Border.glsl's effective radius (SHADER_RADIUS)
+  // is data.round + scaledBorderSize — the ring GROWS outward from the
+  // content edge by the border's own thickness, so its circle-center sits
+  // at destPx.pos() + (roundPx + scaledBorderSize), NOT destPx.pos() +
+  // roundPx alone. Every earlier derivation in this function's comments
+  // used just roundPx, missing this term — a systematic under-compensation
+  // of exactly scaledBorderSize (typically 1px), which is why the corner
+  // gap persisted at its ~original size even with the overcover
+  // compensation active.
+  //
+  // Separately, Hyprland's OWN rendering pipeline (ElementRenderer.cpp's
+  // drawSurface) unconditionally does `rounding -= 1` on WHATEVER value we
+  // set as data.rounding, transparently, for any CSurfacePassElement —
+  // including ours. So the number we compute here is NOT the shader's
+  // final radius; it's final_radius + 1. That -1 must be added BACK when
+  // targeting the border's true effective radius, cancelling out net.
+  //
+  // Target (content's radius as WE set it, i.e. before Hyprland's own -1):
+  //   contentRoundPx = (roundPx + scaledBorderSize) + overcoverCompensation + 1
+  const float scaledBorderSize =
+      std::round(static_cast<float>(cfg::look.hover_border_size) *
+                 static_cast<float>(mon->m_scale));
   // roundPx == 0 means square corners are intended (preview_round=0, or a
   // caller that wants no rounding at all) — border.glsl's own `radius > 0.0`
   // gate skips ALL corner-arc logic in that case. Adding compensation on top
@@ -188,8 +212,10 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // touched by this compensation) correctly stays perfectly square — a new
   // content/border mismatch for anyone who explicitly wants square previews.
   const int contentRoundPx =
-      roundPx <= 0 ? 0
-                   : roundPx + static_cast<int>(std::lround(roundCompensation));
+      roundPx <= 0
+          ? 0
+          : roundPx + static_cast<int>(std::lround(
+                          scaledBorderSize + overcoverCompensation + 1.0F));
 
   // TEMP DIAGNOSTIC: log actual runtime numbers once per second per call site
   // to verify the compensation math against real values, not paper examples.
@@ -204,6 +230,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
           " scaleMod=" + std::to_string(scaleMod) +
           " renderedSize=" + std::to_string(renderedSize.x) + "x" + std::to_string(renderedSize.y) +
           " overcoverPx=" + std::to_string(overcoverPx.x) + "," + std::to_string(overcoverPx.y) +
+          " scaledBorderSize=" + std::to_string(scaledBorderSize) +
           " roundPx=" + std::to_string(roundPx) +
           " contentRoundPx=" + std::to_string(contentRoundPx));
     }
