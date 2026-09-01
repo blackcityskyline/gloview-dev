@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <any>
+#include <chrono>
 #include <cmath>
 
 #include <hyprland/src/config/ConfigValue.hpp>
@@ -17,6 +18,7 @@
 #include <hyprutils/utils/ScopeGuard.hpp>
 
 #include "../overview.hpp"
+#include "../debug/log.hpp"
 
 using Render::GL::g_pHyprOpenGL;
 
@@ -188,6 +190,24 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   const int contentRoundPx =
       roundPx <= 0 ? 0
                    : roundPx + static_cast<int>(std::lround(roundCompensation));
+
+  // TEMP DIAGNOSTIC: log actual runtime numbers once per second per call site
+  // to verify the compensation math against real values, not paper examples.
+  {
+    static std::chrono::steady_clock::time_point lastLog{};
+    const auto nowTp = std::chrono::steady_clock::now();
+    if (std::chrono::duration<double>(nowTp - lastLog).count() > 1.0) {
+      lastLog = nowTp;
+      debug::dbg(
+          "[roundDiag] destPx=" + std::to_string(destPx.w) + "x" + std::to_string(destPx.h) +
+          " logical=" + std::to_string(logicalW) + "x" + std::to_string(logicalH) +
+          " scaleMod=" + std::to_string(scaleMod) +
+          " renderedSize=" + std::to_string(renderedSize.x) + "x" + std::to_string(renderedSize.y) +
+          " overcoverPx=" + std::to_string(overcoverPx.x) + "," + std::to_string(overcoverPx.y) +
+          " roundPx=" + std::to_string(roundPx) +
+          " contentRoundPx=" + std::to_string(contentRoundPx));
+    }
+  }
 
   Render::SRenderModifData modif;
   modif.modifs.push_back(
