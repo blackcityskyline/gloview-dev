@@ -129,7 +129,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // open-glide, destPx fractional every frame). Anchored at destPx's CENTER
   // (see translate below) so the extra coverage distributes evenly on all
   // four sides; clipPx trims any remaining overflow.
-  const float pad = 1.5F;
+  const float pad = 0.0F; // TEMP DIAGNOSTIC — was 1.5F
   const float sW  = (static_cast<float>(destPx.w) + pad) /
                    std::max(logicalW * mon->m_scale, 5.F);
   const float sH  = (static_cast<float>(destPx.h) + pad) /
