@@ -198,6 +198,45 @@ void Overview::renderBackdrop() const {
       " opening=" + std::to_string(m_opening) +
       " k=" + std::to_string(k).substr(0, 5));
 
+  // The "OPAQUE BASE ... pixel-defined from frame 0" described above was
+  // never actually drawn as an unconditional step — every path below only
+  // draws content scaled by k (or exits early at k<=0), so frame 0 of
+  // OPENING (k≈0 exactly, since m_progress starts at 0.0) drew NOTHING,
+  // leaving currentFB's raw contents on screen — a black flash whenever
+  // currentFB held a stale/uncomposited buffer (e.g. after the "solitary
+  // client" fullscreen fast path bypassed normal compositing). Draw the
+  // wallpaper (sharp, unblurred — cheap, no blur-filter pass needed) at
+  // FULL alpha HERE, unconditionally, only while opening: this is the
+  // actual "pixel-defined from frame 0" guarantee the design intended.
+  // The k-scaled blur below then crossfades in ON TOP of this, and the
+  // no-blur/fallback paths still layer correctly since this is fully
+  // opaque underneath them. On EXIT this is skipped, matching "no base:
+  // blur decays over live currentFB straight into the real desktop."
+  if (m_opening) {
+    if (m->m_background && m->m_background->ok()) {
+      const double monRatio = static_cast<double>(W) / H;
+      const double wpRatio =
+          m->m_background->m_size.x / m->m_background->m_size.y;
+      double scale;
+      Vector2D origin;
+      if (monRatio > wpRatio) {
+        scale = static_cast<double>(W) / m->m_background->m_size.x;
+        origin.y = (H - m->m_background->m_size.y * scale) / 2.0;
+      } else {
+        scale = static_cast<double>(H) / m->m_background->m_size.y;
+        origin.x = (W - m->m_background->m_size.x * scale) / 2.0;
+      }
+      g_pHyprOpenGL->renderTexture(
+          m->m_background,
+          CBox{origin.x, origin.y, m->m_background->m_size.x * scale,
+              m->m_background->m_size.y * scale},
+          {.a = 1.0F});
+    } else {
+      static auto PBGBase = CConfigValue<Config::INTEGER>("misc:background_color");
+      g_pHyprOpenGL->renderRect(fullPx, argb(*PBGBase, 1.0), {});
+    }
+  }
+
   if (!blurEnabled()) {
     // ---- No-blur backdrop ----
     const auto col = argb(baseCol, e);
