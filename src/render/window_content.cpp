@@ -105,7 +105,7 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx,
-                      float roundingPower) {
+                      float roundingPower, bool settled) {
   if (!w || !mon || !w->m_isMapped || !w->wlSurface() ||
       !w->wlSurface()->resource())
     return;
@@ -126,16 +126,19 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   const auto size = w->sizeAnimation()->goal();
   const float logicalW = std::max((float)size.x, 5.F);
   const float logicalH = std::max((float)size.y, 5.F);
-  // Over-cover the slot (fill BOTH axes via max + ~1.5px pad), don't just fit
-  // it: a fit-exact scale rounds the surface edge 1-3px inside the box and
-  // the opaque backing peeks through as thin dark seams (worst mid
-  // open-glide, destPx fractional every frame). Anchored at destPx's CENTER
-  // (see translate below) so the extra coverage distributes evenly on all
+  // Over-cover the slot (fill BOTH axes via max + a small pad), don't just
+  // fit it: a fit-exact scale rounds the surface edge 1-3px inside the box
+  // and the opaque backing peeks through as thin dark seams — but ONLY
+  // during active tile-glide animation, when destPx changes every frame
+  // (goal() stays fixed; destPx itself is what's fractional/moving then).
+  // Once the glide settles, destPx is IDENTICAL frame-to-frame — pad=0 gives
+  // scaleMod≈1.0 exactly, eliminating the residual sub-pixel compensation
+  // noise (visible as a faint dashed/speckled edge where content's and
+  // border's independently-antialiased curves nearly-but-not-quite align)
+  // for the common, at-rest viewing case. Anchored at destPx's CENTER (see
+  // translate below) so any pad still in effect distributes evenly on all
   // four sides; clipPx trims any remaining overflow.
-  const float pad = 0.5F; // reduced from 1.5F: shrinks the residual sub-pixel
-                           // compensation error (per-axis overcover asymmetry)
-                           // proportionally, at the cost of a smaller safety
-                           // margin against dark seams during animation.
+  const float pad = settled ? 0.0F : 1.5F;
   const float sW  = (static_cast<float>(destPx.w) + pad) /
                    std::max(logicalW * mon->m_scale, 5.F);
   const float sH  = (static_cast<float>(destPx.h) + pad) /

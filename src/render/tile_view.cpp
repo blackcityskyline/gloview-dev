@@ -337,8 +337,14 @@ void Overview::renderMainWindows() const {
     // enough, at the rounded corner, to open a visible sliver between the
     // content's clipped corner and the border's inner edge.
     const CBox  px = pxb(lb, scale);
+    // destPx is stable frame-to-frame once the tile glide settles (currentBox
+    // stops changing) — pad=0 then gives a pixel-exact corner match against
+    // the border ring, instead of the safety pad needed while tiles are
+    // actively gliding (where destPx legitimately changes every frame).
+    const bool settled = m_tileClock.done(glideDur());
     renderWindowLive(w, m, px, px,
-                     static_cast<float>(entryFade(i)), when, round, roundPow);
+                     static_cast<float>(entryFade(i)), when, round, roundPow,
+                     settled);
   }
 }
 

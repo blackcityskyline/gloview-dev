@@ -14,11 +14,15 @@ namespace gloview {
 // Draw a window's LIVE surface tree (or its frozen snapshot texture, when
 // preview_mode == "snapshot") scaled into `destPx`, clipped to `clipPx` —
 // both monitor PIXEL coords. `roundPx`/`roundingPower` let the caller match
-// the surrounding chrome's corner rounding. Must be called from pass
-// EXECUTION (inside the painter), where currentFB/projection are live.
+// the surrounding chrome's corner rounding. `settled`: true when the caller
+// knows destPx is IDENTICAL to last frame's (no active glide/drag/flight for
+// this window) — enables pad=0 for a pixel-exact corner match against the
+// border ring. Defaults to false (safety pad active) for callers that don't
+// track this. Must be called from pass EXECUTION (inside the painter), where
+// currentFB/projection are live.
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx = 0,
-                      float roundingPower = 2.0F);
+                      float roundingPower = 2.0F, bool settled = false);
 
 } // namespace gloview
