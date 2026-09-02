@@ -213,7 +213,11 @@ void Overview::renderBackdrop() const {
   // opaque underneath them. On EXIT this is skipped, matching "no base:
   // blur decays over live currentFB straight into the real desktop."
   if (m_opening) {
-    if (m->m_background && m->m_background->ok()) {
+    const bool hasWallpaper = m->m_background && m->m_background->ok();
+    debug::dbg("[baseDiag] hasWallpaper=" + std::to_string(hasWallpaper) +
+               " fullPx=" + std::to_string(fullPx.w) + "x" + std::to_string(fullPx.h) +
+               " W=" + std::to_string(W) + " H=" + std::to_string(H));
+    if (hasWallpaper) {
       const double monRatio = static_cast<double>(W) / H;
       const double wpRatio =
           m->m_background->m_size.x / m->m_background->m_size.y;
