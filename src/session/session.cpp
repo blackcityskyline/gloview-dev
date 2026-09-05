@@ -41,7 +41,24 @@ using PSHOULDRENDER = bool (*)(void *, PHLWINDOW, PHLMONITOR);
 PSHOULDRENDER g_shouldRenderOrig = nullptr;
 
 bool hkShouldRenderWindow(void *thisptr, PHLWINDOW window, PHLMONITOR monitor) {
-  if (g_overview && g_overview->shouldHideWindow(window, monitor))
+  const bool hide = g_overview && g_overview->shouldHideWindow(window, monitor);
+  // Black-blink diagnostic (CANDIDATES.md): gated to the entry-animation
+  // window only (bounded ~200-400ms), so this doesn't spam the log for
+  // however long the user leaves the overview open. Confirms/refutes, with a
+  // real per-frame trace instead of inference from what's on screen, whether
+  // this hook is actually being asked about the window during the frames the
+  // black-blink covers, and what it decides each time — cross-reference
+  // frameTick() against the "F t=+" trace's tick= field to line the two logs
+  // up. window's raw pointer stands in for identity; class name is already
+  // treated as fine to log elsewhere in this codebase (see backdrop.cpp).
+  if (g_overview && g_overview->opening()) {
+    debug::dbg("SRW tick=" + std::to_string(g_overview->frameTick()) +
+               " win=" + std::to_string(reinterpret_cast<std::uintptr_t>(window.get())) +
+               " class=" + (window ? window->m_class : "?") +
+               " active=" + std::to_string(g_overview->active()) +
+               " hide=" + std::to_string(hide));
+  }
+  if (hide)
     return false;
   return g_shouldRenderOrig ? g_shouldRenderOrig(thisptr, window, monitor) : true;
 }
@@ -383,6 +400,16 @@ int Overview::blurResolution() const {
 // ---- open / close -----------------------------------------------------------
 
 void Overview::toggle() {
+  // Black-blink diagnostic (CANDIDATES.md): stamps the exact renderStage tick
+  // this keybind-dispatch call landed on. If Hyprland's own render/keybind
+  // logging is enabled and shares this same log sink (it does — see
+  // debug::dbg mirroring to Log::logger), the frame that was ALREADY being
+  // built when the physical key event arrived vs. this line's tick= tells us
+  // whether there's a real dispatch-side gap before open() runs at all, as
+  // opposed to the gap being purely open()-to-screen presentation latency.
+  debug::dbg("TOGGLE tick=" + std::to_string(m_frameTick) +
+             " active=" + std::to_string(m_active) +
+             " opening=" + std::to_string(m_opening));
   if (m_active && m_opening)
     close();
   else
@@ -466,6 +493,13 @@ void Overview::setDesktopMode(bool on) {
 }
 
 void Overview::open() {
+  // Black-blink diagnostic (CANDIDATES.md, "куда копать дальше" #1): capture
+  // entry time BEFORE any early return, diff it against the moment m_active
+  // actually flips true below. open() is one straight-line synchronous call
+  // stack with no awaits/yields, so this is expected to come back near-zero
+  // (microseconds) — logging it anyway turns that expectation into a
+  // verified fact instead of an assumption, and costs nothing.
+  const auto openEntryStamp = std::chrono::steady_clock::now();
   if (m_active && m_opening)
     return;
 
@@ -502,7 +536,21 @@ void Overview::open() {
   // to cycle back through it. Bounded, one-shot (never re-armed while
   // active), and harmless if the theory is wrong — costs nothing beyond a few
   // needless full-frame paints right at open.
-  m->m_forceFullFrames = 3;
+  //
+  // EXPERIMENT (black-blink debugging, unverified — see CANDIDATES.md "куда
+  // копать дальше" #3): the value 3 assumes a swapchain depth of at most 3
+  // images, matching Hyprland's own onConnect/reload usage elsewhere. If the
+  // actual runtime swapchain is deeper (or if some force-full-frame "ticks"
+  // get consumed by iterations that never reach scanout — e.g. a skipped/
+  // throttled frame under load — the counter could hit 0 before every image
+  // in rotation was ever forced), the STALE/never-composited-into background
+  // theory this mechanism exists to cover would still leave the black blink
+  // uncovered on whichever image(s) rotation hadn't reached yet. Raised 3->8
+  // as a cheap, bounded (still one-shot, still harmless per the comment
+  // above) test: if the blink duration/frame-count shrinks or disappears
+  // with this bump, that's strong evidence for the swapchain-depth theory;
+  // if unchanged, revert this one line — it isn't a confirmed fix.
+  m->m_forceFullFrames = 8;
 
   // Clear drag/press state: a mid-drag dismiss (ESC/TAB/click) skips the
   // release handler, so the next open would inherit a half-armed drag (a tile
@@ -541,6 +589,11 @@ void Overview::open() {
   m_jumpMode = false;
   m_pendingJumpClose = false;
   m_openStamp = std::chrono::steady_clock::now();
+  debug::dbg("OPEN tick=" + std::to_string(m_frameTick) +
+             " entryToActiveUs=" +
+             std::to_string(std::chrono::duration<double, std::micro>(
+                                 m_openStamp - openEntryStamp)
+                                 .count()));
   m_pendingDeactivate = false;
   m_progress = 0.0;
   m_timeline.begin();   // chrome reveal

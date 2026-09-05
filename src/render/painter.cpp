@@ -74,6 +74,16 @@ private:
 // exactly one PainterPass is added; all drawing happens later, in its
 // execution.
 void Overview::renderStage(eRenderStage stage) {
+  // Diagnostic-only frame index (black-blink debugging, CANDIDATES.md): ticks
+  // once per RENDER_LAST_MOMENT regardless of m_active, BEFORE the early
+  // return below, so it stays monotonic across the exact open()/m_active
+  // transition we're trying to pin down. Deliberately placed ahead of the
+  // stage filter too — see frameTick() doc comment for the multi-monitor /
+  // pre-first-open caveats, both fine for the single-monitor repro this is
+  // for.
+  if (stage == RENDER_LAST_MOMENT)
+    ++m_frameTick;
+
   if (!m_active)
     return;
   const auto rm = g_pHyprRenderer->m_renderData.pMonitor.lock();
@@ -109,7 +119,9 @@ void Overview::renderStage(eRenderStage stage) {
             std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - m_openStamp)
                 .count()) +
-        "ms open=" + std::to_string(m_opening) +
+        "ms tick=" + std::to_string(m_frameTick) +
+        " forceFF=" + std::to_string(rm->m_forceFullFrames) +
+        " open=" + std::to_string(m_opening) +
         " prog=" + std::to_string(m_progress).substr(0, 5) +
         " kk=" + std::to_string(kk).substr(0, 6) +
         " frost=" + std::to_string(1.0 - e).substr(0, 6) +

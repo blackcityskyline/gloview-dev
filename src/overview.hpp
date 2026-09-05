@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -156,6 +157,20 @@ public:
                                  // non-tile windows in hkDamageSurface)
 
   [[nodiscard]] bool active() const { return m_active; }
+  // Entry-animation window only (bounded ~200-400ms) — used to gate the
+  // shouldRenderWindow diagnostic trace to just the open() transition instead
+  // of the whole time the overview happens to stay up. See black-blink notes
+  // in CANDIDATES.md.
+  [[nodiscard]] bool opening() const { return m_opening; }
+  // Diagnostic-only: monotonic count of RENDER_LAST_MOMENT calls for our
+  // tracked monitor, ticked in renderStage() regardless of m_active — lets
+  // hkShouldRenderWindow (session.cpp, a different TU) stamp each hide/show
+  // decision with the same frame index the "F t=+" trace uses, so the two
+  // logs can be correlated frame-for-frame after the fact. Multi-monitor:
+  // over-counts by one tick per extra monitor and before the FIRST open()
+  // this session (m_monitor unset) — acceptable for the single-monitor
+  // black-blink repro this exists for.
+  [[nodiscard]] std::uint64_t frameTick() const { return m_frameTick; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool
   blurEnabled() const; // plugin:gloview:blur != 0 (queried by the pass)
@@ -179,6 +194,7 @@ private:
   bool m_active = false;
   bool m_opening = false;
   std::chrono::steady_clock::time_point m_openStamp{}; // frame-trace t=0
+  std::uint64_t m_frameTick = 0; // diagnostic-only, see frameTick() above
 
   // Close animation just hit progress 0 THIS frame. shouldRenderWindow (which
   // hides the real windows) is evaluated early in the frame, before our
