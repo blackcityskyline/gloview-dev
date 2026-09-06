@@ -20,7 +20,6 @@ extern "C" {
 
 #include "anim/curves.hpp"
 #include "config/config.hpp"
-#include "debug/log.hpp"
 #include "overview.hpp"
 
 inline HANDLE                             g_handle = nullptr;
