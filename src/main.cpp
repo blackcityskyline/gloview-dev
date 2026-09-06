@@ -11,6 +11,8 @@
 #include <hyprland/src/config/values/types/StringValue.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
 
+#include "debug/log.hpp"
+
 extern "C" {
 #include <lauxlib.h>
 #include <lua.h>
@@ -98,7 +100,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     // needed to get one). Purely a "is the fresh binary actually running"
     // sanity check for live debugging sessions — grep for it in the log
     // right after a hot-reload, before chasing anything else.
-    debug::dbg("[gloview] PLUGIN_INIT build=" __DATE__ " " __TIME__);
+    gloview::debug::dbg("[gloview] PLUGIN_INIT build=" __DATE__ " " __TIME__);
 
     // The whole option schema lives in config/config.cpp (grouped by domain).
     gloview::cfg::registerAll(handle);
