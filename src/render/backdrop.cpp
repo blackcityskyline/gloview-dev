@@ -217,7 +217,24 @@ void Overview::renderBackdrop() const {
     debug::dbg("[baseDiag] hasWallpaper=" + std::to_string(hasWallpaper) +
                " fullPx=" + std::to_string(fullPx.w) + "x" + std::to_string(fullPx.h) +
                " W=" + std::to_string(W) + " H=" + std::to_string(H));
-    if (hasWallpaper) {
+    // Prefer an already-valid CACHED BLUR as the base over either fallback
+    // below: it's the exact same texture the k-scaled blit further down
+    // draws, so blending kk% of it over 100% of itself is a no-op visually
+    // (standard "over" blend of a texture onto itself reproduces the same
+    // pixels regardless of alpha) — frame 0 shows the real backdrop
+    // immediately instead of a flat fill color or the sharp/unblurred
+    // wallpaper. Confirmed via wf-recorder pixel sampling (2026-09-06,
+    // CANDIDATES.md): the flat fallback was pixel-perfect misc:background_
+    // color (verified black by changing it to red and re-recording), not a
+    // presentation-latency gap — this was never a rendering bug, just an
+    // avoidable few frames of the wrong (and, by default, black) fill under
+    // a crossfade that had a valid replacement sitting right there already.
+    const bool blurCacheReady = m_blur.valid && m_blur.fb &&
+        m_blur.fb->isAllocated() && m_blur.fb->m_size == Vector2D(W, H);
+    const auto cachedTex = blurCacheReady ? m_blur.fb->getTexture() : nullptr;
+    if (cachedTex && cachedTex->ok()) {
+      g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = 1.0F});
+    } else if (hasWallpaper) {
       const double monRatio = static_cast<double>(W) / H;
       const double wpRatio =
           m->m_background->m_size.x / m->m_background->m_size.y;
