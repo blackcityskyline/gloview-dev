@@ -229,7 +229,17 @@ void Overview::renderBackdrop() const {
     // presentation-latency gap — this was never a rendering bug, just an
     // avoidable few frames of the wrong (and, by default, black) fill under
     // a crossfade that had a valid replacement sitting right there already.
-    const bool blurCacheReady = m_blur.valid && m_blur.fb &&
+    //
+    // Deliberately NOT checking m_blur.valid here (see CANDIDATES.md,
+    // sessions 4/5): that flag means "fresh enough to skip a recapture,"
+    // which open()'s TTL clears every few seconds on purpose — but the FBO
+    // and its texture aren't freed when the flag drops, just marked for a
+    // refresh a few lines below in this same function. Gating on isAllocated
+    // + correct size only means every TTL-triggered refresh reused the old
+    // (still-correct, one-frame-stale at worst) pixels as this frame's base
+    // while the recapture ran, instead of falling back to the flat fill —
+    // which is exactly what was still visibly flashing every 3-5s.
+    const bool blurCacheReady = m_blur.fb &&
         m_blur.fb->isAllocated() && m_blur.fb->m_size == Vector2D(W, H);
     const auto cachedTex = blurCacheReady ? m_blur.fb->getTexture() : nullptr;
     if (cachedTex && cachedTex->ok()) {
