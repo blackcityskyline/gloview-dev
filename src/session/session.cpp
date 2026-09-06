@@ -625,7 +625,14 @@ void Overview::open() {
   // back would just mean reading our own prior write, permanently pinning
   // this to "always dirty" and defeating the TTL entirely. TTL alone is
   // fully within our control and is what's actually verified to work.
-  static constexpr auto kBackdropCacheTTL = std::chrono::seconds(3);
+  // TEMP DIAGNOSTIC (revert to 3 once confirmed): bumped 3s -> 30s so a
+  // normal manual test cadence (press bind, read terminal, grep log, paste
+  // here — comfortably >3s) can't accidentally always land outside the TTL
+  // and look identical to the old unconditional-reset bug for an unrelated
+  // reason. Test with the bind pressed twice in quick, deliberate succession
+  // (well under a second apart) instead of the usual clear-log/grep loop
+  // between each toggle.
+  static constexpr auto kBackdropCacheTTL = std::chrono::seconds(30);
   const bool backdropStale =
       (std::chrono::steady_clock::now() - m_lastBackdropCapture) >
       kBackdropCacheTTL;

@@ -18,6 +18,7 @@ extern "C" {
 
 #include "anim/curves.hpp"
 #include "config/config.hpp"
+#include "debug/log.hpp"
 #include "overview.hpp"
 
 inline HANDLE                             g_handle = nullptr;
@@ -90,6 +91,14 @@ APICALL EXPORT std::string PLUGIN_API_VERSION() {
 
 APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     g_handle = handle;
+
+    // Unmistakable load marker — before ANY other work, so it fires even if
+    // initialize() throws below. __DATE__/__TIME__ are compiler builtins that
+    // change on every single compile, unlike a git hash (no CMake wiring
+    // needed to get one). Purely a "is the fresh binary actually running"
+    // sanity check for live debugging sessions — grep for it in the log
+    // right after a hot-reload, before chasing anything else.
+    debug::dbg("[gloview] PLUGIN_INIT build=" __DATE__ " " __TIME__);
 
     // The whole option schema lives in config/config.cpp (grouped by domain).
     gloview::cfg::registerAll(handle);
