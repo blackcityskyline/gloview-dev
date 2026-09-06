@@ -403,6 +403,15 @@ private:
   // content (e.g. foot text) into the re-drawn FBO on every re-blur.
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false; // false → redraw layers next time
+  // Last time the backdrop source + blur cache were actually rebuilt
+  // (backdrop.cpp, right where m_blur.valid is set true). open() used to
+  // force a rebuild unconditionally on every single toggle — correct, but
+  // paid for a full wallpaper-layers recapture + Gaussian blur pass
+  // synchronously inside the entry frame every time, which could miss
+  // vblank and show as a black blink (see CANDIDATES.md, black-blink 2026-09
+  // updates). open() now only forces a rebuild when Hyprland's own
+  // background-dirty signal fired or this TTL has elapsed — see open().
+  mutable std::chrono::steady_clock::time_point m_lastBackdropCapture{};
   // Self-contained blur (own GL program): plugin-tunable blur_passes /
   // blur_size / blur_resolution, independent of Hyprland's global
   // decoration:blur:* (which plugins can't override per-call).

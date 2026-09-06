@@ -323,6 +323,10 @@ void Overview::renderBackdrop() const {
       return;
     }
     m_blur.valid = true;
+    // Cache successfully rebuilt — stamps the TTL open() checks (see
+    // kBackdropCacheTTL there) so the NEXT open() doesn't force a redundant
+    // capture+blur if it lands within a few seconds of this one.
+    m_lastBackdropCapture = std::chrono::steady_clock::now();
   }
 
   // Cheap path: blit the cached blurred backdrop, faded by the animation

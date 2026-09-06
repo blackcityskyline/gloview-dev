@@ -520,6 +520,13 @@ void Overview::open() {
   // a stale pre-window scene and only re-dirtied on bg damage, so the first
   // overview's band else samples the cold cache and renders see-through
   // ("transparent strip").
+  //
+  // Read Hyprland's OWN dirty flag BEFORE we set it below — while it's still
+  // whatever Hyprland left it as, i.e. a genuine "background actually
+  // changed" signal (Hyprland only sets this on real bg damage, per the
+  // comment above). Used a few lines down to gate OUR OWN backdrop-source +
+  // blur cache the same way, instead of always assuming something changed.
+  const bool nativeBgDirty = m->m_blurFBDirty;
   m->m_blurFBDirty = true;
 
   // Force 3 consecutive full-monitor-damage frames, the same public knob
@@ -601,13 +608,37 @@ void Overview::open() {
   m_lastAnimTick = {}; // fresh animation cycle: no stale gap measurement
   hideLayers(); // fade bars out (no-op unless hide_top/overlay_layers set)
   m_cursor.onOpen(m, cursorMode());
-  m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO
-  // Invalidate but do NOT free the blur cache: its texture doubles as the
-  // frosted backing under translucent tiles from the FIRST overview frame
-  // (see drawPreviewTile) — freeing it would reintroduce the entry blink for
-  // exactly the windows that have blur-behind. The srcId+recipe key forces
-  // one fresh blur on the first backdrop-visible frame anyway.
-  m_blur.valid = false;
+  // Only force a fresh wallpaper-layers capture + Gaussian blur pass when
+  // something plausibly changed since the last one: Hyprland's own
+  // background-dirty signal (nativeBgDirty, captured above — catches
+  // misc:background_path changes), or the cache simply being older than
+  // kBackdropCacheTTL (catches third-party wallpaper daemons, which don't
+  // route through Hyprland's own dirty tracking, without re-paying the full
+  // capture+blur cost synchronously on every single toggle). Both operations
+  // are real GL work (raw wallpaper/layer-shell capture, then a full-monitor
+  // Gaussian blur) that used to run unconditionally inside open()'s very
+  // first rendered frame; expensive enough to miss vblank and show as a
+  // black blink (see CANDIDATES.md, black-blink 2026-09 updates) — upstream
+  // never had this because it re-blurs every frame from Hyprland's own
+  // continuously-warm cache instead of caching its own, at ~15x the
+  // steady-state GPU cost. A stale cache within the TTL window (wallpaper
+  // daemon updates content while overview is closed, then reopened inside
+  // a few seconds) shows one animation's worth of a slightly-outdated
+  // snapshot instead — a live/video wallpaper is unaffected, it bypasses
+  // this cache every frame regardless (see liveSrc in backdrop.cpp).
+  static constexpr auto kBackdropCacheTTL = std::chrono::seconds(3);
+  const bool backdropStale =
+      (std::chrono::steady_clock::now() - m_lastBackdropCapture) >
+      kBackdropCacheTTL;
+  if (nativeBgDirty || backdropStale) {
+    m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO
+    // Invalidate but do NOT free the blur cache: its texture doubles as the
+    // frosted backing under translucent tiles from the FIRST overview frame
+    // (see drawPreviewTile) — freeing it would reintroduce the entry blink
+    // for exactly the windows that have blur-behind. The srcId+recipe key
+    // forces one fresh blur on the first backdrop-visible frame anyway.
+    m_blur.valid = false;
+  }
   debug::dbg("=== OPEN ===");
   damage();
 }
