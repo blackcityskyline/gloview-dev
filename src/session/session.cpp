@@ -632,7 +632,21 @@ void Overview::open() {
   // reason. Test with the bind pressed twice in quick, deliberate succession
   // (well under a second apart) instead of the usual clear-log/grep loop
   // between each toggle.
-  static constexpr auto kBackdropCacheTTL = std::chrono::seconds(30);
+  //
+  // CONFIRMED 2026-09-06: with this at 30s, a same-tick reopen (close on
+  // tick N, reopen tick N+1) showed bdDrawn=1/blurOK=1 on the very FIRST
+  // frame after the second OPEN — the TTL-gated cache genuinely works,
+  // reopening fast skips the redundant recapture+reblur. BUT the user
+  // confirms the visible black blink is UNCHANGED regardless of timing
+  // (repeats identically pressed every 200ms or every 5s) — meaning this
+  // cache invalidation was NEVER the cause of the visible blink. It was a
+  // real, worth-keeping optimization (verified working) that happened to
+  // correlate with open() in the logs, not the mechanism. Back to 3s: the
+  // TTL logic itself is validated, this just isn't Bug A's answer. Bug A
+  // needs a synced screen recording (wf-recorder), like the Bug B protocol
+  // this file's 2026-08-22 update describes — log inference alone has now
+  // pointed at three different wrong mechanisms in a row.
+  static constexpr auto kBackdropCacheTTL = std::chrono::seconds(3);
   const bool backdropStale =
       (std::chrono::steady_clock::now() - m_lastBackdropCapture) >
       kBackdropCacheTTL;
