@@ -242,6 +242,12 @@ void Overview::renderBackdrop() const {
     const bool blurCacheReady = m_blur.fb &&
         m_blur.fb->isAllocated() && m_blur.fb->m_size == Vector2D(W, H);
     const auto cachedTex = blurCacheReady ? m_blur.fb->getTexture() : nullptr;
+    debug::dbg(std::string("[baseBranch] blurCacheReady=") +
+        std::to_string(blurCacheReady) +
+        " texOk=" + std::to_string(cachedTex && cachedTex->ok()) +
+        " branch=" + (cachedTex && cachedTex->ok() ? "cached"
+                      : hasWallpaper                ? "sharpWallpaper"
+                                                     : "flatFill"));
     if (cachedTex && cachedTex->ok()) {
       g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = 1.0F});
     } else if (hasWallpaper) {
