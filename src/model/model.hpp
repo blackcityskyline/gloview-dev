@@ -1,8 +1,7 @@
 #pragma once
 
-// The Model store's data structures (REFACTORING.md M1): what EXISTS in the
-// overlay. Pure data — no Hyprland calls, no rendering. Whoever mutates these
-// (build/input/actions) owns the state transition; the painter only reads.
+// What EXISTS in the overlay. Pure data — no Hyprland calls, no rendering.
+// build/input/actions own the mutations; the painter only reads.
 
 #include <chrono>
 #include <string>
@@ -19,21 +18,15 @@ struct Tile {
   PHLWINDOWREF win;
   LRect natural; // monitor-local logical: real place (goal); animation start
   LRect target;  // monitor-local logical: grid slot
-  bool parked = false; // canvas mode: target is user-placed — rebuilds and
-                       // syncs must not move it (only the tile's own drag)
-  std::string labelText; // what `label` was rendered from (cache key)
-  double appear = 1.0;   // 0..1 population progress: 0 = brand-new to the
-                         // grid this rebuild (fades/scales in over
-                         // populate); ghosts cover the reverse direction
-  SP<Render::ITexture> label; // cached window title, shown on hover
+  bool parked = false; // canvas mode: user-placed, only its own drag moves it
+  std::string labelText; // cache key for `label`
+  double appear = 1.0;   // 0 = new to this rebuild; ghosts cover the reverse
+  SP<Render::ITexture> label;
 };
 
 struct StripWin {
   PHLWINDOWREF win;
-  LRect
-      rel; // 0..1 within the monitor: the window's tiled slot in the card.
-           // The card preview renders the window's LIVE surface into this
-           // slot (renderStripWindows), so no snapshot/crop state is needed.
+  LRect rel; // 0..1 slot within the card; rendered from the LIVE surface
 };
 
 struct StripItem {
@@ -42,24 +35,18 @@ struct StripItem {
   int id = 0;
   bool active = false;
   Kind kind = Kind::Ws;
-  // A placeholder card for a numeric workspace ID that has no real
-  // PHLWORKSPACE object yet (Hyprland only keeps workspace objects that were
-  // actually created/visited, so an empty never-visited workspace simply
-  // doesn't exist to iterate — strip_empty_mode "show"/"neighbors" synthesize
-  // these so the strip can still display them). `ws` stays unset;
-  // clicking/dropping on it creates the real workspace at exactly `id`, same
-  // as "+" but at a specific number instead of the lowest free one.
+  // Placeholder for a numeric ID with no PHLWORKSPACE object yet (Hyprland
+  // only keeps objects it has created). `ws` stays unset; clicking/dropping
+  // creates the real workspace at exactly `id`.
   bool virtualWs = false;
   LRect card; // monitor-local logical
   std::vector<StripWin> wins;
-  SP<Render::ITexture> label; // cached rendered workspace name
+  SP<Render::ITexture> label;
 };
 
-// Rendered-text cache entry. Tiles and StripItems are RECREATED on every
-// rebuild (each drop/swap/sync), so caching on them re-rasterized every
-// label every drop — the drag&drop stutter. Keyed by the owning
-// window/workspace pointer with mark-and-sweep per build pass (explicit
-// lifecycle, per AGENTS).
+// Rendered-text cache. Tiles/StripItems are recreated on every rebuild, so
+// caching on them re-rasterized every label per drop — the drag stutter. Keyed
+// by the owning window/workspace pointer, swept per build pass.
 struct LabelTex {
   std::string text;
   SP<Render::ITexture> tex;
@@ -70,35 +57,29 @@ struct Ghost {
   LRect box; // monitor-local logical, frozen at removal
 };
 
-// Success pop after a swap (anim_swap_pulse): window-keyed so rebuilds
-// between kick and render can't orphan it. Rendered as a ring flash around
-// wherever the window currently sits (grid tile or strip slot).
+// Swap success ring. Window-keyed so a rebuild between kick and render can't
+// orphan it. `p` accumulates per FRAME, not wall-clock: a heavy frame right
+// after a drop must not leap the easeOutBack plateau.
 struct WinPulse {
   PHLWINDOWREF w;
-  double p = 0.0; // accumulated FRAME progress, not wall-clock: heavy
-                  // frames (layout recalc right after a drop) must not
-                  // leap it across the easeOutBack plateau — that read as
-                  // the ring snapping wide and freezing
+  double p = 0.0;
   std::chrono::steady_clock::time_point last;
 };
 
-// Everything the pointer did between PRESS and RELEASE, for both drag kinds
-// (a grid tile, a window grabbed straight off a strip card) and every press
-// outcome. One value instead of the old eleven scattered members — a stale
-// half-armed drag can no longer exist across sessions (open() just resets
-// it), and release logic switches on `press` instead of decoding sentinels.
+// Everything the pointer did between PRESS and RELEASE, for both drag kinds and
+// every press outcome. One value, so a stale half-armed drag cannot survive a
+// session, and release logic switches on `press` instead of decoding sentinels.
 //
-// RULE: Drag visual state (renderDragWindow, drawDragStripChrome,
-// suppressContent, WIN_SUPPRESS) MUST be gated on m_drag.lifted everywhere
-// except the grab-indicator ring.  Press alone means "armed, nothing drawn
-// yet" — lift is promoted by hold_lift_ms timer.
+// RULE: the drag visual (renderDragWindow, drawDragStripChrome,
+// suppressContent) is gated on `lifted` everywhere except the grab ring —
+// press alone means "armed, nothing drawn yet".
 struct Drag {
   enum class Press : int {
-    Tile,      // pressed on a main-grid tile: idx = m_tiles index
-    StripWin,  // pressed on a strip card's window slot: idx = m_strip index,
-               // winIdx = index into its wins, win = the window
+    Tile,      // main-grid tile: idx = m_tiles index
+    StripWin,  // strip card's window slot: idx = m_strip index, winIdx = its
+               // index into it, win = the window
     Empty,     // empty space → close on release unless consumed
-    Consumed,  // press fully handled on the spot (e.g. a ✕ button)
+    Consumed,  // handled on the spot (e.g. a ✕ button)
   };
   Press press = Press::Empty;
   int idx = -1, winIdx = -1;
@@ -107,10 +88,9 @@ struct Drag {
   double pressX = 0, pressY = 0;   // monitor-local press point
   double grabDX = 0, grabDY = 0;   // cursor offset inside the grabbed box
   double x = 0, y = 0;             // current cursor, kept fresh by updateHover
-  bool lifted = false;             // moved past the threshold → a real drag
-  std::chrono::steady_clock::time_point holdStartMs; // press timestamp for hold timer
-  LRect fromBox;                   // the grabbed preview's box at lift time —
-                                   // the pickup flight's origin
+  bool lifted = false;             // past the threshold → a real drag
+  std::chrono::steady_clock::time_point holdStartMs;
+  LRect fromBox;                   // grabbed box at lift = flight origin
   bool armed() const {
     return press == Press::Tile || press == Press::StripWin;
   }
@@ -120,31 +100,18 @@ struct Drag {
   }
 };
 
-// A drag/swap landing: the window's content flies from `from` (the box it
-// occupied at release — the drag preview under the cursor, or its old slot)
-// into its new slot. While the flight is live the painter draws the window
-// ONCE above the strip and suppresses its regular slot rendering; at t=1 the
-// lerped box equals the slot box, so the handoff to normal rendering is
-// invisible.
-// How a swapped/moved window leaves its old box and enters the new one.
-// Horizontal = direct lerp old->new (windows travel toward each other);
-// SlideVert = exits through the top, enters from the top of the new box;
-// Fade = fades out at the old box, in at the new; Pop = quick fade + scale
-// overshoot at the new box.
+// How a window leaves its old box and enters the new one.
 enum class SwapStyle : int { Horizontal, SlideVert, Fade, Pop };
 
-// A drag/swap transition: the window's content flies from `from` (the box it
-// occupied at release — the drag preview under the cursor, or its old slot)
-// into its new slot, choreographed by `style`. While the FX is live the
-// painter draws the window ONCE above the strip and suppresses its regular
-// slot rendering; at t=1 the FX box equals the slot box, so the handoff to
-// normal rendering is invisible.
+// A drag/swap landing: content flies from `from` into its new slot. While live
+// the painter draws it ONCE above the strip and suppresses the slot render; at
+// t=1 the lerped box equals the slot box, so the handoff is invisible.
 struct SwapFX {
   PHLWINDOWREF win;
   LRect from;    // monitor-local logical
   SwapStyle style = SwapStyle::Horizontal;
-  double ms = 320;               // the flight duration (the leaf's _ms)
-  std::string curve = "easeinout"; // the leaf's _curve
+  double ms = 320;
+  std::string curve = "easeinout";
   anim::Tween clock;
 };
 

@@ -1,8 +1,7 @@
 #pragma once
 
-// The immediate window-content leaf (see window_content.cpp). Shared by the
-// render view TUs; the declaration carries the defaults so call sites stay
-// terse.
+// The immediate window-content leaf (window_content.cpp). Shared by the render
+// view TUs; defaults here keep call sites terse.
 
 #include <hyprland/src/desktop/DesktopTypes.hpp>
 #include <hyprland/src/helpers/time/Time.hpp>
@@ -11,24 +10,18 @@
 
 namespace gloview {
 
-// How a window's real shape is mapped onto its destination box.
+// How a window's real shape maps onto its destination box.
 enum class WindowFit {
-  Cover,  // uniform scale that FILLS the box, cropping the overflow (grid
-          // tiles: the live surface must cover the slot edge-to-edge)
-  Contain, // uniform scale that FITS the box whole, letterboxed on the
-          // short axis and centered on both (carousel cards: the preview box
-          // has a fixed aspect, the window keeps its own)
+  Cover,   // fill the box, cropping (grid tiles)
+  Contain, // fit the window whole, letterboxed and centered (carousel cards)
 };
 
-// Draw a window's LIVE surface tree (or its frozen snapshot texture, when
-// preview_mode == "snapshot") scaled into `destPx`, clipped to `clipPx` —
-// both monitor PIXEL coords. `roundPx`/`roundingPower` let the caller match
-// the surrounding chrome's corner rounding. `settled`: true when the caller
-// knows destPx is IDENTICAL to last frame's (no active glide/drag/flight for
-// this window) — enables pad=0 for a pixel-exact corner match against the
-// border ring. Defaults to false (safety pad active) for callers that don't
-// track this. Must be called from pass EXECUTION (inside the painter), where
-// currentFB/projection are live.
+// Draws the LIVE surface tree (or the frozen snapshot, when preview_mode ==
+// "snapshot") into destPx, clipped to clipPx — monitor PIXEL coords.
+// roundPx/roundingPower match the surrounding chrome's corners. `settled`:
+// destPx is identical to last frame (no glide/drag/flight), enabling pad=0 for
+// a pixel-exact corner match against the border ring. Call from pass EXECUTION
+// (inside the painter), where currentFB/projection are live.
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx = 0,
