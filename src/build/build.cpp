@@ -384,14 +384,16 @@ void Overview::layoutTiles() {
                        std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
     CarouselMetrics mt;
     mt.visibleCards = std::max(1, static_cast<int>(cfg::carousel.cards.get()));
-    // The standard card IS a fullscreen window's box: the usable area, unscaled.
-    // carousel_card_width only narrows it (the height follows the usable aspect);
-    // 0 keeps the fullscreen box.
-    mt.boxW = usable.w;
-    mt.boxH = usable.h;
+    // The standard card is a FULLSCREEN window's box: the whole monitor, not the
+    // padded usable rect. That is what makes the containment honest — a window
+    // one side short of the screen lands at its own size inside the card, so a
+    // half-screen window really does take up half the card and a fullscreen one
+    // fills it, instead of both being scaled to fit a box of some other ratio.
+    mt.boxW = m->m_size.x;
+    mt.boxH = m->m_size.y;
     if (const int w = static_cast<int>(cfg::carousel.card_width.get()); w > 0) {
-      mt.boxW = std::min(static_cast<double>(w), usable.w);
-      mt.boxH = mt.boxW * usable.h / usable.w;
+      mt.boxW = std::min(static_cast<double>(w), m->m_size.x);
+      mt.boxH = mt.boxW * m->m_size.y / m->m_size.x;
     }
     mt.overlap = std::min(mt.boxW * 0.12, 60.0);
     m_carousel = computeCarousel(static_cast<int>(m_tiles.size()), sel, usable,

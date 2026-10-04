@@ -43,7 +43,10 @@ void yes(bool cond, const char *what) {
   }
 }
 
-// A fullscreen window's box on a 1206x493 screen with the defaults.
+// The standard card is a FULLSCREEN window's box: the whole monitor. The run is
+// laid out in `usable` (the padded rect) and scaled to fit it.
+constexpr double kScreenW = 1366.0;
+constexpr double kScreenH = 768.0;
 constexpr double kUsableW = 1206.0;
 constexpr double kUsableH = 493.0;
 constexpr double kMargin = 32.0;
@@ -52,8 +55,8 @@ constexpr double kCaption = 44.0 + 12.0;
 
 CarouselMetrics defaults() {
   CarouselMetrics mt;
-  mt.boxW = kUsableW;
-  mt.boxH = kUsableH;
+  mt.boxW = kScreenW;
+  mt.boxH = kScreenH;
   mt.overlap = kOverlap;
   mt.visibleCards = 5;
   return mt;
@@ -64,18 +67,18 @@ void sectionA_oneStandardBox() {
   auto mt = defaults();
   const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
 
-  // 5 cards: stripW = 5*1206 - 4*60 = 6030 - 240 = 5790, which does NOT fit
-  // availW = 1206 - 64 = 1142, so k = 1142/5790 and every card shrinks by it.
-  const double k = 1142.0 / 5790.0;
+  // 5 cards: stripW = 5*1366 - 4*60 = 6830 - 240 = 6590, which does NOT fit
+  // availW = 1206 - 64 = 1142, so k = 1142/6590 and every card shrinks by it.
+  const double k = 1142.0 / 6590.0;
   for (const auto &c : L.cards) {
     if (!c.visible)
       continue;
     // Every card the same width and height, to the last bit: this is the whole
     // point, and it is why the run cannot shift with the selection.
-    near(c.w, kUsableW * k, "every card is the standard width");
+    near(c.w, kScreenW * k, "every card is the standard width");
     // Including the centred one: the caption strip is reserved in stripH, not
     // bolted onto one card, because a taller centred box is a different size.
-    near(c.h, kUsableH * k, "every card is the standard height");
+    near(c.h, kScreenH * k, "every card is the standard height");
   }
 
   // Distinct boxes: the five placed ones must not share a width by accident of
@@ -90,8 +93,8 @@ void sectionA_oneStandardBox() {
 void sectionB_placementAndCentring() {
   auto mt = defaults();
   const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
-  const double k = 1142.0 / 5790.0;
-  const double w = kUsableW * k;
+  const double k = 1142.0 / 6590.0;
+  const double w = kScreenW * k;
   const double ov = kOverlap * k;
 
   // sel 2 -> slots -2,-1,0,1,2 -> indices 0,1,2,3,4. Anchored to the RUN: the
@@ -112,10 +115,12 @@ void sectionB_placementAndCentring() {
   near(L.cards[2].x - L.cards[0].x, L.cards[4].x - L.cards[2].x,
        "run symmetric about the centred card");
 
-  // The run is centred on the screen.
-  near(L.stripW, 1142.0, "run scaled to fit the width exactly");
+  // The run is centred inside the usable rect.
   near(L.originX, (kUsableW - L.stripW) * 0.5, "run centred horizontally");
-  near(L.originX + L.stripW, L.originX + L.stripW, "run right edge");
+  // The card keeps the SCREEN's ratio: that is what makes containment honest, so
+  // a window short one side lands at its own size instead of being scaled up.
+  near(L.cards[2].w / L.cards[2].h, kScreenW / kScreenH,
+       "the card keeps the screen's aspect");
 }
 
 // Section C: the selection must not move the geometry AT ALL.
@@ -161,14 +166,14 @@ void sectionC_selectionDoesNotMoveTheRun() {
 void sectionD_verticalFitAndCaption() {
   auto mt = defaults();
   const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
-  const double k = 1142.0 / 5790.0;
-  // stripH = boxH + captionGap + captionH = 493 + 56 = 549; availH =
-  // 493 - 64 - 32 - 12 = 385, so the HEIGHT branch is the binding one on this
-  // screen and the two scales must agree with the single k.
+  const double k = 1142.0 / 6590.0;
+  // stripH = 768 + 56 = 824; availH = 493 - 64 - 32 - 12 = 385, so the height
+  // branch would allow 385/824 = 0.467 — but the width branch only allows
+  // 1142/6590 = 0.173, so the WIDTH binds and the run fills the width exactly.
   const double availH = 385.0;
-  const double kk = std::min(1142.0 / 5790.0, availH / 549.0);
+  const double kk = std::min(1142.0 / 6590.0, availH / 824.0);
   near(k, kk, "one scale fits both axes");
-  near(L.stripH, 549.0 * k, "strip height scaled");
+  near(L.stripH, 824.0 * k, "strip height scaled");
   yes(L.panelH <= kUsableH - 2 * kMargin, "panel fits the screen height");
   for (const auto &c : L.cards) {
     if (c.visible)
