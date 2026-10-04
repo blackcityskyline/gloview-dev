@@ -7,16 +7,9 @@
 
 namespace gloview {
 
-enum class WindowFit {
-  Cover,
-  Contain,
-};
-
-// painter only: needs live currentFB/projection
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx = 0,
-                      float roundingPower = 2.0F, bool settled = false,
-                      WindowFit fit = WindowFit::Cover);
+                      float roundingPower = 2.0F, bool settled = false);
 
 }

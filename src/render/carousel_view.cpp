@@ -1,5 +1,5 @@
-// Carousel mode: cards overlap, so ONE paint pass sorted far -> selected; the
-// FIXED-aspect preview CONTAINS the window (letterboxed), never Cover.
+// Carousel: cards overlap, so ONE paint pass sorted far -> selected; previews
+// over-cover like every other layout (fit-exact would show bare backdrop).
 
 #include <algorithm>
 #include <cmath>
@@ -23,7 +23,7 @@ namespace gloview {
 
 namespace {
 
-// Tone = fraction of the shadow color; taper past depth 2 so 6+ cards do not black out.
+// Fraction of the shadow color; taper past depth 2 so 6+ cards do not black out.
 constexpr double kNearTone = 0.125;
 constexpr double kFarTone = 0.25;
 constexpr double kDepthTaper = 0.8;
@@ -106,9 +106,9 @@ void Overview::renderCarousel() const {
     drawPreviewChrome(static_cast<size_t>(i), pv, false, alphaMul);
 
     renderWindowLive(w, m, pxb(pv, s), pxb(pv, s), fa, when, pxr(round, s),
-                     roundPow, settled, WindowFit::Contain);
+                     roundPow, settled);
 
-    // Depth darkening: the run reads as receding cards, not as N equal previews.
+    // Depth darkening: the run recedes instead of reading as N equal previews.
     if (card.depth > 0) {
       const double tone =
           (card.depth == 1 ? kNearTone : kFarTone) *

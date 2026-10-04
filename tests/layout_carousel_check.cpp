@@ -126,10 +126,10 @@ int main() {
     near(L.cards[0].x, 0, "1080p/5: run starts flush");
     near(L.cards[4].x + L.cards[4].w, L.stripW, "1080p/5: run ends flush");
 
-    // ---- the landing box: FIXED aspect, window CONTAINED inside ----------
+    // ---- the landing box: FIXED aspect, whatever the window's own ----------
     // pv is the card inset by frameInset; its aspect is 1.6 regardless of the
-    // card's width, which is what lets a 16:10 and a 9:21 window sit whole in
-    // the same card (renderWindowLive(..., WindowFit::Contain) letterboxes).
+    // card's width, which is what gives a 16:10 and a 9:21 window the same
+    // card. The window over-covers it, so no margin shows inside the ring.
     for (int i = 0; i < 5; ++i) {
       const auto pv = carouselPreviewBox(
           LRect{L.cards[i].x, L.cards[i].y, L.cards[i].w, L.cards[i].h}, mt);

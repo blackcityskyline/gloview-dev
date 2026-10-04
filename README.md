@@ -114,7 +114,7 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 - **`rows`** (default) — macOS-like: previews keep their aspect ratio and are packed into balanced rows, with the row count chosen to make the previews as large as possible. Reads spatially like the real desktop.
 - **`grid`** — uniform cells, one preview centered in each.
 - **`natural`** — keeps each window's real on-screen position, uniformly scaling the whole arrangement to fit.
-- **`carousel`** — fixed-width cards in one overlapped horizontal run, the selected window centered and its neighbours peeking out on both sides. Each card's preview box has a **fixed 1.6 aspect** and the window is **contained** (letterboxed) inside it, so windows of any shape sit whole inside the same card. It is only a different arrangement of the main area — the strip, workspace switching and the all↔one flip all work exactly as they do in the other modes. See [Carousel mode](#carousel-mode).
+- **`carousel`** — fixed-width cards in one overlapped horizontal run, the selected window centered and its neighbours peeking out on both sides. Each card's preview box has a **fixed 1.6 aspect** and the window fills it, so windows of any shape get the same card. It is only a different arrangement of the main area — the strip, workspace switching and the all↔one flip all work exactly as they do in the other modes. See [Carousel mode](#carousel-mode).
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -291,11 +291,10 @@ and canvas mode all keep working.
   380/500, 280/500, and geometrically smaller beyond that. (The reference has
   widths for the first three only and reuses the third for every deeper card,
   so a run deeper than five ends in two identically sized cards.)
-- **Contained previews.** Each card's preview box has a fixed **1.6 aspect**
-  regardless of the window's own shape, and the window is scaled to fit WHOLE
-  inside it (letterboxed on whichever axis is short). A 16:10 window and a 9:21
-  window both sit complete inside the same card — this is the reference's
-  behavior, and the reason the mode exists.
+- **Fixed-aspect previews.** Each card's preview box has a fixed **1.6 aspect**
+  regardless of the window's own shape, and the window fills it, cropping on
+  whichever axis is long — exactly how every other layout draws a preview, so
+  the ring sits on the content instead of framing an empty margin.
 - **Depth.** Cards one step out are dimmed slightly, cards two steps out more so
   (`0.125` / `0.25` of the shadow color — the reference's `kNearToneAlpha` /
   `kFarToneAlpha`), thinning further past that so a deep run doesn't go black.

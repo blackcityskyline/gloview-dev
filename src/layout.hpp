@@ -52,7 +52,7 @@ std::vector<LRect> computeLayout(const std::vector<LRect>& naturals, const LRect
 
 Engine parseEngine(const char* s);
 
-// fixed-aspect preview, window CONTAINED
+// fixed-aspect preview box; the window over-covers it
 struct CarouselMetrics {
     double selectedW     = 500.0;
     double nearW         = 380.0;

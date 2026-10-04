@@ -69,7 +69,7 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx,
-                      float roundingPower, bool settled, WindowFit fit) {
+                      float roundingPower, bool settled) {
   if (!w || !mon || !w->m_isMapped || !w->wlSurface() ||
       !w->wlSurface()->resource())
     return;
@@ -84,13 +84,12 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   const float logicalW = std::max((float)size.x, 5.F);
   const float logicalH = std::max((float)size.y, 5.F);
   // Over-cover from the CENTER: fit-exact lets the opaque backing show as seams.
-  const bool contain = fit == WindowFit::Contain;
-  const float pad = (settled || contain) ? 0.0F : 1.5F;
+  const float pad = settled ? 0.0F : 1.5F;
   const float sW  = (static_cast<float>(destPx.w) + pad) /
                    std::max(logicalW * mon->m_scale, 5.F);
   const float sH  = (static_cast<float>(destPx.h) + pad) /
                    std::max(logicalH * mon->m_scale, 5.F);
-  const float scaleMod = contain ? std::min(sW, sH) : std::max(sW, sH);
+  const float scaleMod = std::max(sW, sH);
   if (!(scaleMod > 0.F))
     return;
 
