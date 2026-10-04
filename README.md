@@ -303,6 +303,13 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   is tucked in by the same share and the taper changes the size but not how
   tight the run looks. Because the focused card is placed absolutely rather
   than by centring the run, the run need not be symmetric about it.
+- **The ladder is symmetric top and bottom.** Cards are centred on the focused
+  card vertically, not lined up by their top edges — a run that only steps
+  downwards reads as cards hanging off one.
+- **Preview windows are always opaque.** Every preview goes through one render
+  path that pins the surface alpha to 1, so the desktop's own `active_opacity` /
+  `inactive_opacity` rules never make a preview see-through; depth is carried by
+  size and overlap instead.
 - **Only the centred card is framed.** The rest carry no ring, and the ring is
   one fixed size everywhere rather than scaled down to suit a smaller card.
 - **Card count is yours.** `carousel_cards` sets how many cards the run shows —

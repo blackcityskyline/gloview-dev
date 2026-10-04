@@ -106,7 +106,17 @@ void sectionA_taper() {
     near(c.h / (kScreenH * k), sizeAt(d), "height tapers with it");
     yes(std::abs(c.w / c.h - kScreenW / kScreenH) < 1e-9,
         "a tapered card keeps the screen's proportions");
-    near(c.y, 0.0, "every card shares the band's top edge");
+    // Centred on the focused card: 768 * 0.229473 = 176.235588 for it, and a
+    // depth 1 card is 133.939047, so it starts 21.148271 lower — as much of a
+    // step at the top as at the bottom.
+    const double h0 = kScreenH * k;
+    near(c.y, (h0 - c.h) * 0.5, "card is centred on the focused card", 1e-5);
+    if (d)
+      yes(c.y > 0.0, "a shrunken card hangs below AND above the focused one");
+  }
+  {
+    const auto &one = L.cards[3];
+    near(one.y, 21.148271, "depth 1 step down is 21.15px", 1e-5);
   }
   // Strictly shrinking outward.
   for (int d = 0; d < 4; ++d)

@@ -292,7 +292,10 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         // neighbour's own pitch, so the sign is all that separates left from right.
         c.x = (screen.w - c.w) * 0.5 +
               static_cast<double>(slot) * pitchAt(std::abs(slot)) * k;
-        c.y = 0.0; // every frame shares the band's top edge
+        // Centred on the focused card, not sharing its top edge: a ladder that
+        // steps only downwards reads as cards hanging off one, so the run has to
+        // step by as much above the focused card as below it.
+        c.y = (boxH * k - c.h) * 0.5;
     }
     return L;
 }
