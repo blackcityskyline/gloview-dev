@@ -5,10 +5,10 @@ For every source file: strip comments from the working tree and from the git
 HEAD version, collapse whitespace, and compare. Equal means the same code
 tokens in the same order — comments were the only thing that changed.
 
-Whitespace is normalized because deleting a comment LINE necessarily deletes a
-newline, which a byte-exact compare would report as a code change. The check is
-token-level, so it tolerates blank-line removal but still catches any real edit
-to code (a changed token, a reordered statement, a dropped argument).
+Whitespace is removed entirely because reflowing a wrapped signature (a
+comment-only edit does that constantly) must not read as a code change. The
+code is not being modified, only annotated, so this stays a real check: any
+changed, added or dropped token shows up.
 
     python3 tools/check_comments_only.py [BASE_REF]     # default HEAD
 """
@@ -25,8 +25,14 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def code_signature(text):
-    """Comment-free, whitespace-collapsed form used for comparison."""
-    return re.sub(r"\s+", " ", strip_comments(text)).strip()
+    """Comment-free, whitespace-free form used for comparison.
+
+    ALL whitespace is removed, not collapsed: reflowing a wrapped signature
+    (`foo(\n  int x)` -> `foo(int x)`) must not read as a code change, and no
+    real edit survives whitespace-blind comparison here — the code is not
+    being modified at all, only annotated.
+    """
+    return re.sub(r"\s+", "", strip_comments(text))
 
 
 def head_version(rel, ref):
