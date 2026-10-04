@@ -154,9 +154,11 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
   }
 
   // Transition frost: the cached blur at CONSTANT alpha (fading it leaks C*e*(1-e)
-  // of the sharp desktop) plus the dim rect at the GLOBAL alpha e.
+  // of the sharp desktop) plus the dim rect at the GLOBAL alpha e. Opening only:
+  // on close e falls too, and a flat frost at constant alpha then covers every
+  // card, so shrinking and fading the content under it changes nothing on screen.
   const double apNow = t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
-  if (e < 0.999 || apNow < 0.999) {
+  if (m_opening && (e < 0.999 || apNow < 0.999)) {
     if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
       const double pxW = static_cast<double>(m->m_pixelSize.x);
       const double pxH = static_cast<double>(m->m_pixelSize.y);

@@ -308,10 +308,10 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   downwards reads as cards hanging off one.
 - **On close the run leaves as a deck.** The focused card flies home and grows
   into the real window, staying whole for the handoff; every other card shrinks
-  collapse toward it and fade, and are gone by 45% of the close — before the
-  landing can cover the spot they left. Flying them to their real boxes instead
-  put them all under the landing a frame later, and fading them over the WHOLE
-  close kept them there until it did, which is why neither read as an animation.
+  slide OUT from under it, riding its edge as that edge grows outward, and fade
+  over the first half of the close. Outward matters: the landing covers the
+  middle, so anything that collapses inward disappears behind it while still
+  bright.
 - **Preview windows are always opaque.** Every preview goes through one render
   path that pins the surface alpha to 1, so the desktop's own `active_opacity` /
   `inactive_opacity` rules never make a preview see-through; depth is carried by

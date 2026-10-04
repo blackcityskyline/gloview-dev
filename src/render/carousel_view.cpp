@@ -14,7 +14,6 @@
 #include "tile_look.hpp"
 #include "window_content.hpp"
 #include "../config/config.hpp"
-#include "../debug/log.hpp"
 #include "../overview.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -95,19 +94,20 @@ void Overview::renderCarousel() const {
             : 0.0;
     look.button = tileCloseButtons();
     // Only the focused card lands: it grows into the real window and stays whole
-    // for the handoff. The rest collapse toward it and are gone well before it
-    // arrives — shrinking in place only hid them under the landing a frame
-    // later, which is what read as the run vanishing without an animation.
+    // for the handoff. Every other one slides OUT from under it, riding its edge
+    // as that edge grows outward, and fades. Toward the focus was the wrong way:
+    // the landing covers exactly the middle, so a card that collapses inward
+    // disappears behind it while its alpha is still high.
     if (!m_opening && card.depth != 0) {
-      // m_progress runs DOWN on close (1 open -> 0 closed), so the exit has to
-      // read it the other way round: as it was written the first close frame was
-      // already out = 1 and the whole run blinked out in one frame.
-      const double out = std::clamp((1.0 - m_progress) / 0.45, 0.0, 1.0);
-      const double k   = 1.0 - 0.4 * out;
-      const double cx  = look.box.cx() + (focus.cx() - look.box.cx()) * out;
-      const double cy  = look.box.cy() + (focus.cy() - look.box.cy()) * out;
-      look.box = LRect{cx - look.box.w * k * 0.5, cy - look.box.h * k * 0.5,
-                       look.box.w * k, look.box.h * k};
+      // m_progress runs DOWN on close (1 open -> 0 closed).
+      const double out = std::clamp((1.0 - m_progress) / 0.5, 0.0, 1.0);
+      const double k   = 1.0 - 0.25 * out;
+      const double w   = look.box.w * k;
+      const double dir = look.box.cx() < focus.cx() ? -1.0 : 1.0;
+      const double tx  = focus.cx() + dir * (focus.w * 0.5 + w * 0.5 + 6.0);
+      const double cx  = look.box.cx() + (tx - look.box.cx()) * out;
+      look.box = LRect{cx - w * 0.5, look.box.cy() - look.box.h * k * 0.5, w,
+                       look.box.h * k};
       look.fade = 1.0 - out;
     }
     drawTile(static_cast<size_t>(i), look);
