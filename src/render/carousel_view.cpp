@@ -82,8 +82,20 @@ void Overview::renderCarousel() const {
     if (!card.visible)
       continue;
 
+    const auto &t = m_tiles[static_cast<size_t>(i)];
     TileLook look;
-    look.box = currentBox(m_tiles[static_cast<size_t>(i)], i);
+    look.box = currentBox(t, i);
+    // The landing waits for the deck. It is the biggest card on screen and it
+    // grows to the whole monitor, so from the first close frame it covers every
+    // other card: whatever they do, nobody sees it. Holding it at its card box
+    // for the first third of the close is what makes their exit visible at all,
+    // and the handoff lands on an empty stage instead.
+    if (!m_opening && card.depth == 0) {
+      const double f = std::clamp((m_progress - 0.35) / 0.65, 0.0, 1.0);
+      const auto  &a = t.natural, &bb = t.target;
+      look.box = LRect{a.x + (bb.x - a.x) * f, a.y + (bb.y - a.y) * f,
+                       a.w + (bb.w - a.w) * f, a.h + (bb.h - a.h) * f};
+    }
     look.round = cfg::look.preview_round; // one ring size for every card
     look.frame = card.depth == 0;         // only the centred card is framed
     look.contain = true;                  // the window goes inside the box whole
