@@ -123,8 +123,7 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
 
   const double s        = m->m_scale;
   const double e        = eased();
-  const float  f        = static_cast<float>(entryFade(i)) *
-                             static_cast<float>(look.fade);
+  const float  f        = static_cast<float>(entryFade(i));
   const int    round    = look.round >= 0.0
                               ? static_cast<int>(look.round)
                               : cfg::look.preview_round;

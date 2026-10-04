@@ -469,12 +469,6 @@ void Overview::close() {
         t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
                           std::max(1.0, s.x), std::max(1.0, s.y)};
       }
-      // The carousel leaves as a deck: only the focused card flies home and
-      // lands, the rest shrink where they stand. Flying them to their real boxes
-      // put them all under the focused card's landing a frame later, which is
-      // what read as the rest of the run vanishing without an animation.
-      if (m_run && static_cast<int>(&t - m_tiles.data()) != m_selected)
-        t.natural = t.target;
     }
   }
 

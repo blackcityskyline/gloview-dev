@@ -89,8 +89,12 @@ double Overview::animDuration() const {
 double Overview::tileProgress(int i) const {
   const double glideMs = (m_tileClockMs > 0) ? m_tileClockMs : m_glide.ms;
   const double base = m_opening ? m_tileClock.raw(glideMs) : m_progress;
-  // carousel shares one clock: cards pass each other, never stagger
-  if (carouselMode())
+  // Entering, the carousel shares one clock: cards pass each other, never
+  // stagger. Leaving, it uses the same per-card stagger as every other layout —
+  // the entry's own motion, run backwards, which is the one exit that has ever
+  // been seen to work here. A deck that leaves all at once is one frame of
+  // motion, and that is indistinguishable from no motion at all.
+  if (carouselMode() && m_opening)
     return base;
   return staggered(base, i, static_cast<int>(m_tiles.size()));
 }

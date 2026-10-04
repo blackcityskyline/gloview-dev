@@ -66,14 +66,6 @@ void Overview::renderCarousel() const {
     return ca.depth > cb.depth;
   });
 
-  // Where the deck collapses INTO: the focused card, mid-flight. Every other
-  // card has to be gone by the time the landing covers this spot, so its exit
-  // runs on the first third of the close, not the whole of it.
-  const LRect focus =
-      m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size())
-          ? currentBox(m_tiles[static_cast<size_t>(m_selected)], m_selected)
-          : LRect{0, 0, 0, 0};
-
   for (const int i : order) {
     const auto &card = m_carousel.cards[static_cast<size_t>(i)];
     // A card off the run is not part of the carousel: it has no box, and the
@@ -105,23 +97,6 @@ void Overview::renderCarousel() const {
                   std::pow(kDepthTaper, static_cast<double>(card.depth - 1))
             : 0.0;
     look.button = tileCloseButtons();
-    // Only the focused card lands: it grows into the real window and stays whole
-    // for the handoff. Every other one slides OUT from under it, riding its edge
-    // as that edge grows outward, and fades. Toward the focus was the wrong way:
-    // the landing covers exactly the middle, so a card that collapses inward
-    // disappears behind it while its alpha is still high.
-    if (!m_opening && card.depth != 0) {
-      // m_progress runs DOWN on close (1 open -> 0 closed).
-      const double out = std::clamp((1.0 - m_progress) / 0.5, 0.0, 1.0);
-      const double k   = 1.0 - 0.25 * out;
-      const double w   = look.box.w * k;
-      const double dir = look.box.cx() < focus.cx() ? -1.0 : 1.0;
-      const double tx  = focus.cx() + dir * (focus.w * 0.5 + w * 0.5 + 6.0);
-      const double cx  = look.box.cx() + (tx - look.box.cx()) * out;
-      look.box = LRect{cx - w * 0.5, look.box.cy() - look.box.h * k * 0.5, w,
-                       look.box.h * k};
-      look.fade = 1.0 - out;
-    }
     drawTile(static_cast<size_t>(i), look);
   }
 

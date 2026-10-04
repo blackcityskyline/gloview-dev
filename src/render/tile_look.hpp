@@ -15,7 +15,6 @@ struct TileLook {
   bool   lift = false; // dragging: taller shadow, no select ring, no pill/button
   bool   button = false; // the ✕; the caller owns the GL_BLEND guard
   double tone = 0.0;     // shadow-colour wash over the content, 0..1
-  double fade = 1.0;     // extra alpha on top of the entry fade (the exit)
 };
 
 } // namespace gloview
