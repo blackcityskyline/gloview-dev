@@ -66,13 +66,13 @@ public:
   void toggleAllWorkspaces(); // open, or toggle the all-workspaces view
   void altTabInvoke(bool reverse); // opens+seeds if closed, else advances
 
-  // Event-bus / render-pass wiring. renderStage is the frame entry (BUILD);
-  // paint is the painter it schedules (EXECUTION) and mutates nothing.
+  // renderStage is the frame entry (BUILD); paint is the painter it schedules
+  // (EXECUTION) and mutates nothing.
   void renderStage(eRenderStage stage);
   void paint();
 
   void renderBackdrop() const;
-  // Blur source; `live` = playing video, i.e. re-blur every frame, no cache.
+  // `live` = playing video: re-blur every frame, no cache.
   SP<Render::ITexture> backdropSource(bool &live) const;
   SP<Render::ITexture> renderBackdropSource(int W, int H) const;
 
@@ -93,8 +93,8 @@ public:
   CarouselLayout m_carousel;     // written by layoutTiles
   CarouselMetrics m_carouselMetrics;
   // The selection m_carousel was built for. Slots are laid out AROUND the
-  // selection, so any change needs a relayout; checking once in renderStage is
-  // what lets every existing selection path work here unchanged.
+  // selection, so any change needs a relayout; renderStage checks this once, so
+  // every existing selection path works here unchanged.
   int m_carouselFor = -1;
   void relayoutCarousel();
   void renderMainWindows() const;
@@ -104,18 +104,16 @@ public:
   void renderDragWindow() const;
   void renderCursorOnTop() const;
 
-  // Re-arm the animation loop. Build-time damage+scheduleFrame alone raced
-  // Hyprland's damage snapshot and produced partial frames; an EVENT-LOOP timer
-  // ticks strictly BETWEEN frames, where a fresh full-monitor damage cannot be
-  // consumed by an in-flight commit.
+  // An EVENT-LOOP timer, not build-time damage+scheduleFrame: the latter raced
+  // Hyprland's damage snapshot and produced partial frames, while a timer ticks
+  // BETWEEN frames where a fresh full-monitor damage cannot be consumed by an
+  // in-flight commit.
   void rearmanim() const;
   void ensureAnimPump();
   SP<CEventLoopTimer> m_animPump; // null when no animation is running
 
-  // Close-completion teardown from the painter's tail: the immediate route reads
-  // m_tiles/m_strip while the pass draws, so the Model must survive until
-  // everything painted. Still before the next frame's shouldRenderWindow, so
-  // real windows reappear one frame after the last overlay frame.
+  // Runs from the painter's tail: the immediate route reads m_tiles/m_strip
+  // while the pass draws, so the Model must survive until everything painted.
   void finishPendingDeactivate();
 
   bool isAboveLayer(const std::string &ns) const;
@@ -131,8 +129,8 @@ public:
 
   [[nodiscard]] bool active() const { return m_active; }
   [[nodiscard]] bool opening() const { return m_opening; } // entry anim only
-  // Monotonic RENDER_LAST_MOMENT count, ticked whether or not m_active: lets the
-  // frame-correlated debug traces line up.
+  // Monotonic RENDER_LAST_MOMENT count, ticked whether or not m_active: lets
+  // the frame-correlated debug traces line up.
   [[nodiscard]] std::uint64_t frameTick() const { return m_frameTick; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool blurEnabled() const;
@@ -155,12 +153,11 @@ private:
 
   // Close anim hit progress 0 THIS frame. shouldRenderWindow runs before our
   // pass, so flipping m_active off mid-frame skips the overlay on a frame whose
-  // real windows were already suppressed — one transparent frame. Draw that
-  // final frame, deactivate after the pass is built.
+  // real windows were already suppressed: one transparent frame.
   bool m_pendingDeactivate = false;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
   double m_progress = 0.0;
-  anim::Tween m_timeline; // master open/close clock; drives the CHROME only
+  anim::Tween m_timeline; // master open/close clock; CHROME only
   mutable std::chrono::steady_clock::time_point m_lastAnimTick{};
   // Tiles ride their own clock: any layout change is "retarget + restart".
   anim::Tween m_tileClock;
@@ -174,7 +171,7 @@ private:
   std::vector<model::Tile> m_tiles;
   std::vector<model::StripItem> m_strip;
   // Text->texture cache by window/workspace pointer. mutable: cachedLabel() is
-  // const-callable, and caching is its whole job.
+  // const-callable and caching is its whole job.
   mutable std::unordered_map<void *, model::LabelTex> m_labelCache;
   SP<Render::ITexture> cachedLabel(void *key, const std::string &text,
                                    const CHyprColor &col, int size) const;
@@ -215,10 +212,10 @@ private:
   anim::AnimCfg m_glide, m_entry, m_ghost, m_lift;
   std::string m_enterStyle, m_exitStyle;
   bool animBusy() const;
-  // Secondary clocks must be in the pump predicates: after a card/digit
-  // workspace switch the master timeline is pinned at 1 and tiles' clock is
-  // done, so without these terms the pump never arms and the next frames commit
-  // with EMPTY damage over stale buffers — the transition visibly shakes.
+  // Secondary clocks belong in the pump predicates: after a card/digit switch
+  // the master timeline is pinned at 1 and tiles' clock is done, so without
+  // these terms the pump never arms and later frames commit with EMPTY damage
+  // over stale buffers — the transition visibly shakes.
   bool secondaryAnimsActive() const {
     return !m_rebuildClock.done(leaf(entryLeaf()).ms) ||
            !m_rebuildClock.done(leaf(ghostLeaf()).ms) ||
@@ -260,10 +257,10 @@ private:
   CCursorModule m_cursor; // KMS plane preferred, software erases-and-redraws
 
   // Backdrop cache: frame one's blur result lives in a persistent FBO, later
-  // frames blit it (the background cannot change while up — windows hidden).
-  // srcId + recipe form the key, compared EVERY frame, which carries the cache
-  // across workspace switches but catches genuine source/recipe changes. A live
-  // video source skips the cache by design.
+  // frames blit it (the background cannot change while up). srcId + recipe are
+  // the key, compared EVERY frame, which carries the cache across workspace
+  // switches but catches genuine source/recipe changes. A live video source
+  // skips the cache by design.
   mutable render::BlurCache m_blur;
   // Full-res FBO holding a rendered desktop background when there is no direct
   // texture to blur. Drawn once per session so a wallpaper engine that
@@ -275,8 +272,7 @@ private:
   void updateSnapshots();
   std::string cursorMode() const;
 
-  // Resolve one animation group to {on, ms, curve} — the single choke point for
-  // the <leaf>_enabled/_ms/_curve contract.
+  // Single choke point for the <leaf>_enabled/_ms/_curve contract.
   anim::AnimCfg leaf(const char *name) const;
 
   enum class Anchor { Top, Bottom, Left, Right };
@@ -302,10 +298,9 @@ private:
   // transition edges — hidden on the first open frame, restored only after the
   // close animation completes. NO per-window fades: during the glide the window
   // resizes and moves, so a fading original under the moving preview reads as
-  // double vision. Seamlessness comes from previews pixel-identical to the real
-  // windows at natural boxes on both ends. The fade belongs to the BLUR.
+  // double vision. The fade belongs to the BLUR.
   double eased() const; // chrome opacity / backdrop progress
-  double animDuration() const; // read LIVE, so config changes apply in-flight
+  double animDuration() const; // read LIVE, so config applies in-flight
   double glideDur() const { return m_tileClockMs > 0 ? m_tileClockMs : leaf(glideLeaf()).ms; }
   double newCardDur() const { return std::max(120.0, leaf("new_card").ms); }
   double tileProgress(int i) const;
@@ -358,10 +353,9 @@ private:
   int keyIndex(int keycode, uint32_t mods, const std::string &combo) const;
   void moveSelection(int dx, int dy);
   void activateSelection();
-  // Shared by click-to-focus and activateSelection(). A target not on the
-  // DISPLAYED workspace (expo, cross-workspace click) collapses onto just that
-  // workspace and rebuilds BEFORE the close glide, so the glide aims at the real
-  // final position instead of a stale multi-workspace grid.
+  // A target not on the DISPLAYED workspace (expo, cross-workspace click)
+  // collapses onto just that workspace and rebuilds BEFORE the close glide, so
+  // the glide aims at the real final position instead of a stale grid.
   void focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason);
   bool crossesRealWorkspace(const PHLWINDOW &w) const;
   void syncFocus() const;

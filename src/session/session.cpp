@@ -33,24 +33,16 @@ using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
 
-// shouldRenderWindow trampoline: file-static (anonymous-namespace) so its
-// address is stable across this TU and g_shouldRenderOrig stays private to
-// initialize()/dtor.
+// shouldRenderWindow trampoline. Anonymous-namespace address is stable, so
+// g_shouldRenderOrig stays private to initialize()/dtor.
 namespace {
 using PSHOULDRENDER = bool (*)(void *, PHLWINDOW, PHLMONITOR);
 PSHOULDRENDER g_shouldRenderOrig = nullptr;
 
 bool hkShouldRenderWindow(void *thisptr, PHLWINDOW window, PHLMONITOR monitor) {
   const bool hide = g_overview && g_overview->shouldHideWindow(window, monitor);
-  // Black-blink diagnostic (CANDIDATES.md): gated to the entry-animation
-  // window only (bounded ~200-400ms), so this doesn't spam the log for
-  // however long the user leaves the overview open. Confirms/refutes, with a
-  // real per-frame trace instead of inference from what's on screen, whether
-  // this hook is actually being asked about the window during the frames the
-  // black-blink covers, and what it decides each time — cross-reference
-  // frameTick() against the "F t=+" trace's tick= field to line the two logs
-  // up. window's raw pointer stands in for identity; class name is already
-  // treated as fine to log elsewhere in this codebase (see backdrop.cpp).
+  // Black-blink diagnostic, gated to the entry animation (CANDIDATES.md) so it
+  // cannot spam a long session. Line up with the "F t=+" trace via frameTick().
   if (g_overview && g_overview->opening()) {
     debug::dbg("SRW tick=" + std::to_string(g_overview->frameTick()) +
                " win=" + std::to_string(reinterpret_cast<std::uintptr_t>(window.get())) +
@@ -63,16 +55,11 @@ bool hkShouldRenderWindow(void *thisptr, PHLWINDOW window, PHLMONITOR monitor) {
   return g_shouldRenderOrig ? g_shouldRenderOrig(thisptr, window, monitor) : true;
 }
 
-// damageSurface trampoline. commitWindow() calls
-// IHyprRenderer::damageSurface() unconditionally for every visible window on
-// buffer commit (Window.cpp) — "visible" means !isHidden() && workspace
-// visible, NOT "passes shouldRenderWindow". Windows hidden by the overview are
-// NOT isHidden(), so a playing video keeps damaging the monitor on every frame
-// → the compositor recomposites the whole overlay at video rate (~30% iGPU).
-// Suppress damage for surfaces whose window gloview hides: the overview draws
-// frozen FBO snapshots, so the hidden window's commits must not schedule a
-// frame. (Client keeps producing buffers; it just stops driving the
-// compositor — exactly like a genuinely hidden window.)
+// damageSurface trampoline. commitWindow() calls damageSurface() for every
+// !isHidden() window on buffer commit — "visible" there does NOT mean
+// shouldRenderWindow, so an overview-hidden window keeps scheduling frames (a
+// playing video pins the compositor). The client keeps producing buffers; it
+// just stops driving the compositor, exactly like a hidden window.
 using PDAMAGESURFACE = void (*)(void *, SP<CWLSurfaceResource>, double, double,
                                 double);
 PDAMAGESURFACE g_damageSurfaceOrig = nullptr;
@@ -88,27 +75,13 @@ void hkDamageSurface(void *thisptr, SP<CWLSurfaceResource> pSurface, double x,
         if (w) {
           const auto mon = g_overview->monitor();
           if (g_overview->shouldHideWindow(w, mon)) {
-            // The window is hidden by the overview (drawn into a tile, or on
-            // the active workspace behind the opaque backdrop). Two cases:
-            //
-            //   A) Window is a tile preview — renderWindowLive draws its LIVE
-            //      surface into the tile. In live mode we want these surfaces'
-            //      damage to propagate so video/animations stay live; in
-            //      snapshot mode the tile is frozen, so suppress.
-            //
-            //   B) Window is on the active workspace but NOT a tile — e.g. a
-            //      terminal with a blinking cursor, or a transparent window
-            //      with blur behind the backdrop. Fully invisible to the user,
-            //      so suppress always: these are the dominant cause of the high
-            //      GPU load while the overview sits idle (a single blinking-
-            //      cursor terminal pins the compositor at ~20-30% iGPU).
-            //
-            // shouldHideWindow covers both; distinguish by asking whether the
-            // window is one of OUR tile windows.
+            // shouldHideWindow covers a tile preview and a non-tile window
+            // behind the opaque backdrop. A LIVE tile preview must keep
+            // propagating damage (video/animations); everything else is
+            // invisible to the user, and non-tile damage is the dominant idle
+            // GPU cost while the overview sits up.
             if (g_overview->snapshotMode() || !g_overview->isTileWindow(w))
-              return; // suppress — frozen snapshot tile OR hidden non-tile
-            // else: live tile preview → fall through so buffer commits schedule
-            // a frame and the preview stays live.
+              return;
           }
         }
       }
@@ -122,20 +95,17 @@ void hkDamageSurface(void *thisptr, SP<CWLSurfaceResource> pSurface, double x,
 Overview::Overview(HANDLE handle) : m_handle(handle) {}
 
 Overview::~Overview() {
-  // stop rendering before state/hooks tear down, so any in-flight frame sees an
+  // Stop rendering before state/hooks tear down, so an in-flight frame sees an
   // inactive overview and no dangling refs.
   m_active = false;
   m_opening = false;
-  restoreLayers(); // never leave a bar stuck at alpha 0 if we're torn down
-                   // mid-hide
-  restoreFill();   // never leave a window's surface stuck stretching its small
-                   // buffer
+  restoreLayers(); // never leave a bar at alpha 0 if torn down mid-hide
+  restoreFill();   // never leave a surface stretching its small buffer
   releaseNewWorkspaces();
   if (m_animPump) { m_animPump->cancel(); m_animPump.reset(); }
   m_tiles.clear();
   m_strip.clear();
-  cancelPendingClick(); // never let a click-timer callback run against a
-                        // half-destroyed Overview
+  cancelPendingClick(); // no timer callback against a half-destroyed Overview
   if (m_shouldRenderHook) {
     HyprlandAPI::removeFunctionHook(m_handle, m_shouldRenderHook);
     m_shouldRenderHook = nullptr;
@@ -178,9 +148,8 @@ bool Overview::initialize() {
       HyprlandAPI::findFunctionsByName(m_handle, "shouldRenderWindow");
   void *addr = nullptr;
   for (const auto &mt : matches) {
-    // CMonitor moved into namespace Monitor:: in Hyprland 0.56 — the mangled
-    // symbol's demangled form reflects the real (non-aliased) type, not the
-    // PHLMONITOR alias, so the match string has to track it.
+    // The match string names the real type (Monitor::CMonitor), not the
+    // PHLMONITOR alias, so it must track upstream's namespaces.
     if (mt.demangled.find("shouldRenderWindow(Hyprutils::Memory::"
                           "CSharedPointer<Desktop::View::CWindow>, "
                           "Hyprutils::Memory::CSharedPointer<Monitor::"
@@ -198,10 +167,9 @@ bool Overview::initialize() {
   m_shouldRenderHook = HyprlandAPI::createFunctionHook(
       m_handle, addr, reinterpret_cast<void *>(&hkShouldRenderWindow));
   if (!m_shouldRenderHook || !m_shouldRenderHook->hook()) {
-    // Most common cause: ANOTHER gloview instance already holds this hook (e.g.
-    // the hyprpm-installed copy autoloaded at session start while the dev
-    // `reload` target loads the build path) — Hyprland can't trampoline an
-    // already-hooked prologue.
+    // Usually another gloview instance already holds this hook (an installed copy
+    // autoloaded at session start plus the dev build path) — Hyprland cannot
+    // trampoline an already-hooked prologue.
     HyprlandAPI::addNotification(
         m_handle,
         "[gloview] failed to hook shouldRenderWindow — is another gloview "
@@ -212,12 +180,8 @@ bool Overview::initialize() {
   g_shouldRenderOrig =
       reinterpret_cast<PSHOULDRENDER>(m_shouldRenderHook->m_original);
 
-  // Hook IHyprRenderer::damageSurface to stop hidden windows (a playing video
-  // under the overview) from damaging the monitor every frame — see
-  // hkDamageSurface's comment. commitWindow → damageSurface is the ONLY live
-  // path left driving the overview's recomposite at video rate once the
-  // snapshots are frozen; without this the overview sits at ~30% iGPU with a
-  // video tile even though it draws static FBO copies.
+  // Stops a hidden window (a playing video under the overview) from driving a
+  // full recomposite every frame — see hkDamageSurface.
   const auto matchesDamage =
       HyprlandAPI::findFunctionsByName(m_handle, "damageSurface");
   void *addrDamage = nullptr;
@@ -272,18 +236,11 @@ namespace {
 // anyway. Returns `fallback` (parsed the same way) on anything unparseable.
 } // namespace
 
-// ONE accessor for every color option. The config value is a plain string:
-// a hex literal in any accepted form ("0xAARRGGBB", "0xRRGGBB", "#AARRGGBB",
-// "#RRGGBB", bare 6/8 digits) — or, for scheme integration, the RESOLVED hex
-// produced Lua-side from a palette module (the hyprbars pattern):
-//
-//   local c = require("noctalia.noctalia-colors-extended")
-//   hover_border = c.primary,
-//
-// i.e. the plugin never sees role names and has zero coupling to any theme
-// engine; whatever writes the config is responsible for substitution. A value
-// that parses as nothing falls through to `fallback` (also parsed), so a typo
-// degrades to the documented default instead of black.
+// ONE accessor for every color option. The value is a plain string: a hex
+// literal in any accepted form, or the RESOLVED hex a Lua palette module
+// produced — the plugin never sees role names, so it has zero coupling to any
+// theme engine. A value that parses as nothing falls through to `fallback`, so
+// a typo degrades to the documented default instead of black.
 SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
                                            const CHyprColor &col,
                                            int size) const {
