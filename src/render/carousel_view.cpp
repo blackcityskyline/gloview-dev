@@ -29,8 +29,11 @@ constexpr double kDepthTaper = 0.8;
 
 } // namespace
 
+// What layoutTiles actually built, not what the config asks for: free-arrange
+// overrides the layout engine, and a renderer that read the config would reach
+// for a run that was never produced.
 bool Overview::carouselMode() const {
-  return parseEngine(cfg::grid.layout.get().c_str()) == Engine::Carousel;
+  return m_engine == Engine::Carousel;
 }
 
 // A selection move is a relayout + glide, detected once: renderStage vs m_carouselFor.

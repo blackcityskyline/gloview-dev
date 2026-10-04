@@ -93,6 +93,8 @@ public:
   // change needs a relayout; renderStage checks once for all paths.
   int m_carouselFor = -1;
   void relayoutCarousel();
+  // The engine layoutTiles resolved THIS call — the renderer's only source.
+  Engine m_engine = Engine::Rows;
   void renderGhosts() const;
   void renderDragTile() const;
   void renderDragWindow() const;

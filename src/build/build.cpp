@@ -306,7 +306,11 @@ void Overview::layoutTiles() {
   if (!m || m_tiles.empty())
     return;
 
+  // The renderer asks m_engine, never the config: the desktop branch below
+  // overrides the layout engine entirely, and a renderer that picked its path
+  // from the config would draw a run this function never produced.
   const Engine engine = parseEngine(cfg::grid.layout.get().c_str());
+  m_engine = m_desktopMode ? Engine::Natural : engine;
 
   LayoutCfg cfg;
   cfg.engine = engine;
@@ -360,6 +364,8 @@ void Overview::layoutTiles() {
     }
     return;
   }
+  m_carousel        = {};
+  m_carouselFor     = -1;
 
   // Carousel only reshapes the main area.
   // Slots are built AROUND m_selected: selection = relayout, not repaint.
