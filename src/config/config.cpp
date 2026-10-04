@@ -157,6 +157,7 @@ constexpr FloatSpec kFloats[] = {
     {&blur.strength, "plugin:gloview:blur", 1.0F},
     {&look.close_button_size, "plugin:gloview:close_button_size", 1.0F},
     {&look.drag_size, "plugin:gloview:drag_size", 0.55F},
+    {&carousel.scale, "plugin:gloview:carousel_scale", 1.0F},
 };
 
 constexpr StrSpec kStrs[] = {

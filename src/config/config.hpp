@@ -67,6 +67,7 @@ struct carousel {
   Int enabled;
   Int cards;
   Int card_width;
+  Float scale;
 };
 
 inline carousel carousel;

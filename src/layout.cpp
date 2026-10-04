@@ -232,13 +232,24 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
 
     const double boxW = std::max(1.0, mt.boxW);
     const double boxH = std::max(1.0, mt.boxH);
+    // The centred card is the standard box; every step out is a fraction of it,
+    // so the run tapers without any card changing its proportions.
+    const auto sizeAt = [&](int depth) {
+        if (depth <= 0)
+            return 1.0;
+        if (depth == 1)
+            return mt.nearK;
+        return mt.farK * std::pow(mt.taper, static_cast<double>(depth - 2));
+    };
     // Proportional, so the gap keeps its share of the card at any scale.
     const double gap = boxW * mt.gapK;
     // Symmetric extent around the focused card: the wider side decides, so an
     // even card count still gets a run that fits.
     const int reach = std::max(leftSlots, rightSlots);
-    const double stripW = boxW * static_cast<double>(2 * reach + 1) +
-                          gap * static_cast<double>(2 * reach);
+    // Cards are placed on a fixed pitch, so the taper does not change the
+    // spacing; the extent is what the fit has to cover.
+    const double pitch = boxW + gap;
+    const double stripW = boxW + pitch * static_cast<double>(2 * reach);
     // The caption hangs below the centred card, so the panel reserves room for
     // it; the cards themselves stay the standard box.
     const double stripH = boxH + mt.captionGap + mt.captionH;
@@ -247,26 +258,26 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     const double availW = std::max(1.0, screen.w - mt.screenMargin * 2.0);
     const double availH = std::max(1.0, screen.h - mt.screenMargin * 2.0 -
                                              mt.countH - mt.sectionGap);
-    const double k = std::min({1.0, availW / std::max(1.0, stripW),
-                               availH / std::max(1.0, stripH)});
+    // The user's zoom rides on top of the fit: past 1.0 the run deliberately
+    // overflows the free space rather than being clamped back to it.
+    const double k =
+        std::min({1.0, availW / std::max(1.0, stripW),
+                  availH / std::max(1.0, stripH)}) * mt.scale;
 
-    const double w = boxW * k;
-    const double h = boxH * k;
-    const double step = w + gap * k;
+    const double step = pitch * k;
 
     L.stripW = stripW * k;
     L.stripH = stripH * k;
     L.panelW = L.stripW;
     L.panelH = mt.countH + mt.sectionGap + L.stripH;
     L.stripY = mt.countH + mt.sectionGap;
-    // originX is the FOCUSED card's left edge inside the usable rect, and the
-    // cards step from there. Anchoring the run instead and then centring the
-    // focused card within it counted the offset twice, which is what left the
-    // focused card off to one side.
-    L.originX = std::round((screen.w - w) * 0.5);
+    // Card x is already absolute inside the usable rect, so originX stays 0:
+    // adding a centring offset on top counted it twice and pushed the focused
+    // card off to one side. The run may therefore hang past an edge, which is
+    // the price of the focused card being on the free space's exact centre.
+    L.originX = 0.0;
     L.originY = std::round((screen.h - L.panelH) * 0.5);
-    // The counter rides the free space's centre, not the focused card's edge.
-    L.countX = std::round((screen.w - mt.countW) * 0.5) - L.originX;
+    L.countX = std::round((screen.w - mt.countW) * 0.5);
 
     for (const int idx : idxOfSlot) {
         const int slot = slotOf[static_cast<size_t>(idx)];
@@ -274,15 +285,12 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         c.visible = true;
         c.showCaption = slot == 0;
         c.depth = std::abs(slot);
-        // From the focused card, one gap per step: its own x puts it dead centre
-        // of the free space, and the neighbours hang off it symmetrically.
-        c.x = static_cast<double>(slot) * step;
-        // Every box is the standard box, the centred one included: the caption
-        // strip is reserved in stripH for the panel's budget, not bolted onto
-        // one card, because a taller centred box is a different size.
-        c.w = w;
-        c.h = h;
-        c.y = 0.0;
+        // Each card centred on its own slot's position, at its depth's size.
+        c.w = boxW * sizeAt(std::abs(slot)) * k;
+        c.h = boxH * sizeAt(std::abs(slot)) * k;
+        // x reads c.w, so it has to come after it.
+        c.x = (screen.w - c.w) * 0.5 + static_cast<double>(slot) * step;
+        c.y = 0.0; // every frame shares the band's top edge
     }
     return L;
 }

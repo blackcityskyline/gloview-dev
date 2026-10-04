@@ -9,18 +9,24 @@
 // Layout is pure geometry with no compositor dependency, which is what makes
 // this checkable at all.
 //
-// What the mode is, all of it pinned in section A:
-//   * ONE standard box for every card — the size a fullscreen window occupies.
-//     Identical width and height, to the pixel, whatever window it holds.
-//   * cards step left to right, each overlapping the previous by mt.overlap;
-//   * the centred card is the run's middle and carries the caption band;
-//   * the whole run scales down by ONE factor so it fits both axes at once.
+// The model, all of it pinned below:
+//   * the standard box is a FULLSCREEN window's box — the whole monitor — so a
+//     window one side short of the screen lands at its own size inside it;
+//   * the focused card IS the standard box; each step out is a fraction of it
+//     (1, nearK, farK, then taper), so the run tapers and no card changes its
+//     proportions;
+//   * cards sit on a CONSTANT pitch, one gap apart, so the taper does not change
+//     the spacing;
+//   * x is absolute inside the usable rect and the focused card's middle is its
+//     centre — the usable rect already carries the strip's band in the padding,
+//     so that is the centre of the free space and it moves with the strip;
+//   * one scale fits both axes, multiplied by the user's zoom.
 
 #include "layout.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <algorithm>
 #include <vector>
 
 using namespace gloview;
@@ -31,7 +37,7 @@ int g_failed = 0;
 
 void near(double got, double want, const char *what, double tol = 1e-9) {
   if (std::abs(got - want) > tol) {
-    std::printf("FAIL %-48s got %.9f want %.9f\n", what, got, want);
+    std::printf("FAIL %-50s got %.9f want %.9f\n", what, got, want);
     ++g_failed;
   }
 }
@@ -43,14 +49,15 @@ void yes(bool cond, const char *what) {
   }
 }
 
-// The standard card is a FULLSCREEN window's box: the whole monitor. The run is
-// laid out in `usable` (the padded rect) and scaled to fit it.
-constexpr double kScreenW = 1366.0;
+constexpr double kScreenW = 1366.0; // the standard box: a fullscreen window
 constexpr double kScreenH = 768.0;
-constexpr double kUsableW = 1206.0;
-constexpr double kUsableH = 493.0;
+constexpr double kUsableW = 1206.0; // screen minus the layout's left/right padding
+constexpr double kUsableH = 493.0;  // screen minus top/bottom padding and strip
 constexpr double kMargin = 32.0;
-constexpr double kGapK = 0.03; // gap between cards as a fraction of boxW
+constexpr double kGapK = 0.03;
+constexpr double kNearK = 0.76;
+constexpr double kFarK = 0.56;
+constexpr double kTaper = 0.8;
 constexpr double kCaption = 44.0 + 12.0;
 
 CarouselMetrics defaults() {
@@ -58,154 +65,153 @@ CarouselMetrics defaults() {
   mt.boxW = kScreenW;
   mt.boxH = kScreenH;
   mt.gapK = kGapK;
+  mt.nearK = kNearK;
+  mt.farK = kFarK;
+  mt.taper = kTaper;
   mt.visibleCards = 5;
   return mt;
 }
 
-// Section A: the standard box. Every card gets it, whatever it holds.
-void sectionA_oneStandardBox() {
-  auto mt = defaults();
-  const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
+double sizeAt(int depth) {
+  if (depth <= 0)
+    return 1.0;
+  if (depth == 1)
+    return kNearK;
+  return kFarK * std::pow(kTaper, static_cast<double>(depth - 2));
+}
 
-  // 5 cards -> slots -2..2, reach 2: stripW = 5*1366 + 4*(0.03*1366) = 6830 +
-  // 163.9 = 6993.9, which does NOT fit availW = 1142, so k = 1142/6993.9.
-  const double gap = kGapK * kScreenW;
-  const double stripW = 5.0 * kScreenW + 4.0 * gap;
-  const double k = 1142.0 / stripW;
-  for (const auto &c : L.cards) {
-    if (!c.visible)
-      continue;
-    // Every card the same width and height, to the last bit: this is the whole
-    // point, and it is why the run cannot shift with the selection.
-    near(c.w, kScreenW * k, "every card is the standard width");
-    // Including the centred one: the caption strip is reserved in stripH, not
-    // bolted onto one card, because a taller centred box is a different size.
-    near(c.h, kScreenH * k, "every card is the standard height");
+// The scale the layout must arrive at on this screen.
+double fittedScale(const CarouselMetrics &mt) {
+  const double gap = mt.gapK * mt.boxW;
+  const double pitch = mt.boxW + gap;
+  const int reach = 2; // 5 cards -> slots -2..2
+  const double stripW = mt.boxW + pitch * 2.0 * reach;
+  const double stripH = mt.boxH + mt.captionGap + mt.captionH;
+  const double availW = kUsableW - 2.0 * mt.screenMargin;
+  const double availH = kUsableH - 2.0 * mt.screenMargin - mt.countH -
+                        mt.sectionGap;
+  return std::min({1.0, availW / stripW, availH / stripH}) * mt.scale;
+}
+
+// Section A: the taper. Proportions never change; only the size does.
+void sectionA_taper() {
+  const auto mt = defaults();
+  const double k = fittedScale(mt);
+  const auto L = computeCarousel(9, 4, LRect{0, 0, kUsableW, kUsableH}, mt);
+
+  for (int i = 2; i <= 6; ++i) {
+    const auto &c = L.cards[static_cast<size_t>(i)];
+    const int d = std::abs(i - 4);
+    near(c.w / (kScreenW * k), sizeAt(d), "width tapers by depth");
+    near(c.h / (kScreenH * k), sizeAt(d), "height tapers with it");
+    yes(std::abs(c.w / c.h - kScreenW / kScreenH) < 1e-9,
+        "a tapered card keeps the screen's proportions");
+    near(c.y, 0.0, "every card shares the band's top edge");
   }
-
-  // Distinct boxes: the five placed ones must not share a width by accident of
-  // rounding, and the centred one must be the only one with the caption band.
-  int captioned = 0;
-  for (const auto &c : L.cards)
-    captioned += c.showCaption ? 1 : 0;
-  yes(captioned == 1, "exactly one card carries the caption");
+  // Strictly shrinking outward.
+  for (int d = 0; d < 4; ++d)
+    yes(sizeAt(d) > sizeAt(d + 1), "the taper shrinks strictly");
 }
 
-// Section B: placement. Overlap per step, centred card in the middle.
+// Section B: the focused card is on the free space's centre; the pitch is fixed.
 void sectionB_placementAndCentring() {
-  auto mt = defaults();
+  const auto mt = defaults();
+  const double k = fittedScale(mt);
   const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
-  const double gap = kGapK * kScreenW;
-  const double stripW = 5.0 * kScreenW + 4.0 * gap;
-  const double k = 1142.0 / stripW;
-  const double w = kScreenW * k;
-  const double g = gap * k;
+  const double pitch = (kScreenW + kGapK * kScreenW) * k;
 
-  // The FOCUSED card is centred in the usable rect, whatever the count: with an
-  // even count the run is not symmetric about it, and anchoring to the run is
-  // what used to leave the focused card half a card off.
-  // originX IS the focused card's left edge; x is measured from there.
-  near(L.originX, std::round((kUsableW - w) * 0.5),
-       "focused card's left edge is centred, on a whole pixel");
-  const double centreX = 0.0;
-  near(L.cards[2].x, centreX, "focused card sits at that edge");
-  near(L.originX + L.cards[2].x + w * 0.5, std::round((kUsableW - w) * 0.5) + w * 0.5,
-       "focused card's middle follows its edge");
-  // Neighbours one gap apart, both sides.
-  near(L.cards[1].x, centreX - (w + g), "left-1 is one gap out");
-  near(L.cards[0].x, centreX - 2.0 * (w + g), "left-2 is two gaps out");
-  near(L.cards[3].x, centreX + (w + g), "right-1 is one gap out");
-  near(L.cards[4].x, centreX + 2.0 * (w + g), "right-2 is two gaps out");
-  // A gap, not an overlap.
-  near(L.cards[2].x - (L.cards[1].x + L.cards[1].w), g, "cards are a gap apart");
-  near(L.cards[3].x - (L.cards[2].x + L.cards[2].w), g, "cards are a gap apart right");
-  near(L.cards[2].x - L.cards[0].x, L.cards[4].x - L.cards[2].x,
-       "run symmetric about the focused card");
+  // 5 cards, sel 2 -> indices 0..4 at slots -2..+2.
+  for (int s = -2; s <= 2; ++s) {
+    const int idx = (2 + s + 5) % 5;
+    const auto &c = L.cards[static_cast<size_t>(idx)];
+    // Each card centred one pitch per step from the free space's centre.
+    near(c.x + c.w * 0.5, kUsableW * 0.5 + s * pitch,
+         "card centre is one pitch per step from the middle");
+  }
+  // The focused card specifically.
+  const auto &f = L.cards[2];
+  near(f.x + f.w * 0.5, kUsableW * 0.5, "focused card is dead centre");
+  near(L.originX, 0.0, "no separate centring offset is added on top");
 
-  // The run is centred inside the usable rect.
-  // The card keeps the SCREEN's ratio: that is what makes containment honest, so
-  // a window short one side lands at its own size instead of being scaled up.
-  near(L.cards[2].w / L.cards[2].h, kScreenW / kScreenH,
-       "the card keeps the screen's aspect");
+  // A gap, never an overlap. The pitch is constant and the outer card is
+  // SMALLER, so the clear space is the nominal gap plus half the size
+  // difference — which is exactly what a fixed pitch with a taper must give.
+  const auto &l = L.cards[1];
+  const double nominal = kGapK * kScreenW * k;
+  near(f.x - (l.x + l.w), nominal + (f.w - l.w) * 0.5,
+       "a smaller neighbour leaves the nominal gap plus half the difference");
+  yes(f.x > l.x + l.w, "cards never overlap");
+
+  // The run fits the free space.
+  yes(L.stripW * k <= kUsableW - 2.0 * kMargin + 1e-9, "run fits the width");
+  yes(L.panelH <= kUsableH - 2.0 * kMargin + 1e-9, "panel fits the height");
+  // The counter rides the same centre.
+  near(L.countX + L.originX + L.countW * 0.5, kUsableW * 0.5,
+       "counter centred in the free space");
 }
 
-// Section C: the selection must not move the geometry AT ALL.
-void sectionC_selectionDoesNotMoveTheRun() {
+// Section C: the user's zoom rides on top of the fit.
+void sectionC_userZoom() {
   auto mt = defaults();
-  double firstX = 0.0, firstW = 0.0;
-  std::vector<double> firstXs;
+  const double fit = fittedScale(mt);
+  mt.scale = 1.2;
+  const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
+  near(fittedScale(mt), fit * 1.2, "the zoom multiplies the fitted scale");
+  const auto &f = L.cards[2];
+  near(f.w, kScreenW * fit * 1.2, "the focused card is 20% bigger");
+  near(f.x + f.w * 0.5, kUsableW * 0.5, "and still centred");
+
+  mt.scale = 0.5;
+  const auto S = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
+  near(S.cards[2].w, kScreenW * fit * 0.5, "a zoom below 1 shrinks the run");
+}
+
+// Section D: selection must not move the geometry AT ALL.
+void sectionD_selectionDoesNotMoveTheRun() {
+  const auto mt = defaults();
+  std::vector<double> xs, ws;
+  double firstStrip = 0.0;
   for (int sel = 0; sel < 5; ++sel) {
     const auto L = computeCarousel(5, sel, LRect{0, 0, kUsableW, kUsableH}, mt);
-    // The card AT SLOT 0 is always the centred one, and it must land in the
-    // same place whatever window is in it.
-    int centre = -1;
-    for (int i = 0; i < 5; ++i)
-      if (L.cards[static_cast<size_t>(i)].showCaption)
-        centre = i;
-    yes(centre >= 0, "a card is centred");
-    const auto &c = L.cards[static_cast<size_t>(centre)];
-    if (sel == 0) {
-      firstX = c.x;
-      firstW = c.w;
-    } else {
-      near(c.x, firstX, "centred card x is selection-independent");
-      near(c.w, firstW, "centred card width is selection-independent");
-    }
-    near(L.stripW, 1142.0, "strip width is selection-independent");
-    near(L.originX, std::round((kUsableW - firstW) * 0.5),
-         "focused edge is selection-independent");
-    // The SET of boxes is what must not move: same widths, same x values, only
-    // the window sitting in each one changes.
-    std::vector<double> xs;
+    std::vector<double> sx, sw;
     for (const auto &c : L.cards)
       if (c.visible) {
-        xs.push_back(c.x);
-        near(c.w, firstW, "every card keeps the standard width");
+        sx.push_back(c.x);
+        sw.push_back(c.w);
       }
-    std::sort(xs.begin(), xs.end());
-    if (sel == 0)
-      firstXs = xs;
-    else
-      yes(xs == firstXs, "the run's box positions never depend on selection");
-  }
-}
-
-// Section D: vertical fit, and the caption band.
-void sectionD_verticalFitAndCaption() {
-  auto mt = defaults();
-  const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
-  const double gap = kGapK * kScreenW;
-  const double stripW = 5.0 * kScreenW + 4.0 * gap;
-  // stripH = 768 + 56 = 824; availH = 493 - 64 - 32 - 12 = 385, so the height
-  // branch would allow 385/824 = 0.467 — but the width branch only allows
-  // 1142/6993.9 = 0.163, so the WIDTH binds and the run fills it exactly.
-  const double availH = 385.0;
-  const double kk = std::min(1142.0 / stripW, availH / 824.0);
-  near(1142.0 / stripW, kk, "one scale fits both axes");
-  near(L.stripH, 824.0 * kk, "strip height scaled");
-  yes(L.panelH <= kUsableH - 2 * kMargin, "panel fits the screen height");
-  for (const auto &c : L.cards) {
-    if (c.visible)
-      near(c.y, 0.0, "every frame shares the band's top edge");
+    std::sort(sx.begin(), sx.end());
+    std::sort(sw.begin(), sw.end());
+    if (sel == 0) {
+      xs = sx;
+      ws = sw;
+      firstStrip = L.stripW;
+    } else {
+      yes(sx == xs, "box positions never depend on the selection");
+      yes(sw == ws, "box sizes never depend on the selection");
+      near(L.stripW, firstStrip, "strip width never depends on the selection");
+    }
+    // Exactly one centred card, at the middle.
+    int centred = 0;
+    for (const auto &c : L.cards)
+      if (c.showCaption)
+        ++centred;
+    yes(centred == 1, "exactly one card is centred");
   }
 }
 
 // Section E: wrapping and degenerate counts.
 void sectionE_wrappingAndEdges() {
-  auto mt = defaults();
-
+  const auto mt = defaults();
   const auto a = computeCarousel(5, -1, LRect{0, 0, kUsableW, kUsableH}, mt);
   yes(a.cards[4].showCaption, "selected -1 wraps to the last card");
   const auto b = computeCarousel(5, 5, LRect{0, 0, kUsableW, kUsableH}, mt);
   yes(b.cards[0].showCaption, "selected == count wraps to the first card");
-  // Wrapping must not move the centred card.
-  near(b.cards[0].x, a.cards[4].x, "wrapped selections centre identically");
+  near(b.cards[0].x, a.cards[4].x, "a wrapped selection centres identically");
 
   const auto e = computeCarousel(0, 0, LRect{0, 0, kUsableW, kUsableH}, mt);
   yes(e.cards.empty(), "count 0 has no cards");
   yes(e.visibleCards == 0, "count 0 shows nothing");
 
-  // Fewer windows than slots: every window is placed, at its own slot.
   const auto f = computeCarousel(2, 0, LRect{0, 0, kUsableW, kUsableH}, mt);
   int placed = 0;
   for (const auto &c : f.cards)
@@ -220,10 +226,10 @@ void sectionE_wrappingAndEdges() {
 } // namespace
 
 int main() {
-  sectionA_oneStandardBox();
+  sectionA_taper();
   sectionB_placementAndCentring();
-  sectionC_selectionDoesNotMoveTheRun();
-  sectionD_verticalFitAndCaption();
+  sectionC_userZoom();
+  sectionD_selectionDoesNotMoveTheRun();
   sectionE_wrappingAndEdges();
 
   if (g_failed) {

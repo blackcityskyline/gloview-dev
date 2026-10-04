@@ -384,6 +384,8 @@ void Overview::layoutTiles() {
                        std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
     CarouselMetrics mt;
     mt.visibleCards = std::max(1, static_cast<int>(cfg::carousel.cards.get()));
+    // The user's zoom on the run, on top of whatever the fit allows.
+    mt.scale = std::max(0.1, static_cast<double>(cfg::carousel.scale.get()));
     // The standard card is a FULLSCREEN window's box: the whole monitor, not the
     // padded usable rect. That is what makes the containment honest — a window
     // one side short of the screen lands at its own size inside the card, so a

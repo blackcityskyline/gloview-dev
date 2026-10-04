@@ -127,6 +127,7 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `carousel` | int | `0` | Lay the main area out as a card run; all-workspaces view only, over any `layout` |
 | `carousel_cards` | int | `5` | `carousel` only: how many cards the run shows (any count, even included) |
 | `carousel_card_width` | int (px) | `0` | `carousel` only: narrow the standard box; 0 keeps the fullscreen box |
+| `carousel_scale` | float | `1.0` | `carousel` only: zoom the whole run on top of the automatic fit (above 1 it deliberately overflows) |
 
 ### Animations
 
@@ -298,6 +299,9 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   where it is, a left or right one shifts it. Cards sit one gap apart from the
   focused one in each direction — a gap, never an overlap — so the run's extent
   does not have to be symmetric about it.
+- **The run tapers.** The focused card is the standard box; each step out is a
+  fraction of it (100%, 76%, 56%, then 8% smaller per step). Cards sit on a
+  constant pitch, so the taper changes the size and not the spacing.
 - **Only the centred card is framed.** The rest carry no ring, and the ring is
   one fixed size everywhere rather than scaled down to suit a smaller card.
 - **Card count is yours.** `carousel_cards` sets how many cards the run shows —
