@@ -199,6 +199,7 @@ static double cardWidth(int depth, const CarouselMetrics& mt) {
 }
 
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
+                               const std::vector<double>& aspect,
                                const CarouselMetrics& mt) {
     CarouselLayout L;
     L.area = screen;
@@ -207,6 +208,11 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.cards.resize(static_cast<size_t>(count));
     L.countW = mt.countW;
     L.countH = mt.countH;
+
+    const auto aspectOf = [&](int i) {
+        return (i < static_cast<int>(aspect.size()) && aspect[static_cast<size_t>(i)] > 0.0)
+                   ? aspect[static_cast<size_t>(i)] : 16.0 / 9.0;
+    };
 
     // Even counts are allowed: centerSlot leaves the selected card one slot off the
     // exact middle.
@@ -225,22 +231,38 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     for (int d = 1; d <= rightSlots; ++d)
         nominal += cardWidth(d, mt) - mt.overlap;
 
-    const double scale = std::min(1.0, availableW / std::max(1.0, nominal));
-    auto width = [&](int depth) { return cardWidth(depth, mt) * scale; };
-    const double overlap = mt.overlap * scale;
+    const double wScale = std::min(1.0, availableW / std::max(1.0, nominal));
+    auto width = [&](int depth) { return cardWidth(depth, mt) * wScale; };
+    const double overlap = mt.overlap * wScale;
 
-    auto frameH = [&](double cardW) {
-        const double innerW = std::max(0.0, cardW - mt.frameInset * 2.0);
-        return innerW / mt.aspect + mt.frameInset * 2.0;
-    };
+    // Slot -> tile index, so the vertical pass below sees the same assignment.
+    const int sel = ((selected % count) + count) % count;
+    std::vector<int> slotOf(static_cast<size_t>(count), 99);
+    std::vector<int> idxOfSlot;
+    idxOfSlot.reserve(static_cast<size_t>(shown));
+    for (int rel = -leftSlots; rel <= rightSlots; ++rel) {
+        const int idx = ((sel + rel) % count + count) % count;
+        slotOf[static_cast<size_t>(idx)] = rel;
+        idxOfSlot.push_back(idx);
+    }
 
-    const double selW = width(0);
-    L.stripW = selW;
+    L.stripW = width(0);
     for (int d = 1; d <= leftSlots; ++d)
         L.stripW += width(d) - overlap;
     for (int d = 1; d <= rightSlots; ++d)
         L.stripW += width(d) - overlap;
-    L.stripH = frameH(selW) + mt.captionGap + mt.captionH;
+
+    // Card height is the WINDOW's, not a fixed ratio: a tile box that does not
+    // carry the window's aspect cannot be drawn by the shared tile draw.
+    const auto heightOf = [&](int idx, int slot) {
+        const double w = width(std::abs(slot));
+        const double h = w / aspectOf(idx);
+        return h + (slot == 0 ? mt.captionGap + mt.captionH : 0.0);
+    };
+    double frameH = 0.0;
+    for (const int idx : idxOfSlot)
+        frameH = std::max(frameH, heightOf(idx, slotOf[static_cast<size_t>(idx)]));
+    L.stripH = frameH;
 
     const double maxPanelH = std::max(1.0, screen.h - mt.screenMargin * 2.0);
     const double hScale =
@@ -256,22 +278,19 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.originX = std::round((screen.w - L.panelW) * 0.5);
     L.originY = std::round((screen.h - L.panelH) * 0.5);
 
-    const double selX = (L.stripW - selW * hScale) * 0.5;
-    const double selFrameH = frameH(selW * hScale);
-    const int sel = ((selected % count) + count) % count;
+    const double selX = (L.stripW - width(0) * hScale) * 0.5;
+    const double selFrameH = heightOf(sel, 0) * hScale;
 
-    auto place = [&](int relSlot) {
-        const int idx = ((sel + relSlot) % count + count) % count;
-        const int dist = std::abs(relSlot);
+    for (const int idx : idxOfSlot) {
+        const int slot = slotOf[static_cast<size_t>(idx)];
+        const int dist = std::abs(slot);
         CarouselLayout::Card& c = L.cards[static_cast<size_t>(idx)];
         c.visible = true;
-        c.showCaption = dist == 0;
+        c.showCaption = slot == 0;
         c.depth = dist;
-        c.direction = relSlot < 0 ? -1 : (relSlot > 0 ? 1 : 0);
-        c.zIndex = 3 - std::min(dist, 3);
-        c.w = width(dist) * hScale;
+        const double w = width(dist) * hScale;
         double x = selX;
-        const int step = relSlot < 0 ? -1 : 1;
+        const int step = slot < 0 ? -1 : 1;
         for (int k = 1; k <= dist; ++k) {
             const double prevW = width(k - 1) * hScale;
             const double curW = width(k) * hScale;
@@ -279,17 +298,12 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                          : x + prevW - overlap * hScale;
         }
         c.x = x;
-        // Side cards center their preview against the SELECTED card's preview box:
-        // the selected card is taller (it carries the caption).
-        const double h = frameH(c.w);
-        c.h = h + (c.showCaption ? mt.captionGap + mt.captionH : 0.0);
-        c.y = (selFrameH - h) * 0.5;
-    };
-    place(0);
-    for (int k = 1; k <= leftSlots; ++k)
-        place(-k);
-    for (int k = 1; k <= rightSlots; ++k)
-        place(k);
+        c.w = w;
+        c.h = heightOf(idx, slot) * hScale;
+        // Side cards centre their box against the SELECTED card's box: the
+        // selected card is taller (it carries the caption).
+        c.y = (selFrameH - c.h) * 0.5;
+    }
     return L;
 }
 

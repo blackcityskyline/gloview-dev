@@ -379,13 +379,24 @@ void Overview::layoutTiles() {
     const LRect usable{cfg.padLeft, cfg.padTop,
                        std::max(1.0, m->m_size.x - cfg.padLeft - cfg.padRight),
                        std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
+    std::vector<double> aspects;
+    aspects.reserve(m_tiles.size());
+    for (const auto &t : m_tiles) {
+      double a = 0.0;
+      if (const auto w = t.win.lock()) {
+        const auto sz = w->sizeAnimation()->goal();
+        if (sz.x > 0.0 && sz.y > 0.0)
+          a = sz.x / sz.y;
+      }
+      aspects.push_back(a);
+    }
     m_carousel        = computeCarousel(static_cast<int>(m_tiles.size()),
-                                        sel, usable, mt);
-    m_carouselMetrics = mt;
+                                        sel, usable, aspects, mt);
     m_carouselFor     = sel;
     for (size_t i = 0; i < m_tiles.size(); ++i) {
       const auto &c = m_carousel.cards[i];
-      // Zero target = off-run: currentBox() parks it past the run edge.
+      // Zero target = off-run. Nothing paints an off-run card, so where it would
+      // have gone does not matter; a zeroed box keeps the glide from resizing it.
       m_tiles[i].target = c.visible ? LRect{usable.x + m_carousel.originX + c.x,
                                             usable.y + m_carousel.originY +
                                                 m_carousel.stripY + c.y,
@@ -395,7 +406,6 @@ void Overview::layoutTiles() {
     return;
   }
   m_carousel        = {};
-  m_carouselMetrics = {};
   m_carouselFor     = -1;
 
   std::vector<LRect> nat;

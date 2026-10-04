@@ -210,18 +210,17 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       return true;
     }
 
-    if (!closeOnDoubleClick() &&
-        (m_desktopMode || closeButtonsAlwaysOn() || carouselMode())) {
-      // Carousel draws the button on the preview box: hit-test what was drawn.
-      const int hover = carouselMode() ? m_hovered : -1;
+    if (tileCloseButtons()) {
+      // tileBox is what drawTile used, so the hit-test cannot drift from it.
+      const int dragIdx = draggedTile();
       for (size_t i = 0; i < m_tiles.size(); ++i) {
-        if (carouselMode() && static_cast<int>(i) != hover)
+        if (static_cast<int>(i) == dragIdx)
           continue;
+        if (carouselMode() &&
+            (i >= m_carousel.cards.size() || !m_carousel.cards[i].visible))
+          continue; // off-run: nothing of it is drawn
         const LRect cur = currentBox(m_tiles[i], static_cast<int>(i));
-        const LRect br = closeButtonRect(
-            carouselMode() ? carouselPreviewBox(cur, carouselMetrics())
-                           : tileContentBox(i, cur));
-        if (br.contains(lx, ly)) {
+        if (closeButtonRect(tileBox(i, cur)).contains(lx, ly)) {
           m_drag.press =
               model::Drag::Press::Consumed; // handled on press
           closeTileWindow(static_cast<int>(i));
@@ -292,7 +291,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       m_drag.pressY = m_drag.y = ly;
       m_drag.grabDX = lx - b.x;
       m_drag.grabDY = ly - b.y;
-      m_drag.fromBox = tileContentBox(static_cast<size_t>(hit), b);
+      m_drag.fromBox = tileBox(static_cast<size_t>(hit), b);
       m_drag.holdStartMs = std::chrono::steady_clock::now();
       return true;
     }

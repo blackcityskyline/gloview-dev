@@ -52,15 +52,15 @@ std::vector<LRect> computeLayout(const std::vector<LRect>& naturals, const LRect
 
 Engine parseEngine(const char* s);
 
-// fixed-aspect preview box; the window over-covers it
+// A carousel card IS a tile: its box carries the window's own aspect, exactly
+// like every other layout's, so the run varies in height and the shared tile
+// draw stays correct.
 struct CarouselMetrics {
     double selectedW     = 500.0;
     double nearW         = 380.0;
     double farW          = 280.0;
     double taper         = 0.8;
     double overlap       = 60.0;
-    double aspect        = 1.6;
-    double frameInset    = 4.0;
     double captionH      = 44.0;
     double captionGap    = 12.0;
     double countH        = 32.0;
@@ -75,27 +75,21 @@ struct CarouselLayout {
         bool   visible = false;
         bool   showCaption = false;
         int    depth = 3;      // 0 = selected, 1 = near, 2+ farther
-        int    direction = 0;
-        int    zIndex = 0;
         double x = 0.0, y = 0.0, w = 0.0, h = 0.0;
     };
     std::vector<Card> cards;
     int    visibleCards = 0;
     double panelW = 0.0, panelH = 0.0;
-    double stripX = 0.0, stripY = 0.0, stripW = 0.0, stripH = 0.0;
+    double stripY = 0.0, stripW = 0.0, stripH = 0.0;
     double countX = 0.0, countY = 0.0, countW = 0.0, countH = 0.0;
     double originX = 0.0, originY = 0.0;
     LRect area;
 };
 
-// `selected` = centered card index, wrapped
+// `selected` = centered card index, wrapped. `aspect[i]` is window i's own
+// width/height; <= 0 means "unknown", which falls back to 16:9.
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
+                               const std::vector<double>& aspect,
                                const CarouselMetrics& mt = {});
-
-inline LRect carouselPreviewBox(const LRect& card, const CarouselMetrics& mt) {
-    const double innerW = std::max(0.0, card.w - mt.frameInset * 2.0);
-    return LRect{card.x + mt.frameInset, card.y + mt.frameInset, innerW,
-                 innerW / mt.aspect};
-}
 
 }

@@ -114,7 +114,7 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 - **`rows`** (default) — macOS-like: previews keep their aspect ratio and are packed into balanced rows, with the row count chosen to make the previews as large as possible. Reads spatially like the real desktop.
 - **`grid`** — uniform cells, one preview centered in each.
 - **`natural`** — keeps each window's real on-screen position, uniformly scaling the whole arrangement to fit.
-- **`carousel`** — fixed-width cards in one overlapped horizontal run, the selected window centered and its neighbours peeking out on both sides. Each card's preview box has a **fixed 1.6 aspect** and the window fills it, so windows of any shape get the same card. It is only a different arrangement of the main area — the strip, workspace switching and the all↔one flip all work exactly as they do in the other modes. See [Carousel mode](#carousel-mode).
+- **`carousel`** — one overlapped horizontal run of cards with the selected window centered and its neighbours peeking out on both sides. Each card carries the window's own aspect and is drawn by the same tile code as every other layout. It is only a different arrangement of the main area — the strip, workspace switching and the all↔one flip all work exactly as they do in the other modes. See [Carousel mode](#carousel-mode).
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -283,29 +283,28 @@ and canvas mode all keep working.
 - **Card count and size are yours.** `carousel_cards` sets how many cards the
   run shows — any number, even included (with an even count the selected card
   sits one slot off the exact middle). `carousel_card_width` sets the centered
-  card's width in px; the rest of the ladder keeps the reference's proportions
-  (380/500 and 280/500 of it). Windows beyond the count are simply **not
-  drawn** — they slide out past the run's edge as you scroll. The whole run
-  scales down uniformly if it doesn't fit, so nothing is ever cut off.
-- **The shrink never repeats.** Card widths step down strictly: centered, then
-  380/500, 280/500, and geometrically smaller beyond that. (The reference has
-  widths for the first three only and reuses the third for every deeper card,
-  so a run deeper than five ends in two identically sized cards.)
-- **Fixed-aspect previews.** Each card's preview box has a fixed **1.6 aspect**
-  regardless of the window's own shape, and the window fills it, cropping on
-  whichever axis is long — exactly how every other layout draws a preview, so
-  the ring sits on the content instead of framing an empty margin.
+  card's width in px; the rest of the ladder steps down at 380/500, 280/500 and
+  geometrically beyond. Windows beyond the count are simply **not drawn** — the
+  run never shows a card that is not in it. The whole run scales down uniformly
+  if it doesn't fit, so nothing is ever cut off.
+- **Cards are tiles, like everywhere else.** A card's box carries the WINDOW's
+  own aspect, so a tall window gets a tall card and a wide one a wide card. The
+  card is drawn by exactly the same code as every other layout's preview — same
+  shadow, same ring, same title pill, same close button — so nothing about it
+  can drift from the grid or the strip. Side cards are centred against the
+  selected card's box, which is taller because it carries the caption.
 - **Depth.** Cards one step out are dimmed slightly, cards two steps out more so
-  (`0.125` / `0.25` of the shadow color — the reference's `kNearToneAlpha` /
-  `kFarToneAlpha`), thinning further past that so a deep run doesn't go black.
+  (`0.125` / `0.25` of the shadow colour), thinning further past that so a deep
+  run doesn't go black.
   Cards paint far → centered, so the centered one and its ring sit on top.
-- **The chrome is the plugin's own**, exactly as in every other layout: a soft
-  drop shadow, the thin always-on ring plus the thicker focus ring from
-  `show_border` / `show_focus_border` / `border_size` / `select_border`, the
-  frost underlay while the backdrop is still fading, a title pill under the
-  **centered** card only, and a bare `n / total` counter above the run. There is
-  **no filled card surface** — the source design draws its cards as opaque
-  panels, which read as dark slabs floating over the blurred desktop.
+- **The chrome is the plugin's own**, exactly as in every other layout, because
+  it is literally the same code: a soft drop shadow, the thin always-on ring
+  plus the thicker focus ring from `show_border` / `show_focus_border` /
+  `border_size` / `select_border`, the frost underlay while the backdrop is
+  still fading, a title pill under the **centered** card (and the hovered one),
+  and a bare `n / total` counter above the run. There is **no filled card
+  surface** — the source design draws its cards as opaque panels, which read as
+  dark slabs floating over the blurred desktop.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -315,21 +314,20 @@ and canvas mode all keep working.
 - **Navigation.** Because the slots are built around the selection, moving it
   rotates the run (all cards glide to their new depths on the usual `glide`
   clock, without the per-tile stagger — it is one band, not a queue).
-  - Left/Right step the centered card, circularly (the reference's
-    `cycleSelection`); up/down do nothing.
+  - Left/Right step the centered card, circularly; up/down do nothing.
   - Tab/Shift-Tab, the digit keys and the `gloview:allworkspaces` toggle keep
     their normal meaning: **workspaces**, not cards.
   - Alt-Tab still cycles the selection; Enter or a click focuses the selected
     window and dismisses.
-  - `✕` on the hovered card closes that window.
+  - `✕` on a card closes that window.
 - **Hover** does not move the selection — the slots are built around it, so
   following the mouse would re-lay-out the run on every crossing. Hover swaps
-  the ring and reveals the `✕`.
+  the ring.
 
-Left out of the reference: app icons and its per-card open/close scale-slide
-(the plugin's own tile glide covers the motion). Colors, border sizes, corner
-rounding and durations all come from the usual `look.*` / `colors.*` / `anim.*`
-options.
+Left out of the source design: app icons, its per-card open/close scale-slide
+and its fixed 1.6 preview aspect (the plugin's own tile glide and window-aspect
+cards cover both). Colors, border sizes, corner rounding and durations all come
+from the usual `look.*` / `colors.*` / `anim.*` options.
 
 Canvas mode still overrides the carousel (it is a different engine entirely and
 keeps its existing precedence over `layout`), so `Shift` while in carousel mode

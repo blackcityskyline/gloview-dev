@@ -32,6 +32,7 @@ class CGradientValueData; // general:col.active_border's real type
 #include "anim/clocks.hpp"
 #include "model/model.hpp"
 #include "render/backdrop.hpp"
+#include "render/tile_look.hpp"
 #include "blur.hpp"
 #include "cursor.hpp"
 #include "layout.hpp"
@@ -75,27 +76,24 @@ public:
   SP<Render::ITexture> backdropSource(bool &live) const;
   SP<Render::ITexture> renderBackdropSource(int W, int H) const;
 
+  bool stripSlotGrabbed(size_t i, size_t j) const;
   void renderStrip() const;
   void renderStripWindows() const;
   void renderStripButtons() const;
   void renderPulses(bool strip) const;
-  void renderPreviews() const;
-  // Carousel draws its run in ONE pass: cards overlap, so content must land
-  // between its own frame and the next card's — split stages can't express it.
+  void renderTiles() const;
+  // Carousel paints its run in ONE pass: cards overlap, so each has to be a
+  // whole tile, chrome through content, before the next card goes over it.
   void renderCarousel() const;
+  void renderCarouselCounter() const;
   bool carouselMode() const;
-  // The metrics layoutTiles used: hit-test the SAME box the renderer drew.
-  CarouselMetrics carouselMetrics() const { return m_carouselMetrics; }
   void stepCarousel(int dir); // center the next/previous card, circular
-  CarouselLayout m_carousel;     // written by layoutTiles
-  CarouselMetrics m_carouselMetrics;
+  CarouselLayout m_carousel; // written by layoutTiles
   // The selection m_carousel was built for. Slots are laid out AROUND it, so any
   // change needs a relayout; renderStage checks once for all paths.
   int m_carouselFor = -1;
   void relayoutCarousel();
-  void renderMainWindows() const;
   void renderGhosts() const;
-  void renderTileButtons() const;
   void renderDragTile() const;
   void renderDragWindow() const;
   void renderCursorOnTop() const;
@@ -288,17 +286,15 @@ private:
   double newCardDur() const { return std::max(120.0, leaf("new_card").ms); }
   double tileProgress(int i) const;
   LRect currentBox(const model::Tile &t, int i) const;
-  LRect tileContentBox(size_t i, const LRect &slot) const;
   LRect dragBox() const;
   LRect dragStripBox() const;
   double dragLiftProgress() const;
   LRect dragVisualBox() const;
   int draggedTile() const;
-  void drawPreviewTile(size_t i, const LRect &slot, bool lift) const;
-  // alphaMul dissolves the whole chrome: the carousel fades an off-run card out.
-  void drawPreviewChrome(size_t i, const LRect &lb, bool lift,
-                         float alphaMul = 1.0F) const;
-  void drawCloseButton(const LRect &lb, float a) const;
+  void drawTile(size_t i, const TileLook &look) const;
+  // Every layout resolves its slot through this: the tile box carries the
+  // window's own aspect, which is what lets the content meet the ring.
+  LRect tileBox(size_t i, const LRect &slot) const;
   // instant=true: collapse with no ws-slide, so close() starts settled.
   void switchToWorkspace(const model::StripItem &it, bool instant = false);
   void dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
@@ -325,6 +321,7 @@ private:
   LRect closeButtonRect(const LRect &tile) const;
   bool closeButtonsAlwaysOn() const;
   bool closeOnDoubleClick() const;
+  bool tileCloseButtons() const;
   void cancelPendingClick();
   double newCardScale() const;
   float blurStrength() const;

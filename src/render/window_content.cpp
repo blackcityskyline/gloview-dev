@@ -20,6 +20,7 @@
 #include "../overview.hpp"
 #include "../config/config.hpp"
 #include "../debug/log.hpp"
+#include "gl_util.hpp"
 
 using Render::GL::g_pHyprOpenGL;
 
@@ -66,6 +67,11 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 
 } // namespace
 
+// roundPx is the corner radius the CONTENT carries, in monitor pixels, and
+// nothing else: matching it to the ring drawn around the tile is the caller's
+// job (contentRadiusPx). The surface COVERS destPx from its centre, so destPx
+// must already carry the window's own aspect — with any other aspect the corner
+// arcs are geometrically incapable of meeting.
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx,
@@ -84,7 +90,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   const float logicalW = std::max((float)size.x, 5.F);
   const float logicalH = std::max((float)size.y, 5.F);
   // Over-cover from the CENTER: fit-exact lets the opaque backing show as seams.
-  const float pad = settled ? 0.0F : 1.5F;
+  const float pad = settled ? 0.0F : kSeamPadPx;
   const float sW  = (static_cast<float>(destPx.w) + pad) /
                    std::max(logicalW * mon->m_scale, 5.F);
   const float sH  = (static_cast<float>(destPx.h) + pad) /
@@ -99,39 +105,6 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   const Vector2D winCenter    = scaledTL + scaledSize / 2.0;
   const Vector2D destCenterPx = destPx.pos() + destPx.size() / 2.0;
   const Vector2D translate    = destCenterPx / scaleMod - winCenter;
-
-  // The pad grows content's box; its corner arc sits at topLeft + radius, so it
-  // drifts off the border ring's: grow content's OWN radius to match. Border
-  // effective radius is round + borderSize; Hyprland does `rounding -= 1` on set.
-  const Vector2D renderedSize = scaledSize * scaleMod;
-  const Vector2D overcoverPx  = renderedSize - destPx.size();
-  const float overcoverCompensation =
-      std::max(0.0, std::max(overcoverPx.x, overcoverPx.y)) / 2.0F;
-  const float scaledBorderSize =
-      std::round(static_cast<float>(cfg::look.hover_border_size) *
-                 static_cast<float>(mon->m_scale));
-  const int contentRoundPx =
-      roundPx <= 0
-          ? 0
-          : roundPx + static_cast<int>(std::lround(
-                          scaledBorderSize + overcoverCompensation + 1.0F));
-
-  {
-    static std::chrono::steady_clock::time_point lastLog{};
-    const auto nowTp = std::chrono::steady_clock::now();
-    if (std::chrono::duration<double>(nowTp - lastLog).count() > 1.0) {
-      lastLog = nowTp;
-      debug::dbg(
-          "[roundDiag] destPx=" + std::to_string(destPx.w) + "x" + std::to_string(destPx.h) +
-          " logical=" + std::to_string(logicalW) + "x" + std::to_string(logicalH) +
-          " scaleMod=" + std::to_string(scaleMod) +
-          " renderedSize=" + std::to_string(renderedSize.x) + "x" + std::to_string(renderedSize.y) +
-          " overcoverPx=" + std::to_string(overcoverPx.x) + "," + std::to_string(overcoverPx.y) +
-          " scaledBorderSize=" + std::to_string(scaledBorderSize) +
-          " roundPx=" + std::to_string(roundPx) +
-          " contentRoundPx=" + std::to_string(contentRoundPx));
-    }
-  }
 
   Render::SRenderModifData modif;
   modif.modifs.push_back(
@@ -161,7 +134,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   data.fadeAlpha      = windowRealAlpha(w, mon);
   data.alpha          = std::clamp(alpha, 0.F, 1.F);
   data.decorate       = false;
-  data.rounding       = contentRoundPx;
+  data.rounding       = roundPx;
   data.roundingPower  = roundingPower;
   data.blur           = false;
   data.pWindow        = w;

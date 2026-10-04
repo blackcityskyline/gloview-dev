@@ -188,10 +188,7 @@ void Overview::renderStrip() const {
             continue;
           }
           const int wRound = clampRound(previewRound, wbL.w, wbL.h);
-          const bool grabbed = !m_drag.lifted &&
-                               static_cast<int>(i) == m_drag.idx &&
-                               static_cast<int>(j) == m_drag.winIdx;
-          if (grabbed)
+          if (stripSlotGrabbed(i, j))
             strokeRing(wbL, s, cfg::colors.hover_border.get(e),
                        2, wRound, roundPow);
           // No backing while the window flies: its thumbnail is suppressed too.
@@ -222,6 +219,11 @@ void Overview::renderStrip() const {
                                    {.a = la});
     }
   }
+}
+
+bool Overview::stripSlotGrabbed(size_t i, size_t j) const {
+  return m_drag.press == model::Drag::Press::StripWin && !m_drag.lifted &&
+         static_cast<int>(i) == m_drag.idx && static_cast<int>(j) == m_drag.winIdx;
 }
 
 void Overview::renderStripWindows() const {
@@ -257,13 +259,17 @@ void Overview::renderStripWindows() const {
       if (swapfxActive(w))
         continue;
       const LRect slot = stripWinSlotRect(it, card, j);
-      const int round = pxr(clampRound(previewRound, slot.w, slot.h), scale);
+      const int round = clampRound(previewRound, slot.w, slot.h);
       // renderWindowLive takes monitor PIXEL coords; pxb()'s .round() snap keeps
       // content off the chrome by a sub-pixel (hairline gap at the corner).
       const CBox slotPx = pxb(slot, scale);
       const CBox cardPx = pxb(card, scale);
+      // The slot's own ring is a hover/select ring when grabbed; otherwise the
+      // plain border. Whichever it is, the content radius has to follow it.
+      const int ringW = stripSlotGrabbed(i, j) ? 2 : cfg::look.border_size;
       renderWindowLive(w, m, slotPx, cardPx, static_cast<float>(e), when,
-                       round, roundPow);
+                       contentRadiusPx(round, ringW, roundPow, scale),
+                       roundPow, true);
     }
   }
 }

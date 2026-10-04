@@ -12,6 +12,7 @@
 #include <hyprland/src/helpers/time/Time.hpp>
 
 #include "gl_util.hpp"
+#include "tile_look.hpp"
 #include "../config/config.hpp"
 #include "../overview.hpp"
 #include "../anim/curves.hpp"
@@ -38,7 +39,7 @@ LRect Overview::dragBox() const {
   if (m_desktopMode)
     return LRect{m_drag.x - m_drag.grabDX, m_drag.y - m_drag.grabDY,
                  base.w, base.h};
-  const LRect full = tileContentBox(static_cast<size_t>(dragIdx), base);
+  const LRect full = tileBox(static_cast<size_t>(dragIdx), base);
   const double k   = dragScale();
   return LRect{m_drag.x + offX, m_drag.y + offY, full.w * k, full.h * k};
 }
@@ -71,15 +72,20 @@ LRect Overview::dragVisualBox() const {
   return LRect{cx - b.w * s / 2.0, cy - b.h * s / 2.0 + dy, b.w * s, b.h * s};
 }
 
+// A dragged tile is the same tile, lifted: taller shadow, framed, no pill.
 void Overview::renderDragTile() const {
   const int dragIdx = draggedTile();
-  if (dragIdx >= 0) {
-    drawPreviewChrome(static_cast<size_t>(dragIdx), dragVisualBox(),
-                      true); // chrome; content right after
+  if (dragIdx < 0) {
+    // A window dragged OUT of the strip has no tile; it gets its own chrome.
+    if (m_drag.press == model::Drag::Press::StripWin && !m_drag.win.expired())
+      drawDragStripChrome();
     return;
   }
-  if (m_drag.press == model::Drag::Press::StripWin && !m_drag.win.expired())
-    drawDragStripChrome();
+  TileLook look;
+  look.box   = dragVisualBox();
+  look.lift  = true;
+  look.round = clampRound(cfg::look.preview_round, look.box.w, look.box.h);
+  drawTile(static_cast<size_t>(dragIdx), look);
 }
 
 void Overview::drawDragStripChrome() const {
@@ -116,26 +122,24 @@ void Overview::drawDragStripChrome() const {
 }
 
 void Overview::renderDragWindow() const {
+  if (draggedTile() >= 0)
+    return; // drawn whole by renderDragTile
   const auto m = m_monitor.lock();
-  if (!m)
+  const auto w = m_drag.win.lock();
+  if (!m || !w || !w->m_isMapped || w->isHidden())
+    return;
+  if (m_drag.press != model::Drag::Press::StripWin)
     return;
 
-  PHLWINDOW w;
-  if (const int dragIdx = draggedTile(); dragIdx >= 0)
-    w = m_tiles[dragIdx].win.lock();
-  else if (m_drag.press == model::Drag::Press::StripWin)
-    w = m_drag.win.lock();
-  if (!w || !w->m_isMapped || w->isHidden())
-    return;
-
-  const double e     = eased();
   const double scale = m->m_scale;
+  const float  roundPow = cfg::look.preview_round_power;
   const LRect  lb    = dragVisualBox();
-  const CBox   px = pxb(lb, scale);
-  const int round =
-      pxr(clampRound(cfg::look.preview_round, lb.w, lb.h), scale);
-  renderWindowLive(w, m, px, px, static_cast<float>(e), Time::steadyNow(),
-                   round, cfg::look.preview_round_power);
+  const int    round = clampRound(cfg::look.preview_round, lb.w, lb.h);
+  const CBox   px    = pxb(lb, scale);
+  renderWindowLive(w, m, px, px, static_cast<float>(eased()), Time::steadyNow(),
+                   contentRadiusPx(round, cfg::look.hover_border_size, roundPow,
+                                   scale),
+                   roundPow);
 }
 
 void Overview::kickPulse(const PHLWINDOW &w) {
@@ -181,9 +185,10 @@ void Overview::renderPulses(bool strip) const {
         if (m_tiles[i].win.lock() != w)
           continue;
         const LRect lb =
-            tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
+            tileBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
+        // The pulse tracks the tile's own radius, so it lands on the same arc.
         drawPulseRing(pxb(lb, s),
-                      pxr(cfg::look.preview_round, s),
+                      pxr(clampRound(cfg::look.preview_round, lb.w, lb.h), s),
                       roundPow, col, pr);
         break;
       }
@@ -224,7 +229,7 @@ void Overview::renderSwapFX() const {
     bool found = false;
     for (size_t i = 0; i < m_tiles.size() && !found; ++i)
       if (m_tiles[i].win.lock() == w) {
-        to = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
+        to = tileBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
         found = true;
       }
     for (size_t i = 0; i < m_strip.size() && !found; ++i) {
@@ -302,7 +307,9 @@ void Overview::renderSwapFX() const {
     if (ring && t < 0.6)
       strokeRingPx(px, argb(cfg::colors.hover_border.get(), (1.0F - t / 0.6F) * 0.9F),
                    (1.0F - t / 0.6F) * 0.9F, rpx, roundPow);
-    renderWindowLive(w, m, px, px, alpha, when, rpx, roundPow);
+    renderWindowLive(w, m, px, px, alpha, when,
+                     contentRadiusPx(round, cfg::look.border_size, roundPow, s),
+                     roundPow, true);
   }
 }
 

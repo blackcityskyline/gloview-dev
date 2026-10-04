@@ -11,6 +11,7 @@
 #include <hyprland/src/render/pass/TexPassElement.hpp>
 
 #include "gl_util.hpp"
+#include "tile_look.hpp"
 #include "../config/config.hpp"
 #include "../overview.hpp"
 #include "../debug/log.hpp"
@@ -50,6 +51,12 @@ bool Overview::closeOnDoubleClick() const {
   return cfg::look.close_trigger.get() == "doubleclick";
 }
 
+// One rule for every layout, and the hit-test reads this same function, so the
+// ✕ can never appear where a click will not close.
+bool Overview::tileCloseButtons() const {
+  return !closeOnDoubleClick() && (m_desktopMode || closeButtonsAlwaysOn());
+}
+
 LRect Overview::closeButtonRect(const LRect &lb) const {
   const double scale = std::max(0.3, static_cast<double>(
                                          cfg::look.close_button_size));
@@ -70,7 +77,20 @@ LRect Overview::closeButtonRect(const LRect &lb) const {
   return LRect{cx - r, cy - r, 2 * r, 2 * r};
 }
 
-LRect Overview::tileContentBox(size_t i, const LRect &slot) const {
+double Overview::entryFade(size_t i) const {
+  if (i >= m_tiles.size())
+    return 1.0;
+  const auto &t = m_tiles[i];
+  if (t.appear >= 1.0 || m_wsSlideDir == 0 || m_enterStyle != "fade")
+    return 1.0;
+  return tileAppear(static_cast<int>(i));
+}
+
+// A preview always wears the window's own aspect: the surface covers its box
+// from the centre, so only a matching aspect lets the content's corner arcs meet
+// the ring's. Every layout resolves its slot through here, and so does every
+// hit-test — a second way to compute a tile box is a second way to be wrong.
+LRect Overview::tileBox(size_t i, const LRect &slot) const {
   if (m_desktopMode)
     return slot;
   double aspect = slot.w / std::max(1.0, slot.h);
@@ -84,205 +104,157 @@ LRect Overview::tileContentBox(size_t i, const LRect &slot) const {
   return fitInside(slot, aspect);
 }
 
-double Overview::entryFade(size_t i) const {
-  if (i >= m_tiles.size())
-    return 1.0;
-  const auto &t = m_tiles[i];
-  if (t.appear >= 1.0 || m_wsSlideDir == 0 || m_enterStyle != "fade")
-    return 1.0;
-  return tileAppear(static_cast<int>(i));
-}
-
-void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
-  drawPreviewChrome(i, tileContentBox(i, slot), lift);
-}
-
-void Overview::drawPreviewChrome(size_t i, const LRect &slot, bool lift,
-                                 float alphaMul) const {
+// THE tile. Shadow, ring, focus ring, transition frost, safety backing, the
+// content, the pill and the ✕ — in this order, each layer under the next, for
+// every layout. A layout contributes a box and flags and nothing else; the ring
+// width that goes into contentRadiusPx is the one actually stroked below, which
+// is why the content cannot come out with corners of a different shape.
+void Overview::drawTile(size_t i, const TileLook &look) const {
   const auto m = m_monitor.lock();
   if (!m || i >= m_tiles.size())
     return;
-  const double s        = m->m_scale;
-  const double e        = eased();
-  const float  f        = static_cast<float>(entryFade(i)) * alphaMul;
-  const int    round    = cfg::look.preview_round;
-  const float  roundPow = cfg::look.preview_round_power;
-  const auto shadowCol  = cfg::colors.shadow.get(1.0);
-  const auto hoverCol   = cfg::colors.hover_border.get(e * f);
-
   const auto &t = m_tiles[i];
   const auto w  = t.win.lock();
   if (!w || !w->m_isMapped || w->isHidden())
     return;
 
-  const LRect lb = slot;
+  const LRect box = look.box;
+  if (box.w < 1.0 || box.h < 1.0)
+    return;
 
-  dropShadow(lb, s, shadowCol, lift ? 14.0 : 6.0, lift ? 30.0 : 16.0,
-             e * 0.18F * f, round, roundPow);
+  const double s        = m->m_scale;
+  const double e        = eased();
+  const float  f        = static_cast<float>(entryFade(i));
+  const int    round    = look.round >= 0.0
+                              ? static_cast<int>(look.round)
+                              : cfg::look.preview_round;
+  const float  roundPow = cfg::look.preview_round_power;
+  const auto shadowCol  = cfg::colors.shadow.get(1.0);
 
-  const bool framed   = (static_cast<int>(i) == m_hovered || lift);
-  const bool selected = (static_cast<int>(i) == m_selected) && !lift;
+  const bool framed   = static_cast<int>(i) == m_hovered || look.lift;
+  const bool selected = static_cast<int>(i) == m_selected && !look.lift;
+  const bool focused  = cfg::look.show_focus_border != 0 && (framed || selected);
+  // Whichever ring ends up on top is the one the content has to tuck under.
+  const int ringW = focused ? (framed ? cfg::look.hover_border_size
+                                      : cfg::look.select_border_size)
+                            : cfg::look.border_size;
 
-  if (cfg::look.show_border != 0) {
-    strokeRing(lb, s, cfg::colors.border.get(e * f),
-               cfg::look.border_size, round, roundPow);
-  }
-  if (cfg::look.show_focus_border != 0) {
-    if (framed)
-      strokeRing(lb, s, hoverCol,
-                 cfg::look.hover_border_size, round,
-                 roundPow);
-    else if (selected)
-      strokeRing(lb, s, cfg::colors.select_border.get(e * f),
-                 cfg::look.select_border_size, round,
-                 roundPow);
-  }
+  dropShadow(box, s, shadowCol, look.lift ? 14.0 : 6.0, look.lift ? 30.0 : 16.0,
+             static_cast<float>(e * 0.18 * f), round, roundPow);
+
+  if (cfg::look.show_border != 0)
+    strokeRing(box, s, cfg::colors.border.get(e * f), cfg::look.border_size,
+               round, roundPow);
+  if (focused)
+    strokeRing(box, s,
+               framed ? cfg::colors.hover_border.get(e * f)
+                      : cfg::colors.select_border.get(e * f),
+               ringW, round, roundPow);
 
   // Transition frost: the cached blur redrawn at CONSTANT alpha (fading it
   // leaves C*e*(1-e) of the sharp desktop leaking), plus the dim rect at the
-  // GLOBAL alpha e so the interior's dim tracks the surroundings. Rounded
-  // like the content, UV-mapped to the tile's region. Stops at e >= 0.999.
-  // alphaMul is a per-card dissolve, not the global dim, so it scales both.
-  const double apNow =
-      t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
-  if (e < 0.999 || apNow < 0.999 || alphaMul < 0.999) {
+  // GLOBAL alpha e so the interior's dim tracks the surroundings. Rounded like
+  // the content, UV-mapped to the tile's region. Stops at e >= 0.999.
+  const double apNow = t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
+  if (e < 0.999 || apNow < 0.999) {
     if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
       const double pxW = static_cast<double>(m->m_pixelSize.x);
       const double pxH = static_cast<double>(m->m_pixelSize.y);
-      const CBox  lbPx = pxb(lb, s);
+      const CBox  boxPx = pxb(box, s);
       CTexPassElement::SRenderData td{};
       td.tex           = btex;
-      td.box           = lbPx;
-      td.a             = alphaMul;
+      td.box           = boxPx;
+      td.a             = 1.0F;
       td.round         = pxr(round, s);
       td.roundingPower = roundPow;
       td.allowCustomUV = true;
       auto &uvTL = g_pHyprRenderer->m_renderData.primarySurfaceUVTopLeft;
       auto &uvBR = g_pHyprRenderer->m_renderData.primarySurfaceUVBottomRight;
-      uvTL = Vector2D{lbPx.x / pxW, lbPx.y / pxH};
-      uvBR = Vector2D{(lbPx.x + lbPx.width) / pxW,
-                      (lbPx.y + lbPx.height) / pxH};
+      uvTL = Vector2D{boxPx.x / pxW, boxPx.y / pxH};
+      uvBR = Vector2D{(boxPx.x + boxPx.width) / pxW,
+                      (boxPx.y + boxPx.height) / pxH};
       g_pHyprRenderer->draw(td, g_pHyprRenderer->m_renderData.damage);
       uvTL = Vector2D{-1.0, -1.0};
       uvBR = Vector2D{-1.0, -1.0};
       // The frost covers the global dim: re-apply it at the global alpha.
-      g_pHyprOpenGL->renderRect(
-          lbPx,
-          cfg::blur.backdrop.get(static_cast<float>(e) * alphaMul),
-          {.round = pxr(round, s), .roundingPower = roundPow});
+      g_pHyprOpenGL->renderRect(boxPx, cfg::blur.backdrop.get(static_cast<float>(e)),
+                                {.round = pxr(round, s), .roundingPower = roundPow});
     }
   }
-  safetyBacking(lb, s, cfg::colors.backing.get(), 0.08 * alphaMul, round,
-                roundPow);
+  safetyBacking(box, s, cfg::colors.backing.get(), 0.08, round, roundPow);
 
-  if ((framed || selected) && !lift && t.label && t.label->m_size.x > 0) {
+  renderWindowLive(w, m, pxb(box, s), pxb(box, s), f, Time::steadyNow(),
+                   contentRadiusPx(round, ringW, roundPow, s), roundPow,
+                   m_tileClock.done(glideDur()));
+
+  if (look.tone > 0.0)
+    g_pHyprOpenGL->renderRect(pxb(box, s), argb(shadowCol, look.tone * e * f),
+                              {.round = pxr(round, s), .roundingPower = roundPow});
+
+  if ((framed || selected) && !look.lift && t.label && t.label->m_size.x > 0) {
     const double lw   = t.label->m_size.x;
     const double lh   = t.label->m_size.y;
     const double padX = 14.0, padY = 6.0;
     const double pw   = lw + 2 * padX;
     const double ph   = lh + 2 * padY;
-    const double px   = std::clamp(lb.cx() - pw / 2.0, 6.0, m->m_size.x - pw - 6.0);
-    const double py   = std::min(lb.y + lb.h + 10.0, m->m_size.y - ph - 6.0);
+    const double px   = std::clamp(box.cx() - pw / 2.0, 6.0, m->m_size.x - pw - 6.0);
+    const double py   = std::min(box.y + box.h + 10.0, m->m_size.y - ph - 6.0);
     g_pHyprOpenGL->renderRect(pxb(CBox(px, py, pw, ph), s),
                               cfg::colors.title_pill.get(e * f),
                               {.round = pxr(ph / 2.0, s)});
-    g_pHyprOpenGL->renderTexture(t.label,
-                                 pxb(CBox(px + padX, py + padY, lw, lh), s),
+    g_pHyprOpenGL->renderTexture(t.label, pxb(CBox(px + padX, py + padY, lw, lh), s),
                                  {.a = static_cast<float>(e * f)});
+  }
+
+  if (look.button && !look.lift && m_closeGlyph && m_closeGlyph->m_size.x > 0) {
+    const LRect br = closeButtonRect(box);
+    g_pHyprOpenGL->renderRect(pxb(br, s), cfg::colors.close_button.get(e),
+                              {.round = pxr(br.h / 2.0, s)});
+    const double gw = m_closeGlyph->m_size.x, gh = m_closeGlyph->m_size.y;
+    const double gs = std::min((br.w * 0.62) / std::max(1.0, gw),
+                               (br.h * 0.62) / std::max(1.0, gh));
+    g_pHyprOpenGL->renderTexture(
+        m_closeGlyph,
+        pxb(LRect{br.x + (br.w - gw * gs) / 2.0, br.y + (br.h - gh * gs) / 2.0,
+                  gw * gs, gh * gs}, s),
+        {.a = static_cast<float>(e)});
   }
 }
 
-void Overview::renderPreviews() const {
+void Overview::renderTiles() const {
+  const auto m = m_monitor.lock();
+  if (!m)
+    return;
+  // Defensive: GL_BLEND left off by a previous pass makes the ✕ glyph's
+  // transparent padding write through as opaque black; restore the exact func.
+  const bool wantButtons = tileCloseButtons();
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, 0);
+  const bool blendBefore = glIsEnabled(GL_BLEND) == GL_TRUE;
+  GLint srcRGB = GL_ONE, dstRGB = GL_ZERO, srcA = GL_ONE, dstA = GL_ZERO;
+  glGetIntegerv(GL_BLEND_SRC_RGB, &srcRGB);
+  glGetIntegerv(GL_BLEND_DST_RGB, &dstRGB);
+  glGetIntegerv(GL_BLEND_SRC_ALPHA, &srcA);
+  glGetIntegerv(GL_BLEND_DST_ALPHA, &dstA);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
   const int dragIdx = draggedTile();
   for (size_t i = 0; i < m_tiles.size(); ++i) {
     if (static_cast<int>(i) == dragIdx)
       continue; // the dragged tile floats over the strip; drawn later
-    drawPreviewTile(i, currentBox(m_tiles[i], static_cast<int>(i)), false);
-  }
-}
-
-void Overview::drawCloseButton(const LRect &lb, float a) const {
-  const auto m = m_monitor.lock();
-  if (!m || !m_closeGlyph || m_closeGlyph->m_size.x <= 0)
-    return;
-  const LRect br = closeButtonRect(lb);
-  const double s = m->m_scale;
-  g_pHyprOpenGL->renderRect(pxb(br, s), cfg::colors.close_button.get(a),
-                            {.round = pxr(br.h / 2.0, s)});
-  const double gw = m_closeGlyph->m_size.x, gh = m_closeGlyph->m_size.y;
-  const double gs =
-      std::min((br.w * 0.62) / std::max(1.0, gw), (br.h * 0.62) / std::max(1.0, gh));
-  g_pHyprOpenGL->renderTexture(
-      m_closeGlyph,
-      pxb(LRect{br.x + (br.w - gw * gs) / 2.0, br.y + (br.h - gh * gs) / 2.0,
-                gw * gs, gh * gs}, s),
-      {.a = a});
-}
-
-// Per-window "✕": drawn AFTER the content, or opaque surfaces paint over it.
-void Overview::renderTileButtons() const {
-  if (closeOnDoubleClick())
-    return;
-  if (!m_desktopMode && !closeButtonsAlwaysOn())
-    return;
-  const auto m = m_monitor.lock();
-  if (!m)
-    return;
-  // Defensive: GL_BLEND left off by a previous pass makes the glyph's
-  // transparent padding write through as opaque black; restore the exact func.
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, 0);
-  const bool blendBefore = glIsEnabled(GL_BLEND) == GL_TRUE;
-  GLint blendSrcRGB = GL_ONE, blendDstRGB = GL_ZERO, blendSrcAlpha = GL_ONE,
-        blendDstAlpha = GL_ZERO;
-  glGetIntegerv(GL_BLEND_SRC_RGB, &blendSrcRGB);
-  glGetIntegerv(GL_BLEND_DST_RGB, &blendDstRGB);
-  glGetIntegerv(GL_BLEND_SRC_ALPHA, &blendSrcAlpha);
-  glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDstAlpha);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  const int    dragIdx = draggedTile();
-  const float  a       = static_cast<float>(eased());
-  for (size_t i = 0; i < m_tiles.size(); ++i) {
-    if (static_cast<int>(i) == dragIdx)
-      continue;
     const auto w = m_tiles[i].win.lock();
-    if (!w || !w->m_isMapped || w->isHidden())
-      continue;
-    drawCloseButton(
-        tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i))), a);
+    if (!w || !w->m_isMapped || w->isHidden() || swapfxActive(w))
+      continue; // flying via a landing: its slot is painted by renderSwapFX
+    TileLook look;
+    look.box = tileBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
+    look.button = wantButtons;
+    drawTile(i, look);
   }
-  glBlendFuncSeparate(blendSrcRGB, blendDstRGB, blendSrcAlpha, blendDstAlpha);
+
+  glBlendFuncSeparate(srcRGB, dstRGB, srcA, dstA);
   if (!blendBefore)
     glDisable(GL_BLEND);
-}
-
-// Previews render fully OPAQUE except the ws_enter fade: at progress 0
-// currentBox == natural, so the opaque preview covers the real window exactly.
-void Overview::renderMainWindows() const {
-  const auto m = m_monitor.lock();
-  if (!m)
-    return;
-  const int    dragIdx = draggedTile();
-  const double scale   = m->m_scale;
-  const auto   when    = Time::steadyNow();
-  const int    round   = pxr(cfg::look.preview_round, scale);
-  const float  roundPow = cfg::look.preview_round_power;
-  for (size_t i = 0; i < m_tiles.size(); ++i) {
-    if (static_cast<int>(i) == dragIdx)
-      continue;
-    const auto w = m_tiles[i].win.lock();
-    if (!w || !w->m_isMapped || w->isHidden())
-      continue;
-    if (swapfxActive(w))
-      continue; // flying via a landing (Z2.5) — suppressed here
-    const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
-    const CBox  px = pxb(lb, scale);
-    const bool settled = m_tileClock.done(glideDur());
-    renderWindowLive(w, m, px, px,
-                     static_cast<float>(entryFade(i)), when, round, roundPow,
-                     settled);
-  }
 }
 
 void Overview::renderGhosts() const {
@@ -293,7 +265,6 @@ void Overview::renderGhosts() const {
     return;
   const double scale = m->m_scale;
   const auto when    = Time::steadyNow();
-  const int round    = pxr(cfg::look.preview_round, scale);
   const float roundPow = cfg::look.preview_round_power;
   const double p    = std::min(1.0, m_rebuildClock.raw(m_ghost.ms));
   const double eOut = curves::eval(m_ghost.curve, p); // 0..1 gone
@@ -311,10 +282,13 @@ void Overview::renderGhosts() const {
     if (m_wsSlideDir != 0 && m_exitStyle == "slide") {
       slidBox.x -= static_cast<double>(m_wsSlideDir) * m->m_size.x * eOut;
     } else if (m_wsSlideDir != 0 && m_exitStyle == "slidevert") {
-      slidBox.y -= static_cast<double>(m->m_size.y) * eOut;
+      slidBox.y -= static_cast<double>(m_wsSlideDir) * m->m_size.y * eOut;
     }
     const CBox px = pxb(slidBox, scale);
-    renderWindowLive(w, m, px, px, gAlpha, when, round, roundPow);
+    renderWindowLive(w, m, px, px, gAlpha, when,
+                     contentRadiusPx(cfg::look.preview_round,
+                                     cfg::look.border_size, roundPow, scale),
+                     roundPow, true);
   }
 }
 

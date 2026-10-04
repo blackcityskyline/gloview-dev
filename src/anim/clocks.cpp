@@ -109,10 +109,8 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
   const auto &b = t.target;
   LRect r{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
           lerp(a.h, b.h, e)};
-  // A card that dropped off the run has a zeroed target and no direction in the
-  // NEW layout, so gliding toward it drags it across the bare backdrop. Hold the
-  // box it is shown at instead and let renderCarousel's fade take it away: it
-  // is drawn under the incoming cards, which slide over it as it goes.
+  // A card off the carousel run has a zeroed target. Nothing paints it, so it
+  // must not resize on its way there either — hold the box it was last shown at.
   if (carouselMode() && b.w < 1.0 && a.w >= 1.0)
     r = a;
   const double ap = t.appear < 1.0 ? tileAppear(i) : 1.0;

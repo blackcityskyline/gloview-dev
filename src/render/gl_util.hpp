@@ -57,6 +57,20 @@ inline void strokeRing(const LRect &lb, double s, const CHyprColor &col,
        .outerRound = outerRoundPx(round, size, roundPow, s)});
 }
 
+// renderWindowLive over-covers an unsettled box by this much so sub-pixel
+// snapping cannot open a seam; its corner arc walks out by the same amount, so
+// the content radius has to follow.
+inline constexpr float kSeamPadPx = 1.5F;
+
+// The corner radius a tile's CONTENT must carry so its arc lands on the ring's
+// outer edge. Derived from the ring's OWN inputs, never from a different ring's
+// config: a tile whose content and ring disagree shows square content inside a
+// round frame. +1 because Hyprland subtracts one from the radius it is given.
+inline int contentRadiusPx(int round, int width, float roundPow, double scale) {
+  return pxr(round, scale) + static_cast<int>(std::lround(width * scale)) +
+         pxr(kSeamPadPx, scale) + 1;
+}
+
 inline void strokeRingPx(const CBox &b, const CHyprColor &col, float alpha,
                          int round, float roundPow) {
   Render::GL::g_pHyprOpenGL->renderBorder(

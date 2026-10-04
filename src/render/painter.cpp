@@ -162,16 +162,13 @@ void Overview::renderStage(eRenderStage stage) {
 void Overview::paint() {
   renderBackdrop();
 
-  if (carouselMode()) {
-    renderCarousel(); // overlapping cards: content interleaves per card
-    renderGhosts();
-  } else {
-    renderPreviews();
-    renderGhosts();
-    renderMainWindows();
-    renderTileButtons();
+  if (carouselMode())
+    renderCarousel(); // overlapping cards: one whole tile at a time
+  else
+    renderTiles();
+  renderGhosts();
+  if (!carouselMode())
     renderPulses(false);
-  }
 
   renderStrip();
   renderStripWindows();
