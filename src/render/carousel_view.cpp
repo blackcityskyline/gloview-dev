@@ -88,6 +88,15 @@ void Overview::renderCarousel() const {
       look.box = LRect{a.x + (bb.x - a.x) * f, a.y + (bb.y - a.y) * f,
                        a.w + (bb.w - a.w) * f, a.h + (bb.h - a.h) * f};
     }
+    // An unfocused card leaves by shrinking to its own centre over the first
+    // third of the close: its natural box is shared with the focused card's, so
+    // flying home would drop it exactly underneath the landing.
+    if (!m_opening && card.depth != 0) {
+      const double k = std::clamp(1.0 - m_progress / 0.35, 0.0, 1.0);
+      const double cx = look.box.cx(), cy = look.box.cy();
+      look.box = LRect{cx - look.box.w * k * 0.5, cy - look.box.h * k * 0.5,
+                       look.box.w * k, look.box.h * k};
+    }
     look.round = cfg::look.preview_round; // one ring size for every card
     look.frame = card.depth == 0;         // only the centred card is framed
     look.contain = true;                  // the window goes inside the box whole

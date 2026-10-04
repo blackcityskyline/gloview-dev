@@ -463,11 +463,29 @@ void Overview::close() {
   if (const auto m = m_monitor.lock()) {
     for (auto &t : m_tiles) {
       t.target = currentBox(t, static_cast<int>(&t - m_tiles.data()));
+      // The natural box is where the tile RETURNS TO. When several windows share
+      // one geometry — every window maximized looks identical, and so does every
+      // window on a workspace that is not the one on screen — their returns are
+      // the same rectangle, and the whole run collapses onto it at once: the
+      // unfocused cards end up exactly under the focused one, which is drawn
+      // last, so their exit is invisible no matter what it is animated to. Give
+      // each unfocused card its own exit instead, and let the focused one fly
+      // home as the only tile that moves to a real box.
       if (const auto w = t.win.lock()) {
         const auto p = w->positionAnimation()->goal();
         const auto s = w->sizeAnimation()->goal();
         t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
                           std::max(1.0, s.x), std::max(1.0, s.y)};
+        if (m_run && static_cast<int>(&t - m_tiles.data()) != m_selected &&
+            m_selected >= 0 &&
+            m_selected < static_cast<int>(m_tiles.size())) {
+          const auto &sel = m_tiles[static_cast<size_t>(m_selected)].natural;
+          if (std::abs(t.natural.x - sel.x) < 1.0 &&
+              std::abs(t.natural.y - sel.y) < 1.0 &&
+              std::abs(t.natural.w - sel.w) < 1.0 &&
+              std::abs(t.natural.h - sel.h) < 1.0)
+            t.natural = t.target; // leaves by shrinking in place, not by vanishing
+        }
       }
     }
   }
