@@ -97,13 +97,14 @@ void Overview::drawPreviewTile(size_t i, const LRect &slot, bool lift) const {
   drawPreviewChrome(i, tileContentBox(i, slot), lift);
 }
 
-void Overview::drawPreviewChrome(size_t i, const LRect &slot, bool lift) const {
+void Overview::drawPreviewChrome(size_t i, const LRect &slot, bool lift,
+                                 float alphaMul) const {
   const auto m = m_monitor.lock();
   if (!m || i >= m_tiles.size())
     return;
   const double s        = m->m_scale;
   const double e        = eased();
-  const float  f        = static_cast<float>(entryFade(i));
+  const float  f        = static_cast<float>(entryFade(i)) * alphaMul;
   const int    round    = cfg::look.preview_round;
   const float  roundPow = cfg::look.preview_round_power;
   const auto shadowCol  = cfg::colors.shadow.get(1.0);
@@ -141,9 +142,10 @@ void Overview::drawPreviewChrome(size_t i, const LRect &slot, bool lift) const {
   // leaves C*e*(1-e) of the sharp desktop leaking), plus the dim rect at the
   // GLOBAL alpha e so the interior's dim tracks the surroundings. Rounded
   // like the content, UV-mapped to the tile's region. Stops at e >= 0.999.
+  // alphaMul is a per-card dissolve, not the global dim, so it scales both.
   const double apNow =
       t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
-  if (e < 0.999 || apNow < 0.999) {
+  if (e < 0.999 || apNow < 0.999 || alphaMul < 0.999) {
     if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
       const double pxW = static_cast<double>(m->m_pixelSize.x);
       const double pxH = static_cast<double>(m->m_pixelSize.y);
@@ -151,7 +153,7 @@ void Overview::drawPreviewChrome(size_t i, const LRect &slot, bool lift) const {
       CTexPassElement::SRenderData td{};
       td.tex           = btex;
       td.box           = lbPx;
-      td.a             = 1.0F;
+      td.a             = alphaMul;
       td.round         = pxr(round, s);
       td.roundingPower = roundPow;
       td.allowCustomUV = true;
@@ -166,11 +168,11 @@ void Overview::drawPreviewChrome(size_t i, const LRect &slot, bool lift) const {
       // The frost covers the global dim: re-apply it at the global alpha.
       g_pHyprOpenGL->renderRect(
           lbPx,
-          cfg::blur.backdrop.get(static_cast<float>(e)),
+          cfg::blur.backdrop.get(static_cast<float>(e) * alphaMul),
           {.round = pxr(round, s), .roundingPower = roundPow});
     }
   }
-  safetyBacking(lb, s, cfg::colors.backing.get(), 0.08, round,
+  safetyBacking(lb, s, cfg::colors.backing.get(), 0.08 * alphaMul, round,
                 roundPow);
 
   if ((framed || selected) && !lift && t.label && t.label->m_size.x > 0) {
@@ -199,6 +201,24 @@ void Overview::renderPreviews() const {
   }
 }
 
+void Overview::drawCloseButton(const LRect &lb, float a) const {
+  const auto m = m_monitor.lock();
+  if (!m || !m_closeGlyph || m_closeGlyph->m_size.x <= 0)
+    return;
+  const LRect br = closeButtonRect(lb);
+  const double s = m->m_scale;
+  g_pHyprOpenGL->renderRect(pxb(br, s), cfg::colors.close_button.get(a),
+                            {.round = pxr(br.h / 2.0, s)});
+  const double gw = m_closeGlyph->m_size.x, gh = m_closeGlyph->m_size.y;
+  const double gs =
+      std::min((br.w * 0.62) / std::max(1.0, gw), (br.h * 0.62) / std::max(1.0, gh));
+  g_pHyprOpenGL->renderTexture(
+      m_closeGlyph,
+      pxb(LRect{br.x + (br.w - gw * gs) / 2.0, br.y + (br.h - gh * gs) / 2.0,
+                gw * gs, gh * gs}, s),
+      {.a = a});
+}
+
 // Per-window "✕": drawn AFTER the content, or opaque surfaces paint over it.
 void Overview::renderTileButtons() const {
   if (closeOnDoubleClick())
@@ -221,30 +241,16 @@ void Overview::renderTileButtons() const {
   glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDstAlpha);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  const double s       = m->m_scale;
-  const double e       = eased();
   const int    dragIdx = draggedTile();
+  const float  a       = static_cast<float>(eased());
   for (size_t i = 0; i < m_tiles.size(); ++i) {
     if (static_cast<int>(i) == dragIdx)
       continue;
     const auto w = m_tiles[i].win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;
-    const LRect lb = tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
-    const LRect br = closeButtonRect(lb);
-    g_pHyprOpenGL->renderRect(pxb(br, s),
-                              cfg::colors.close_button.get(e),
-                              {.round = pxr(br.h / 2.0, s)});
-    if (m_closeGlyph && m_closeGlyph->m_size.x > 0) {
-      const double gw = m_closeGlyph->m_size.x, gh = m_closeGlyph->m_size.y;
-      const double gs = std::min((br.w * 0.62) / std::max(1.0, gw),
-                                 (br.h * 0.62) / std::max(1.0, gh));
-      const double dw = gw * gs, dh = gh * gs;
-      g_pHyprOpenGL->renderTexture(
-          m_closeGlyph,
-          pxb(CBox(br.x + (br.w - dw) / 2.0, br.y + (br.h - dh) / 2.0, dw, dh), s),
-          {.a = static_cast<float>(e)});
-    }
+    drawCloseButton(
+        tileContentBox(i, currentBox(m_tiles[i], static_cast<int>(i))), a);
   }
   glBlendFuncSeparate(blendSrcRGB, blendDstRGB, blendSrcAlpha, blendDstAlpha);
   if (!blendBefore)

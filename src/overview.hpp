@@ -295,7 +295,10 @@ private:
   LRect dragVisualBox() const;
   int draggedTile() const;
   void drawPreviewTile(size_t i, const LRect &slot, bool lift) const;
-  void drawPreviewChrome(size_t i, const LRect &lb, bool lift) const;
+  // alphaMul dissolves the whole chrome: the carousel fades an off-run card out.
+  void drawPreviewChrome(size_t i, const LRect &lb, bool lift,
+                         float alphaMul = 1.0F) const;
+  void drawCloseButton(const LRect &lb, float a) const;
   // instant=true: collapse with no ws-slide, so close() starts settled.
   void switchToWorkspace(const model::StripItem &it, bool instant = false);
   void dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);

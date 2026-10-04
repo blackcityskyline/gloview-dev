@@ -59,8 +59,7 @@ void Overview::renderCarousel() const {
   const float  roundPow = cfg::look.preview_round_power;
   // Slots move only on a selection change, so a settled box is frame-stable: pad=0.
   const bool settled = m_tileClock.done(glideDur());
-  // layoutTiles-resolved metrics, not fresh defaults: card width is the user's.
-  const auto mt = m_carouselMetrics;
+  const auto mt = m_carouselMetrics; // layoutTiles-resolved: width is the user's
 
   std::vector<int> order;
   order.reserve(m_tiles.size());
@@ -74,9 +73,10 @@ void Overview::renderCarousel() const {
     return ca.depth > cb.depth;
   });
 
-  const auto shadowCol = cfg::colors.shadow.get(1.0);
-  const auto labelCol  = cfg::colors.label.get(e);
-  const bool  dimmed   = e < 0.999;
+  const auto labelCol = cfg::colors.label.get(e);
+  // The ✕ goes after EVERY card: inside the loop a nearer one covers it.
+  LRect hoverBox{};
+  bool  hoverBtn = false;
 
   for (const int i : order) {
     const auto &card = m_carousel.cards[static_cast<size_t>(i)];
@@ -100,99 +100,32 @@ void Overview::renderCarousel() const {
     if (pv.w < 1.0 || pv.h < 1.0)
       continue;
 
-    const bool selected = card.visible && card.depth == 0;
-    const bool hovered  = static_cast<int>(i) == m_hovered;
-    const int  round    = clampRound(cardRound, pv.w, pv.h);
-    const auto backingCol = cfg::colors.backing.get();
-    const float a = e * alphaMul;
-    const float fa = entryFade(i) * alphaMul;
+    const int  round = clampRound(cardRound, pv.w, pv.h);
+    const float fa   = entryFade(i) * alphaMul;
 
-    dropShadow(pv, s, cfg::colors.shadow.get(1.0), 6.0, 16.0,
-               static_cast<float>(fa * 0.18), round, roundPow);
-
-    if (dimmed && fa > 0.0F) {
-      if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
-        const double pxW = static_cast<double>(m->m_pixelSize.x);
-        const double pxH = static_cast<double>(m->m_pixelSize.y);
-        const CBox  pbPx = pxb(pv, s);
-        CTexPassElement::SRenderData td{};
-        td.tex           = btex;
-        td.box           = pbPx;
-        td.a             = 1.0F;
-        td.round         = pxr(round, s);
-        td.roundingPower = roundPow;
-        td.allowCustomUV = true;
-        auto &uvTL =
-            g_pHyprRenderer->m_renderData.primarySurfaceUVTopLeft;
-        auto &uvBR =
-            g_pHyprRenderer->m_renderData.primarySurfaceUVBottomRight;
-        uvTL = Vector2D{pbPx.x / pxW, pbPx.y / pxH};
-        uvBR = Vector2D{(pbPx.x + pbPx.width) / pxW,
-                        (pbPx.y + pbPx.height) / pxH};
-        g_pHyprRenderer->draw(td, g_pHyprRenderer->m_renderData.damage);
-        uvTL = Vector2D{-1.0, -1.0};
-        uvBR = Vector2D{-1.0, -1.0};
-        g_pHyprOpenGL->renderRect(
-            pbPx, cfg::blur.backdrop.get(a),
-            {.round = pxr(round, s), .roundingPower = roundPow});
-      }
-    }
-    safetyBacking(pv, s, backingCol, 0.08 * a, round, roundPow);
-
-    if (cfg::look.show_border != 0)
-      strokeRing(pv, s, cfg::colors.border.get(a),
-                 std::max<int>(1, cfg::look.border_size.get()), round, roundPow);
-    if (cfg::look.show_focus_border != 0 && (selected || hovered))
-      strokeRing(pv, s, selected ? cfg::colors.select_border.get(a)
-                                 : cfg::colors.hover_border.get(a),
-                 selected ? std::max<int>(1, cfg::look.select_border_size.get())
-                          : std::max<int>(1, cfg::look.hover_border_size.get()),
-                 round, roundPow);
+    drawPreviewChrome(static_cast<size_t>(i), pv, false, alphaMul);
 
     renderWindowLive(w, m, pxb(pv, s), pxb(pv, s), fa, when, pxr(round, s),
                      roundPow, settled, WindowFit::Contain);
 
+    // Depth darkening: the run reads as receding cards, not as N equal previews.
     if (card.depth > 0) {
       const double tone =
           (card.depth == 1 ? kNearTone : kFarTone) *
           std::pow(kDepthTaper, static_cast<double>(card.depth - 1));
-      g_pHyprOpenGL->renderRect(pxb(pv, s), argb(shadowCol, tone * a),
-                                {.round = pxr(round, s),
-                                 .roundingPower = roundPow});
+      g_pHyprOpenGL->renderRect(
+          pxb(pv, s), argb(cfg::colors.shadow.get(1.0), tone * fa),
+          {.round = pxr(round, s), .roundingPower = roundPow});
     }
 
-    if (card.showCaption && t.label && t.label->m_size.x > 0 &&
-        !swapfxActive(w)) {
-      const double lw = t.label->m_size.x, lh = t.label->m_size.y;
-      const double padX = 14.0, padY = 6.0;
-      const double pw = std::min(pv.w, lw + 2 * padX);
-      const double ph = lh + 2 * padY;
-      const double px = pv.x + (pv.w - pw) / 2.0;
-      const double py = pv.y + pv.h + mt.captionGap - padY;
-      g_pHyprOpenGL->renderRect(pxb(LRect{px, py, pw, ph}, s),
-                                cfg::colors.title_pill.get(a),
-                                {.round = pxr(ph / 2.0, s)});
-      g_pHyprOpenGL->renderTexture(
-          t.label, pxb(LRect{px + (pw - lw) / 2.0, py + padY, lw, lh}, s),
-          {.a = a});
-    }
-
-        if (hovered && !closeOnDoubleClick() && m_closeGlyph &&
-        m_closeGlyph->m_size.x > 0) {
-      const LRect br = closeButtonRect(pv);
-      g_pHyprOpenGL->renderRect(pxb(br, s), cfg::colors.close_button.get(a),
-                                {.round = pxr(br.h / 2.0, s)});
-      const double gw = m_closeGlyph->m_size.x, gh = m_closeGlyph->m_size.y;
-      const double gs = std::min((br.w * 0.62) / std::max(1.0, gw),
-                                 (br.h * 0.62) / std::max(1.0, gh));
-      g_pHyprOpenGL->renderTexture(
-          m_closeGlyph,
-          pxb(LRect{br.x + (br.w - gw * gs) / 2.0,
-                    br.y + (br.h - gh * gs) / 2.0, gw * gs, gh * gs},
-              s),
-          {.a = a});
+    if (i == m_hovered && !closeOnDoubleClick() && card.visible) {
+      hoverBox  = pv;
+      hoverBtn  = true;
     }
   }
+
+  if (hoverBtn)
+    drawCloseButton(hoverBox, static_cast<float>(e));
 
   if (m_tiles.size() > 1) {
     const std::string text =
