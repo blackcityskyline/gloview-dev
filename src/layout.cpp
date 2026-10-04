@@ -183,8 +183,6 @@ Engine parseEngine(const char* s) {
         return Engine::Grid;
     if (std::strcmp(s, "natural") == 0)
         return Engine::Natural;
-    if (std::strcmp(s, "carousel") == 0)
-        return Engine::Carousel;
     return Engine::Rows;
 }
 

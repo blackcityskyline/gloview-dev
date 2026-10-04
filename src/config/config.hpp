@@ -61,7 +61,10 @@ struct grid {
 
 inline grid grid;
 
+// The run is a separate mechanism laid over whatever `layout` says, not a
+// layout of its own — see Overview::layoutTiles for where it takes over.
 struct carousel {
+  Int enabled;
   Int cards;
   Int card_width;
 };

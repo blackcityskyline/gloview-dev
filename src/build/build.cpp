@@ -306,18 +306,19 @@ void Overview::layoutTiles() {
   if (!m || m_tiles.empty())
     return;
 
-  // The renderer asks m_engine, never the config: free-arrange and the all/one
-  // flip both override the layout engine, and a renderer that picked its path
-  // from the config would draw a run this function never produced.
-  Engine engine = parseEngine(cfg::grid.layout.get().c_str());
-  if (m_desktopMode)
-    engine = Engine::Natural;
-  else if (engine == Engine::Carousel && !showAllWorkspaces())
-    engine = Engine::Rows; // the run is a many-windows arrangement
-  m_engine = engine;
+  // The renderer asks m_engine / m_run, never the config: free-arrange, the
+  // all/one flip and the carousel switch all override what `layout` says, and a
+  // renderer that read the config would draw an arrangement this function never
+  // produced.
+  m_engine = m_desktopMode ? Engine::Natural
+                           : parseEngine(cfg::grid.layout.get().c_str());
+  // The run is a separate mechanism over any layout, and only in the
+  // all-workspaces view: a single workspace's handful of tiles has nothing to
+  // arrange against. With it off the layout runs untouched.
+  m_run = cfg::carousel.enabled != 0 && !m_desktopMode && showAllWorkspaces();
 
   LayoutCfg cfg;
-  cfg.engine = engine;
+  cfg.engine = m_engine;
   cfg.gap = cfg::grid.gap;
   const int padX = cfg::grid.padding;
   const int padT = cfg::grid.padding_top;
@@ -371,11 +372,10 @@ void Overview::layoutTiles() {
   m_carousel        = {};
   m_carouselFor     = -1;
 
-  // Carousel only reshapes the main area, and only in the all-workspaces view:
-  // it arranges one window against its neighbours, which a single workspace's
-  // handful of tiles has no use for.
+  // The run replaces the main area wholesale: it lays one window against its
+  // neighbours, which a grid of boxes cannot express.
   // Slots are built AROUND m_selected: selection = relayout, not repaint.
-  if (m_engine == Engine::Carousel) {
+  if (m_run) {
     const int sel = (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size()))
                         ? m_selected
                         : 0;

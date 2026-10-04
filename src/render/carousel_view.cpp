@@ -29,11 +29,11 @@ constexpr double kDepthTaper = 0.8;
 
 } // namespace
 
-// What layoutTiles actually built, not what the config asks for: free-arrange
-// overrides the layout engine, and a renderer that read the config would reach
-// for a run that was never produced.
+// What layoutTiles actually built, not what the config asks for: free-arrange,
+// the all/one flip and the carousel switch each override it, and a renderer that
+// read the config would reach for an arrangement that was never produced.
 bool Overview::carouselMode() const {
-  return m_engine == Engine::Carousel;
+  return m_run;
 }
 
 // A selection move is a relayout + glide, detected once: renderStage vs m_carouselFor.

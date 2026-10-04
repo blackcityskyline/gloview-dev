@@ -111,7 +111,8 @@ constexpr IntSpec kInts[] = {
     {&grid.padding, "plugin:gloview:padding", 80},
     {&grid.padding_top, "plugin:gloview:padding_top", 40},
     {&grid.padding_bottom, "plugin:gloview:padding_bottom", 70},
-    // carousel (layout == "carousel" only)
+    // carousel: the run, laid over `layout` in the all-workspaces view only
+    {&carousel.enabled, "plugin:gloview:carousel", 0},
     {&carousel.cards, "plugin:gloview:carousel_cards", 5},
     {&carousel.card_width, "plugin:gloview:carousel_card_width", 500},
     {&strip.height, "plugin:gloview:strip_height", 150},

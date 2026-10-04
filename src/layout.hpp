@@ -33,7 +33,6 @@ enum class Engine {
     Rows,
     Grid,
     Natural,
-    Carousel,
 };
 
 struct LayoutCfg {

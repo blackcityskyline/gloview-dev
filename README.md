@@ -114,18 +114,19 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 - **`rows`** (default) — macOS-like: previews keep their aspect ratio and are packed into balanced rows, with the row count chosen to make the previews as large as possible. Reads spatially like the real desktop.
 - **`grid`** — uniform cells, one preview centered in each.
 - **`natural`** — keeps each window's real on-screen position, uniformly scaling the whole arrangement to fit.
-- **`carousel`** — one overlapped horizontal run of cards with the selected window centered and its neighbours peeking out on both sides. All-workspaces view only; a single workspace gets the ordinary grid. It is only a different arrangement of the main area — the strip, workspace switching and the all↔one flip all work exactly as they do in the other modes. See [Carousel mode](#carousel-mode).
+- **`carousel`** — a switch, not a layout: when on it lays the main area out as one overlapped horizontal run of cards with the selected window centered and its neighbours peeking out on both sides, on top of whatever `layout` says. It applies in the **all-workspaces view only** — a single workspace has nothing to arrange against — and with it off the layout runs untouched. It is only a different arrangement of the main area: the strip, workspace switching, the all↔one flip, alt-tab, drag-and-drop and canvas mode all keep working. See [Carousel mode](#carousel-mode).
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `layout` | `rows` \| `grid` \| `natural` \| `carousel` | `rows` | Main-area preview layout engine |
+| `layout` | `rows` \| `grid` \| `natural` | `rows` | Main-area preview layout engine |
 | `gap` | int (px) | `34` | Min spacing between window previews |
 | `padding` | int (px) | `80` | Left/right outer margin of the preview area |
 | `padding_top` | int (px) | `40` | Extra gap between the strip and the previews |
 | `padding_bottom` | int (px) | `70` | Bottom outer margin |
 | `max_scale` | float | `1.0` | Never enlarge a preview past real size × this |
-| `carousel_cards` | int | `5` | `layout = "carousel"` only: how many cards the run shows (any count, even included) |
-| `carousel_card_width` | int (px) | `500` | `layout = "carousel"` only: the centered card's width; the run scales down to fit |
+| `carousel` | int | `0` | Lay the main area out as a card run; all-workspaces view only, over any `layout` |
+| `carousel_cards` | int | `5` | `carousel` only: how many cards the run shows (any count, even included) |
+| `carousel_card_width` | int (px) | `500` | `carousel` only: the centered card's width; the run scales down to fit |
 
 ### Animations
 
@@ -267,15 +268,17 @@ supersedes the older `bar_position` (top/bottom only); set `anchor` and it wins.
 
 ### Carousel mode
 
-`layout = "carousel"` rearranges the MAIN AREA into a window switcher run: one
-row of overlapped fixed-width cards with the selected window centered. It is a
-layout mode, not a separate mode of the plugin: the workspace strip stays exactly
-where it is, and workspace switching, the all↔one flip, alt-tab, drag-and-drop
-and canvas mode all keep working.
+`carousel = 1` rearranges the MAIN AREA into a window switcher run: one row of
+overlapped fixed-width cards with the selected window centered. It is a switch
+laid over `layout`, not a layout of its own: `layout` keeps saying `rows`,
+`grid` or `natural` and decides everything the run does not. The workspace strip
+stays exactly where it is, and workspace switching, the all↔one flip, alt-tab,
+drag-and-drop and canvas mode all keep working.
 
 **It only applies in the all-workspaces view.** A run exists to arrange many
-windows against each other; a single workspace's handful of tiles gets the
-ordinary grid, so toggling all↔one switches layout too, not just the window set.
+windows against each other; a single workspace's handful of tiles has nothing to
+arrange against, so toggling all↔one switches the arrangement too, not just the
+window set. With `carousel = 0` the layout runs untouched in both views.
 
 ```
             2 / 7                          counter (n / total)
@@ -318,6 +321,7 @@ ordinary grid, so toggling all↔one switches layout too, not just the window se
 
 | Option | Type | Default | Description |
 |---|---|---|---|
+| `carousel` | int | `0` | Lay the main area out as a card run instead of `layout`; all-workspaces view only |
 | `carousel_cards` | int | `5` | How many cards the run shows (any count, even included) |
 | `carousel_card_width` | int (px) | `500` | Width of the centered card; the run scales down to fit |
 
