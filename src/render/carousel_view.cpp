@@ -66,6 +66,14 @@ void Overview::renderCarousel() const {
     return ca.depth > cb.depth;
   });
 
+  // Where the deck collapses INTO: the focused card, mid-flight. Every other
+  // card has to be gone by the time the landing covers this spot, so its exit
+  // runs on the first third of the close, not the whole of it.
+  const LRect focus =
+      m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size())
+          ? currentBox(m_tiles[static_cast<size_t>(m_selected)], m_selected)
+          : LRect{0, 0, 0, 0};
+
   for (const int i : order) {
     const auto &card = m_carousel.cards[static_cast<size_t>(i)];
     // A card off the run is not part of the carousel: it has no box, and the
@@ -86,13 +94,14 @@ void Overview::renderCarousel() const {
             : 0.0;
     look.button = tileCloseButtons();
     // Only the focused card lands: it grows into the real window and stays whole
-    // for the handoff. Every other one shrinks toward its own centre and fades,
-    // the exit the ghosts already use, so the run is seen leaving instead of
-    // being blanketed by the landing.
+    // for the handoff. The rest collapse toward it and are gone well before it
+    // arrives — shrinking in place only hid them under the landing a frame
+    // later, which is what read as the run vanishing without an animation.
     if (!m_opening && card.depth != 0) {
-      const double out = 1.0 - eased();
-      const double k   = 1.0 - 0.3 * out;
-      const double cx  = look.box.cx(), cy = look.box.cy();
+      const double out = std::clamp(m_progress / 0.45, 0.0, 1.0);
+      const double k   = 1.0 - 0.4 * out;
+      const double cx  = look.box.cx() + (focus.cx() - look.box.cx()) * out;
+      const double cy  = look.box.cy() + (focus.cy() - look.box.cy()) * out;
       look.box = LRect{cx - look.box.w * k * 0.5, cy - look.box.h * k * 0.5,
                        look.box.w * k, look.box.h * k};
       look.fade = 1.0 - out;
