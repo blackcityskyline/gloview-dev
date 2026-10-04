@@ -116,9 +116,6 @@ void Overview::drawDragStripChrome() const {
                                .borderSize = th,
                                .a = 1.0F,
                                .outerRound = outerRoundPx(round, th, roundPow, s)});
-
-  safetyBacking(lb, s, cfg::colors.backing.get(), 0.08, round,
-                roundPow);
 }
 
 void Overview::renderDragWindow() const {

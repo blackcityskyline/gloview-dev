@@ -71,11 +71,9 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 // nothing else: matching it to the ring drawn around the tile is the caller's
 // job (contentRadiusPx).
 //
-// `contain` fits the window WHOLE inside destPx instead of covering it. Covering
-// requires destPx to carry the window's own aspect — a window covering a box of
-// another aspect sticks out past the ring far enough that the corner arcs cannot
-// meet. Contained content never sticks out, so a fixed-aspect box is safe; it
-// leaves a margin, and the caller's card surface is what fills it.
+// destPx must carry the window's own aspect UNLESS `contain`, which fits the
+// window whole inside the box instead: covering a box of another aspect pushes
+// the content past the ring far enough that the corner arcs cannot meet.
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx,
@@ -93,8 +91,8 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   const auto size = w->sizeAnimation()->goal();
   const float logicalW = std::max((float)size.x, 5.F);
   const float logicalH = std::max((float)size.y, 5.F);
-  // Over-cover from the CENTER: fit-exact lets the opaque backing show as seams.
-  // Contained content sits inside the box, so the seam pad would only shrink it.
+  // Over-cover from the CENTER: fit-exact lets the backing show as seams. A
+  // contained window sits inside the box, so the pad would only shrink it.
   const float pad = (settled || contain) ? 0.0F : kSeamPadPx;
   const float sW  = (static_cast<float>(destPx.w) + pad) /
                    std::max(logicalW * mon->m_scale, 5.F);

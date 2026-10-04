@@ -384,8 +384,6 @@ void Overview::layoutTiles() {
     if (const int w = static_cast<int>(cfg::carousel.card_width.get());
         w > 0) {
       mt.selectedW = w;
-      mt.nearW     = w * 380.0 / 500.0;
-      mt.farW      = w * 280.0 / 500.0;
       mt.overlap   = w * 60.0 / 500.0;
     }
     const LRect usable{cfg.padLeft, cfg.padTop,

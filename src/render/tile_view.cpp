@@ -142,14 +142,16 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
   dropShadow(box, s, shadowCol, look.lift ? 14.0 : 6.0, look.lift ? 30.0 : 16.0,
              static_cast<float>(e * 0.18 * f), round, roundPow);
 
-  if (cfg::look.show_border != 0)
-    strokeRing(box, s, cfg::colors.border.get(e * f), cfg::look.border_size,
-               round, roundPow);
-  if (focused)
-    strokeRing(box, s,
-               framed ? cfg::colors.hover_border.get(e * f)
-                      : cfg::colors.select_border.get(e * f),
-               ringW, round, roundPow);
+  if (look.frame) {
+    if (cfg::look.show_border != 0)
+      strokeRing(box, s, cfg::colors.border.get(e * f), cfg::look.border_size,
+                 round, roundPow);
+    if (focused)
+      strokeRing(box, s,
+                 framed ? cfg::colors.hover_border.get(e * f)
+                        : cfg::colors.select_border.get(e * f),
+                 ringW, round, roundPow);
+  }
 
   // Transition frost: the cached blur redrawn at CONSTANT alpha (fading it
   // leaves C*e*(1-e) of the sharp desktop leaking), plus the dim rect at the
@@ -181,20 +183,9 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
                                 {.round = pxr(round, s), .roundingPower = roundPow});
     }
   }
-  // A card is filled edge to edge: its content is contained, so whatever the
-  // window does not cover would otherwise be bare backdrop inside the ring.
-  if (look.card) {
-    const CBox boxPx = pxb(box, s);
-    if (boxPx.width > 0 && boxPx.height > 0)
-      g_pHyprOpenGL->renderRect(boxPx, cfg::colors.backing.get(e * f),
-                                {.round = pxr(round, s), .roundingPower = roundPow});
-  } else {
-    safetyBacking(box, s, cfg::colors.backing.get(), 0.08, round, roundPow);
-  }
-
   renderWindowLive(w, m, pxb(box, s), pxb(box, s), f, Time::steadyNow(),
-                   contentRadiusPx(round, ringW, roundPow, s, !look.card),
-                   roundPow, m_tileClock.done(glideDur()), look.card);
+                   contentRadiusPx(round, ringW, roundPow, s, !look.contain),
+                   roundPow, m_tileClock.done(glideDur()), look.contain);
 
   if (look.tone > 0.0)
     g_pHyprOpenGL->renderRect(pxb(box, s), argb(shadowCol, look.tone * e * f),

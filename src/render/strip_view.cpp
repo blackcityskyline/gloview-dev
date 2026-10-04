@@ -191,11 +191,6 @@ void Overview::renderStrip() const {
           if (stripSlotGrabbed(i, j))
             strokeRing(wbL, s, cfg::colors.hover_border.get(e),
                        2, wRound, roundPow);
-          // No backing while the window flies: its thumbnail is suppressed too.
-          if (swapfxActive(w))
-            continue;
-          safetyBacking(wbL, s, cfg::colors.backing.get(),
-                        0.08 * e, wRound, roundPow);
         }
       }
     }

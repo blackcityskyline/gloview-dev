@@ -126,7 +126,7 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `max_scale` | float | `1.0` | Never enlarge a preview past real size × this |
 | `carousel` | int | `0` | Lay the main area out as a card run; all-workspaces view only, over any `layout` |
 | `carousel_cards` | int | `5` | `carousel` only: how many cards the run shows (any count, even included) |
-| `carousel_card_width` | int (px) | `500` | `carousel` only: the centered card's width; the run scales down to fit |
+| `carousel_card_width` | int (px) | `500` | `carousel` only: the centred card's width; the run scales down if it doesn't fit |
 
 ### Animations
 
@@ -290,40 +290,33 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 - **Card count and size are yours.** `carousel_cards` sets how many cards the
   run shows — any number, even included (with an even count the selected card
   sits one slot off the exact middle). `carousel_card_width` sets the centered
-  card's width in px; the rest of the ladder steps down at 380/500, 280/500 and
-  geometrically beyond. Windows beyond the count are simply **not drawn** — the
-  run never shows a card that is not in it. The whole run scales down uniformly
-  if it doesn't fit, so nothing is ever cut off.
-- **Cards are fixed-aspect panels with the window contained inside.** The run
-  needs ONE card height, so every card is the same 1.6 ratio regardless of the
-  window's shape, and the window is scaled to sit WHOLE inside it. The leftover
-  margin is the card's own surface (the usual `backing` colour), not bare
-  backdrop — which is also why the ring can sit on the content: contained
-  content never spills past the card, so the corner arcs always meet.
+  card's width in px; the rest step down at 76%, 56% and 8% per step beyond that.
+  Windows beyond the count are simply **not drawn** — the run never shows a card
+  that is not in it. The whole run scales down uniformly if it does not fit, so
+  nothing is ever cut off.
+- **One card shape, shrinking outward.** Every card is the same 1.6 aspect and
+  its width comes from its distance from the centre: `carousel_card_width`, then
+  76%, then 56%, then 8% smaller per step beyond that. A window narrower than its
+  card is fitted whole inside it, so it simply sits in a frame larger than itself.
+- **Only the centred card is framed.** The others have no ring — the run reads as
+  a band of windows with one focus, not a row of boxes. The ring is one fixed size
+  at every depth: it is not scaled down to suit a smaller card.
 - **The chrome is the plugin's own**, exactly as in every other layout, because
-  it is literally the same code: a soft drop shadow, the thin always-on ring
-  plus the thicker focus ring from `show_border` / `show_focus_border` /
-  `border_size` / `select_border`, the frost underlay while the backdrop is
-  still fading, a title pill under the **centered** card (and the hovered one),
-  and a bare `n / total` counter above the run.
+  it is literally the same code: a soft drop shadow, the frost underlay while the
+  backdrop is still fading, a title pill under the **centred** card (and the
+  hovered one), and a bare `n / total` counter above the run. Nothing is filled
+  in behind a window — a tile is the window plus its frame, and where they
+  differ the backdrop shows.
 - **Depth.** Cards one step out are dimmed slightly, cards two steps out more so
   (`0.125` / `0.25` of the shadow colour), thinning further past that so a deep
-  run doesn't go black.
-  Cards paint far → centered, so the centered one and its ring sit on top.
-- **The chrome is the plugin's own**, exactly as in every other layout, because
-  it is literally the same code: a soft drop shadow, the thin always-on ring
-  plus the thicker focus ring from `show_border` / `show_focus_border` /
-  `border_size` / `select_border`, the frost underlay while the backdrop is
-  still fading, a title pill under the **centered** card (and the hovered one),
-  and a bare `n / total` counter above the run. The card's surface is the usual
-  `backing` colour at its own alpha — enough to fill the margin a contained
-  window leaves, not an opaque slab.
+  run doesn't go black. Cards paint far → centred, so the centred one and its ring
+  sit on top.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `carousel` | int | `0` | Lay the main area out as a card run instead of `layout`; all-workspaces view only |
 | `carousel_cards` | int | `5` | How many cards the run shows (any count, even included) |
-| `carousel_card_width` | int (px) | `500` | Width of the centered card; the run scales down to fit |
+| `carousel_card_width` | int (px) | `500` | Width of the centred card; the run scales down if it doesn't fit |
 
 - **Navigation.** Because the slots are built around the selection, moving it
   rotates the run (all cards glide to their new depths on the usual `glide`

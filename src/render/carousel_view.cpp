@@ -75,12 +75,12 @@ void Overview::renderCarousel() const {
       continue;
 
     TileLook look;
-    // The card IS the box: layoutTiles already gave it the run's one aspect.
     look.box = currentBox(m_tiles[static_cast<size_t>(i)], i);
-    if (look.box.w < 1.0 || look.box.h < 1.0)
-      continue;
-    look.round = clampRound(cfg::look.preview_round, look.box.w, look.box.h);
-    look.card  = true;
+    // Only the centered card is framed, and its window is contained inside the
+    // card: a card of one aspect cannot also be every window's aspect.
+    const bool centre = card.depth == 0;
+    look.frame = centre;
+    look.contain = centre;
     look.tone =
         card.depth > 0
             ? (card.depth == 1 ? kNearTone : kFarTone) *

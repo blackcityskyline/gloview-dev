@@ -51,14 +51,15 @@ std::vector<LRect> computeLayout(const std::vector<LRect>& naturals, const LRect
 
 Engine parseEngine(const char* s);
 
-// A carousel card is a fixed-aspect panel with the window CONTAINED inside it:
-// the run needs one card height, and a window scaled to cover a card of another
-// aspect sticks out past the ring far enough that the corner arcs cannot meet.
+// The run is a band of fixed-aspect cards that shrink with distance from the
+// centre. The window is CONTAINED inside its card, so a card of another aspect
+// never pushes content past the ring — that overshoot is what no corner radius
+// can hide.
 struct CarouselMetrics {
     double selectedW     = 500.0;
-    double nearW         = 380.0;
-    double farW          = 280.0;
-    double taper         = 0.8;
+    double nearK         = 0.76;  // depth 1, as a fraction of selectedW
+    double farK          = 0.56;  // depth 2, as a fraction of selectedW
+    double taper         = 0.8;   // every depth past 2
     double overlap       = 60.0;
     double aspect        = 1.6;
     double captionH      = 44.0;
