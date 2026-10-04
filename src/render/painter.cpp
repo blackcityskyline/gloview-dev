@@ -147,6 +147,11 @@ void Overview::renderStage(eRenderStage stage) {
   }
 
   updateHover();  // keep hover fresh even when the pointer is warped, not moved
+  // Carousel: the card slots are built around m_selected, so a selection
+  // change (from ANY source — arrows, alt-tab, click, hover-follow) has to
+  // re-lay-out and glide the run into its new depths. Done here, once, rather
+  // than in each selection path.
+  relayoutCarousel();
   syncTiles();    // window opened/closed/moved on this workspace → reflow
   updateSnapshots(); // snapshot mode: grab any tile/strip window we don't
                      // have a frozen texture for yet (cheap: contains() +
@@ -230,10 +235,11 @@ void Overview::paint() {
   renderBackdrop(); // Z0
 
   if (carouselMode()) {
-    // Carousel replaces the whole Z1: its cards overlap, so each card's
-    // content must be drawn between its own frame and the next card's —
-    // impossible with the grid's all-chrome-then-all-content staging. It also
-    // has no workspace strip (Z2 is skipped below).
+    // Carousel replaces the grid's Z1 ONLY — the strip (Z2) below is
+    // untouched, workspace switching included. It cannot reuse the grid's
+    // split stages: cards OVERLAP, so each card's window content must land
+    // between its own frame and the next card's frame, which an
+    // all-chrome-then-all-content order cannot express.
     renderCarousel();
     renderGhosts();
   } else {
@@ -244,20 +250,18 @@ void Overview::paint() {
     renderPulses(false /* grid slots */);
   }
 
-  if (!carouselMode()) {
-    renderStrip(); // Z2
-    renderStripWindows();
-    renderStripButtons();
-    renderPulses(true /* strip slots */);
-    renderSwapFX(); // Z2.5: drag/swap flights, above the strip
+  renderStrip(); // Z2
+  renderStripWindows();
+  renderStripButtons();
+  renderPulses(true /* strip slots */);
+  renderSwapFX(); // Z2.5: drag/swap flights, above the strip
 
-    const bool dragging =
-        draggedTile() >= 0 ||
-        (m_drag.press == model::Drag::Press::StripWin && m_drag.lifted);
-    if (dragging) { // Z3
-      renderDragTile();
-      renderDragWindow();
-    }
+  const bool dragging =
+      draggedTile() >= 0 ||
+      (m_drag.press == model::Drag::Press::StripWin && m_drag.lifted);
+  if (dragging) { // Z3
+    renderDragTile();
+    renderDragWindow();
   }
 
   renderAboveLayers(); // Z4

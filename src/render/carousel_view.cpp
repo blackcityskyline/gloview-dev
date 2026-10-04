@@ -60,21 +60,23 @@ bool Overview::carouselMode() const {
   return parseEngine(cfg::grid.layout.get().c_str()) == Engine::Carousel;
 }
 
-void Overview::stepCarousel(int dir) {
-  const int n = static_cast<int>(m_tiles.size());
-  if (n == 0)
+// The carousel's slots are built AROUND m_selected, so moving the selection
+// is a relayout rather than a repaint. Detected in ONE place — renderStage,
+// comparing m_carouselFor — so every existing way of moving the selection
+// (arrow keys, alt-tab, a click, focus_follows_mouse) rotates the run without
+// any of them knowing this mode exists. Same machinery a drop/reflow uses, so
+// the motion and the anim pump are the ones already proven for a mid-session
+// rebuild.
+void Overview::relayoutCarousel() {
+  if (!carouselMode() || m_tiles.empty())
     return;
-  m_selected = ((m_selected + dir) % n + n) % n;
-  syncFocus();
-  // The slots DEPEND on the selection, so this is a relayout, not just a
-  // repaint: retarget every card and glide them into their new depths. Same
-  // path a drop/reflow takes (capture → layoutTiles → startTileGlide), so the
-  // motion, the damage and the anim pump are the ones already proven for a
-  // mid-session rebuild.
+  if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
+    return; // not a selection change; the next layoutTiles settles it
+  if (m_selected == m_carouselFor)
+    return;
   auto shown = captureCurrentBoxes();
   layoutTiles();
   startTileGlide(shown);
-  damage();
 }
 
 // Cards must paint far → selected (the reference's zIndex 3-min(d,3) does the
@@ -259,8 +261,10 @@ void Overview::renderCarousel() const {
                                text, labelCol, 13);
         tex && tex->m_size.x > 0) {
       const double bw = m_carousel.countW, bh = m_carousel.countH;
-      const double bx = m_carousel.originX + m_carousel.countX;
-      const double by = m_carousel.originY + m_carousel.countY;
+      // originX/Y are relative to the area computeCarousel was given (the
+      // main box minus the strip band and paddings), not to the monitor.
+      const double bx = m_carousel.area.x + m_carousel.originX + m_carousel.countX;
+      const double by = m_carousel.area.y + m_carousel.originY + m_carousel.countY;
       g_pHyprOpenGL->renderRect(
           pxb(LRect{bx, by, bw, bh}, s), cfg::colors.backing.get(),
           {.round = pxr(bh / 3.0, s), .roundingPower = roundPow});

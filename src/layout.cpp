@@ -205,6 +205,7 @@ Engine parseEngine(const char* s) {
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                                const CarouselMetrics& mt) {
     CarouselLayout L;
+    L.area = screen;
     if (count <= 0)
         return L;
     L.cards.resize(static_cast<size_t>(count));

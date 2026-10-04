@@ -99,13 +99,10 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
   if (keyMatches(k, mods, cfg::keys.close.get()))
     close();
   else if (keyMatches(k, mods, cfg::keys.next_workspace.get()))
-    // Carousel has no workspaces/strip: tab walks the card run instead (the
-    // reference's whole navigation model — its trigger key IS tab/alt-tab).
-    carouselMode() ? stepCarousel(1)
-                   : stepWorkspace(1); // grid: cycle the displayed workspace
-                                      // card (wraps; committed on close)
+    stepWorkspace(
+        1); // cycle the displayed workspace card (wraps; committed on close)
   else if (keyMatches(k, mods, cfg::keys.prev_workspace.get()))
-    carouselMode() ? stepCarousel(-1) : stepWorkspace(-1);
+    stepWorkspace(-1);
   else if (keyMatches(k, mods, cfg::keys.activate.get()))
     activateSelection();
   else if (keyMatches(k, mods, cfg::keys.close_window.get()))
@@ -426,10 +423,15 @@ void Overview::moveSelection(int dx, int dy) {
   // Carousel: the tiles ARE a row, so there is no direction to search in —
   // left/right is a circular index step (the reference's cycleSelection), and
   // up/down has no meaning. dy is deliberately ignored rather than mapped to
-  // something arbitrary.
+  // something arbitrary. No relayout here: renderStage's relayoutCarousel()
+  // sees the selection change and rotates the run.
   if (carouselMode()) {
-    if (dx != 0)
-      stepCarousel(dx);
+    if (dx != 0) {
+      const int n = static_cast<int>(m_tiles.size());
+      m_selected = ((m_selected + dx) % n + n) % n;
+      syncFocus();
+      damage();
+    }
     return;
   }
   const LRect cur = currentBox(m_tiles[m_selected], m_selected);
@@ -469,10 +471,6 @@ void Overview::stepAltTab(int dir) {
   const int n = static_cast<int>(m_tiles.size());
   if (n == 0)
     return;
-  if (carouselMode()) {
-    stepCarousel(dir); // slots depend on the selection — needs the relayout
-    return;
-  }
   m_selected = ((m_selected + dir) % n + n) % n;
   syncFocus();
   damage();

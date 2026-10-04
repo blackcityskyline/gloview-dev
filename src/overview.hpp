@@ -131,6 +131,14 @@ public:
   // read by the painter — recomputed on every relayout, so it is always in
   // sync with m_tiles.
   CarouselLayout m_carousel;
+  // The selection m_carousel was built for (-1 when not in carousel mode).
+  // The slots are laid out AROUND the selection, so any change to it needs a
+  // relayout; renderStage() compares against this and glides the run into its
+  // new depths. Keeping the check in ONE place is what lets every existing
+  // selection path (arrows, alt-tab, click, focus_follows_mouse) work in this
+  // mode without each of them learning about it.
+  int m_carouselFor = -1;
+  void relayoutCarousel(); // no-op unless the selection moved
   void renderMainWindows() const; // live window surfaces for the main-area tiles
   void renderGhosts() const; // removed-tile fade-out (populate mirror), drawn
                              // UNDER the mains

@@ -112,10 +112,8 @@ double Overview::tileProgress(int i) const {
   const double glideMs = (m_tileClockMs > 0) ? m_tileClockMs : m_glide.ms;
   const double base = m_opening ? m_tileClock.raw(glideMs) : m_progress;
   // Carousel: one shared clock for the whole run. Cards swap depths by sliding
-  // PAST each other, so a per-card stagger would make them arrive out of order
-  // (and look like a queue shuffling) instead of as one rotating band — the
-  // reference animates every card off a single 0→1 tween (syncSelection's
-  // Style::animNormal / EaseOutCubic).
+  // PAST each other, so a per-card stagger would make them arrive out of
+  // order (a queue shuffling) instead of as one rotating band.
   if (carouselMode())
     return base;
   return staggered(base, i, static_cast<int>(m_tiles.size()));
@@ -140,15 +138,16 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
   // the monitor's top-left corner — a shrinking card flying diagonally off
   // screen. Park it just past the run's edge instead, on its own side: the
   // reference's outgoing card slides outward before it hides
-  // (windowSwitcherOutgoingCardSlide). Size is frozen at the last real slot so
-  // it slides out at its old width, then stops being drawn (visible == false).
+  // (windowSwitcherOutgoingCardSlide). Size frozen at the last real slot, so it
+  // slides out at its old width and then stops being drawn (visible == false).
   if (carouselMode() && b.w < 1.0 && a.w >= 1.0 && i >= 0 &&
       static_cast<size_t>(i) < m_carousel.cards.size()) {
     const auto &c = m_carousel.cards[static_cast<size_t>(i)];
     const double dir =
         c.direction != 0 ? static_cast<double>(c.direction) : 1.0;
-    const double out = dir > 0 ? m_carousel.originX + m_carousel.stripW
-                               : m_carousel.originX - a.w;
+    const double out =
+        dir > 0 ? m_carousel.area.x + m_carousel.originX + m_carousel.stripW
+               : m_carousel.area.x + m_carousel.originX - a.w;
     r.x = lerp(a.x, out, e);
     r.y = a.y;
     r.w = a.w;

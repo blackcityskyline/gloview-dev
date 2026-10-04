@@ -114,7 +114,7 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 - **`rows`** (default) — macOS-like: previews keep their aspect ratio and are packed into balanced rows, with the row count chosen to make the previews as large as possible. Reads spatially like the real desktop.
 - **`grid`** — uniform cells, one preview centered in each.
 - **`natural`** — keeps each window's real on-screen position, uniformly scaling the whole arrangement to fit.
-- **`carousel`** — a fullscreen switcher: fixed-width cards in one overlapped horizontal run with the selected window centered and its neighbours peeking out on both sides. Geometry is ported 1:1 from [noctalia](https://github.com/noctalia-dev/noctalia)'s window switcher (v5.2). Each card's preview box has a **fixed 1.6 aspect** and the window is **contained** (letterboxed) inside it, so windows of any shape sit whole inside the same card. See [Carousel mode](#carousel-mode).
+- **`carousel`** — fixed-width cards in one overlapped horizontal run, the selected window centered and its neighbours peeking out on both sides. Geometry ported 1:1 from [noctalia](https://github.com/noctalia-dev/noctalia)'s window switcher (v5.2). Each card's preview box has a **fixed 1.6 aspect** and the window is **contained** (letterboxed) inside it, so windows of any shape sit whole inside the same card. It is only a different arrangement of the main area — the strip, workspace switching and the all↔one flip all work exactly as they do in the other modes. See [Carousel mode](#carousel-mode).
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -265,9 +265,11 @@ supersedes the older `bar_position` (top/bottom only); set `anchor` and it wins.
 
 ### Carousel mode
 
-`layout = "carousel"` replaces the grid with a fullscreen window switcher, ported
-1:1 from [noctalia](https://github.com/noctalia-dev/noctalia) v5.2's window
-switcher.
+`layout = "carousel"` rearranges the MAIN AREA into a window switcher run,
+ported 1:1 from [noctalia](https://github.com/noctalia-dev/noctalia) v5.2's
+window switcher. It is a layout mode, not a separate mode of the plugin: the
+workspace strip stays exactly where it is, and workspace switching, the
+all↔one flip, alt-tab, drag-and-drop and canvas mode all keep working.
 
 ```
         ┌───────┐
@@ -279,7 +281,9 @@ switcher.
 
 - **Fixed card slots.** Selected 500px wide, near 380px, far 280px (logical px),
   overlapping by 60px. Up to 5 cards show; on a narrow screen the run sheds a
-  slot (never below 3), and the whole run then scales down to fit.
+  slot (never below 3), and the whole run then scales down to fit. The run is
+  laid out in the same usable box every other mode gets — `padding*` and the
+  reserved strip band still apply.
 - **Contained previews.** Each card's preview box has a fixed **1.6 aspect**
   regardless of the window's own shape, and the window is scaled to fit WHOLE
   inside it (letterboxed on whichever axis is short). A 16:10 window and a 9:21
@@ -287,29 +291,34 @@ switcher.
   behavior, and the reason the mode exists.
 - **Depth.** Cards one step out are dimmed slightly, cards two steps out more so
   (`0.125` / `0.25` of the shadow color — the reference's `kNearToneAlpha` /
-  `kFarToneAlpha`). The centered card gets the emphasized ring.
+  `kFarToneAlpha`). The centered card gets the emphasized ring. Cards paint far
+  → selected, so the centered one and its ring sit on top.
 - **Caption** under the selected card only, plus the `n / total` counter above
   the run.
-- **Navigation.** Left/Right and Tab/Shift-Tab step the centered card
-  (circular); the scroll wheel does the same; Enter or a click focuses the
-  selected window and dismisses; `✕` on the hovered card closes that window.
+- **Navigation.** Because the slots are built around the selection, moving it
+  rotates the run (all cards glide to their new depths on the usual `glide`
+  clock, without the per-tile stagger — it is one band, not a queue).
+  - Left/Right step the centered card, circularly (the reference's
+    `cycleSelection`); up/down do nothing.
+  - Tab/Shift-Tab, the digit keys and the `gloview:allworkspaces` toggle keep
+    their normal meaning: **workspaces**, not cards.
+  - Alt-Tab still cycles the selection; Enter or a click focuses the selected
+    window and dismisses.
+  - `✕` on the hovered card closes that window.
+- **Hover** does not move the selection — the slots are built around it, so
+  following the mouse would re-lay-out the run on every crossing. Hover swaps
+  the ring and reveals the `✕`.
 
-Differences from the reference, all deliberate:
+Only the reference's shell-UI chrome is left out: app icons, drop shadows and
+its per-card open/close scale-slide (the plugin's own tile glide covers the
+motion). Colors, border sizes, corner rounding and durations come from the
+usual `look.*`/`colors.*`/`anim.*` options — the carousel adds no options of
+its own.
 
-- **No workspace strip.** The reference has none, so carousel mode drops ours
-  too — the card run is the entire UI. Workspace keys (`1`…`0`, `gloview:allworkspaces`,
-  the `+` card) do nothing here.
-- **Canvas/desktop mode is disabled** — it parks previews at their real
-  on-screen positions, which is meaningless against fixed card slots.
-- Hover does **not** move the selection (the slots are built around it, so
-  following the mouse would re-lay-out the run on every crossing). Hover only
-  swaps the ring and reveals the `✕`.
-- No app icons, no drop shadows, no per-card open/close scale-slide: those are
-  the reference's shell-UI chrome, and the plugin's own tile glide already
-  covers the motion.
-
-Colors, border sizes, corner rounding and durations come from the usual
-`look.*`/`colors.*`/`anim.*` options — the carousel has no options of its own.
+Canvas mode still overrides the carousel (it is a different engine entirely and
+keeps its existing precedence over `layout`), so `Shift` while in carousel mode
+parks the previews at their real on-screen positions; `Shift` again returns to
+the carousel.
 
 ### Border modes
 

@@ -465,8 +465,8 @@ void Overview::altTabInvoke(bool reverse) {
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
     m_selected = m_tiles.empty() ? -1 : 0;
-    // Carousel slots are built around m_selected — open() centered the run on
-    // the focused window, so re-centering on tile 0 IS a relayout.
+    // Carousel: slots are built around the selection, and open() centered the
+    // run on the focused window — re-centering on tile 0 IS a relayout.
     if (carouselMode() && !m_tiles.empty())
       layoutTiles();
     syncFocus();
@@ -485,11 +485,9 @@ void Overview::toggleDesktop() {
 // is purely visual — NO real window is floated/moved/resized.
 void Overview::setDesktopMode(bool on) {
   // Canvas mode parks every preview at its window's real on-screen position —
-  // meaningless for a carousel, whose whole premise is fixed card slots in a
-  // row (parked targets would opt those tiles out of layoutTiles entirely and
-  // scatter the run). Ignore the toggle in this mode.
-  if (carouselMode())
-    return;
+  // that is a different layout engine entirely, and it wins over `layout`
+  // (the same precedence it has for rows/grid/natural: layoutTiles checks
+  // m_desktopMode first). Deliberately NOT special-cased for carousel.
   m_desktopMode = on; // each entry into the canvas starts from fresh targets
 
   auto oldBoxes = captureCurrentBoxes();
@@ -583,9 +581,10 @@ void Overview::open() {
     return;
 
   // Seed the keyboard selection on the focused window (else the first tile)
-  // BEFORE laying out: in carousel mode the card slots are built AROUND
-  // m_selected, so laying out first would center the run on tile 0 and then
-  // leave the focused window off-center.
+  // BEFORE laying out: the carousel builds its card slots AROUND m_selected, so
+  // laying out first would center the run on tile 0 and leave the focused
+  // window off-center. Every other engine ignores m_selected in layoutTiles,
+  // so the reorder is a no-op for them.
   m_selected = m_tiles.empty() ? -1 : 0;
   if (const auto fw = Desktop::focusState()->window()) {
     for (size_t i = 0; i < m_tiles.size(); ++i)

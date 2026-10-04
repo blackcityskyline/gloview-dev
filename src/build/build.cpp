@@ -369,27 +369,6 @@ void Overview::layoutTiles() {
 
   const Engine engine = parseEngine(cfg::grid.layout.get().c_str());
 
-  // Carousel: fullscreen single row, NO workspace strip (the reference
-  // switcher has none — the card run IS the whole UI). Slots come from
-  // layout.cpp's port, centered on m_selected, so moving the selection is a
-  // plain relayout and the existing tile glide animates the swap.
-  if (engine == Engine::Carousel) {
-    if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
-      m_selected = m_tiles.empty() ? -1 : 0;
-    m_carousel = computeCarousel(static_cast<int>(m_tiles.size()), m_selected,
-                                 LRect{0, 0, m->m_size.x, m->m_size.y});
-    for (size_t i = 0; i < m_tiles.size(); ++i) {
-      const auto &c = m_carousel.cards[i];
-      m_tiles[i].target = c.visible
-                              ? LRect{m_carousel.originX + c.x,
-                                      m_carousel.originY + m_carousel.stripY + c.y,
-                                      c.w, c.h}
-                              : LRect{};
-    }
-    return;
-  }
-  m_carousel = {};
-
   LayoutCfg cfg;
   cfg.engine = engine;
   cfg.gap = cfg::grid.gap;
@@ -447,6 +426,40 @@ void Overview::layoutTiles() {
     }
     return;
   }
+
+  // Carousel: fixed-width cards in one overlapped run, the SELECTED card
+  // centered. Only the MAIN AREA changes shape — the strip, the workspace
+  // switching and the all<->one flip are untouched, this is just another
+  // arrangement of the same tiles in the same usable box every other engine
+  // gets (same paddings, same reserved band).
+  //
+  // Because the slots are built AROUND m_selected, moving the selection is a
+  // relayout, not a repaint. renderStage() watches for that (m_carouselFor)
+  // so every existing selection path — arrows, alt-tab, click, hover-follow —
+  // gets it without each having to know about this mode.
+  if (engine == Engine::Carousel) {
+    const int sel = (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size()))
+                        ? m_selected
+                        : 0;
+    const LRect usable{cfg.padLeft, cfg.padTop,
+                       std::max(1.0, m->m_size.x - cfg.padLeft - cfg.padRight),
+                       std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
+    m_carousel    = computeCarousel(static_cast<int>(m_tiles.size()), sel, usable);
+    m_carouselFor = sel;
+    for (size_t i = 0; i < m_tiles.size(); ++i) {
+      const auto &c = m_carousel.cards[i];
+      // An off-run card gets a ZERO target — currentBox() parks it just past
+      // the run's edge instead (so it slides out and stops being drawn).
+      m_tiles[i].target = c.visible ? LRect{usable.x + m_carousel.originX + c.x,
+                                            usable.y + m_carousel.originY +
+                                                m_carousel.stripY + c.y,
+                                            c.w, c.h}
+                                    : LRect{};
+    }
+    return;
+  }
+  m_carousel    = {};
+  m_carouselFor = -1;
 
   std::vector<LRect> nat;
   nat.reserve(m_tiles.size());

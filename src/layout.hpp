@@ -110,7 +110,8 @@ struct CarouselLayout {
     double panelW = 0.0, panelH = 0.0;
     double stripX = 0.0, stripY = 0.0, stripW = 0.0, stripH = 0.0;
     double countX = 0.0, countY = 0.0, countW = 0.0, countH = 0.0;
-    double originX = 0.0, originY = 0.0; // panel top-left, screen-centered
+  double originX = 0.0, originY = 0.0; // panel top-left, centered in `area`
+  LRect area;                        // the `screen` rect it was computed for
 };
 
 // `selected` is the centered card's index (wrapped). `screen` is the monitor
