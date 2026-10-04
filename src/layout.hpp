@@ -59,7 +59,7 @@ Engine parseEngine(const char* s);
 struct CarouselMetrics {
     double boxW          = 0.0; // standard card width; 0 = fill the usable area
     double boxH          = 0.0; // standard card height; 0 = follow boxW
-    double gapK          = 0.03; // gap between cards, as a fraction of boxW
+    double pitchK        = 0.68; // step to a neighbour, as a fraction of its width (<1 overlaps)
     double nearK         = 0.76;  // depth 1 size, as a fraction of the standard box
     double farK          = 0.56;  // depth 2
     double taper         = 0.8;   // every depth past 2

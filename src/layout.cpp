@@ -193,7 +193,7 @@ Engine parseEngine(const char* s) {
 // deformed — which is also the only fit that keeps the content's corner arcs off
 // the ring, since anything that spills out cannot be rounded back in.
 //
-// Cards are laid left to right from the FOCUSED one, one gap apart. The focused
+// Cards are laid out from the FOCUSED one, overlapping. The focused
 // card is centred in the usable rect — which already has the strip's band added
 // to the padding on whichever edge it is anchored to, so the centre is the centre
 // of the free space and moves with the strip instead of being the screen's.
@@ -241,15 +241,17 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
             return mt.nearK;
         return mt.farK * std::pow(mt.taper, static_cast<double>(depth - 2));
     };
-    // Proportional, so the gap keeps its share of the card at any scale.
-    const double gap = boxW * mt.gapK;
+    // Cards OVERLAP, and the step to a neighbour is a fraction of that
+    // neighbour's OWN width, so every card is tucked in by the same share
+    // whatever its depth and the taper does not change how tight the run looks.
+    const auto wAt = [&](int depth) { return boxW * sizeAt(depth); };
+    const auto pitchAt = [&](int depth) { return wAt(depth) * mt.pitchK; };
     // Symmetric extent around the focused card: the wider side decides, so an
-    // even card count still gets a run that fits.
+    // even card count still gets a run that fits. Using the outermost step for
+    // every slot over-measures, which only makes the fit a little conservative.
     const int reach = std::max(leftSlots, rightSlots);
-    // Cards are placed on a fixed pitch, so the taper does not change the
-    // spacing; the extent is what the fit has to cover.
-    const double pitch = boxW + gap;
-    const double stripW = boxW + pitch * static_cast<double>(2 * reach);
+    const double stripW =
+        wAt(0) + (pitchAt(reach) + wAt(reach) * 0.5) * static_cast<double>(reach) * 2.0;
     // The caption hangs below the centred card, so the panel reserves room for
     // it; the cards themselves stay the standard box.
     const double stripH = boxH + mt.captionGap + mt.captionH;
@@ -263,8 +265,6 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     const double k =
         std::min({1.0, availW / std::max(1.0, stripW),
                   availH / std::max(1.0, stripH)}) * mt.scale;
-
-    const double step = pitch * k;
 
     L.stripW = stripW * k;
     L.stripH = stripH * k;
@@ -288,8 +288,10 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         // Each card centred on its own slot's position, at its depth's size.
         c.w = boxW * sizeAt(std::abs(slot)) * k;
         c.h = boxH * sizeAt(std::abs(slot)) * k;
-        // x reads c.w, so it has to come after it.
-        c.x = (screen.w - c.w) * 0.5 + static_cast<double>(slot) * step;
+        // x reads c.w, so it has to come after it. The step out is the
+        // neighbour's own pitch, so the sign is all that separates left from right.
+        c.x = (screen.w - c.w) * 0.5 +
+              static_cast<double>(slot) * pitchAt(std::abs(slot)) * k;
         c.y = 0.0; // every frame shares the band's top edge
     }
     return L;

@@ -296,12 +296,13 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 - **The focused card sits on the centre of the FREE SPACE, not of the screen.**
   The strip's band is part of the layout's padding on whichever edge it is
   anchored to, so the centre follows it: a top or bottom strip leaves the centre
-  where it is, a left or right one shifts it. Cards sit one gap apart from the
-  focused one in each direction — a gap, never an overlap — so the run's extent
-  does not have to be symmetric about it.
-- **The run tapers.** The focused card is the standard box; each step out is a
-  fraction of it (100%, 76%, 56%, then 8% smaller per step). Cards sit on a
-  constant pitch, so the taper changes the size and not the spacing.
+  where it is, a left or right one shifts it.
+- **The run tapers and overlaps.** The focused card is the standard box; each
+  step out is a fraction of it (100%, 76%, 56%, then 8% smaller per step), and
+  the step to a neighbour is 68% of *that neighbour's own width*, so every card
+  is tucked in by the same share and the taper changes the size but not how
+  tight the run looks. Because the focused card is placed absolutely rather
+  than by centring the run, the run need not be symmetric about it.
 - **Only the centred card is framed.** The rest carry no ring, and the ring is
   one fixed size everywhere rather than scaled down to suit a smaller card.
 - **Card count is yours.** `carousel_cards` sets how many cards the run shows —
