@@ -186,17 +186,16 @@ Engine parseEngine(const char* s) {
     return Engine::Rows;
 }
 
-// Depths 0-2 are fixed widths; past that they taper geometrically, so every
-// card out is strictly smaller than the one inside it.
-static double cardWidth(int depth, const CarouselMetrics& mt) {
-    if (depth <= 0)
-        return mt.selectedW;
-    if (depth == 1)
-        return mt.selectedW * mt.nearK;
-    return mt.selectedW * mt.farK *
-           std::pow(mt.taper, static_cast<double>(depth - 2));
-}
-
+// ONE standard box for every card, the size a fullscreen window occupies. Every
+// card is that box to the pixel, so the run's geometry cannot depend on which
+// window happens to be centred: only its CONTENT differs. A window smaller than
+// the box is fitted whole inside it and neither the box nor the window is
+// deformed — which is also the only fit that keeps the content's corner arcs off
+// the ring, since anything that spills out cannot be rounded back in.
+//
+// Cards are laid left to right and each one overlaps the previous by `overlap`,
+// exactly as the reference's run does; the centred card sits at the middle of the
+// run and carries the caption band below it.
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                                const CarouselMetrics& mt) {
     CarouselLayout L;
@@ -207,8 +206,8 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.countW = mt.countW;
     L.countH = mt.countH;
 
-    // Even counts are allowed: centerSlot leaves the selected card one slot off the
-    // exact middle.
+    // Even counts are allowed: centerSlot leaves the selected card one slot off
+    // the exact middle, as in the reference.
     const int want = std::max(1, mt.visibleCards);
     const int shown = std::min(want, count);
     L.visibleCards = shown;
@@ -227,34 +226,27 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         idxOfSlot.push_back(idx);
     }
 
-    const auto width = [&](int idx) {
-        return cardWidth(std::abs(slotOf[static_cast<size_t>(idx)]), mt);
-    };
-    const auto heightOf = [&](int idx) {
-        return width(idx) / mt.aspect +
-               (slotOf[static_cast<size_t>(idx)] == 0 ? mt.captionGap + mt.captionH
-                                                      : 0.0);
-    };
+    const double boxW = std::max(1.0, mt.boxW);
+    const double boxH = std::max(1.0, mt.boxH);
+    const double stripW = boxW * static_cast<double>(shown) -
+                          mt.overlap * static_cast<double>(shown - 1);
+    // The caption hangs below the centred card, so the panel reserves room for
+    // it; the cards themselves stay the standard box.
+    const double stripH = boxH + mt.captionGap + mt.captionH;
 
-    double stripW = 0.0;
-    for (const int idx : idxOfSlot)
-        stripW += width(idx);
-    stripW -= mt.overlap * static_cast<double>(idxOfSlot.size() - 1);
-
-    double stripH = 0.0;
-    for (const int idx : idxOfSlot)
-        stripH = std::max(stripH, heightOf(idx));
-
-    // One uniform scale so the whole band fits both axes at once.
+    // One uniform scale so the run fits both axes at once.
     const double availW = std::max(1.0, screen.w - mt.screenMargin * 2.0);
     const double availH = std::max(1.0, screen.h - mt.screenMargin * 2.0 -
                                              mt.countH - mt.sectionGap);
     const double k = std::min({1.0, availW / std::max(1.0, stripW),
                                availH / std::max(1.0, stripH)});
 
+    const double w = boxW * k;
+    const double h = boxH * k;
+    const double overlap = mt.overlap * k;
+
     L.stripW = stripW * k;
     L.stripH = stripH * k;
-    const double overlap = mt.overlap * k;
     L.panelW = L.stripW;
     L.panelH = mt.countH + mt.sectionGap + L.stripH;
     L.countX = (L.panelW - L.countW) * 0.5;
@@ -262,41 +254,24 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.originX = std::round((screen.w - L.panelW) * 0.5);
     L.originY = std::round((screen.h - L.panelH) * 0.5);
 
-    // Flush left inside stripW: that sum IS the run's width by construction, so
-    // centring the selected card instead would leave the run off-centre whenever
-    // the left and right extents differ.
-    double left = 0.0;
-    for (int d = 1; d <= leftSlots; ++d)
-        left += width(((sel - d) % count + count) % count) - mt.overlap;
-
     for (const int idx : idxOfSlot) {
         const int slot = slotOf[static_cast<size_t>(idx)];
         CarouselLayout::Card& c = L.cards[static_cast<size_t>(idx)];
         c.visible = true;
         c.showCaption = slot == 0;
         c.depth = std::abs(slot);
-        const double w = width(idx) * k;
-        const double h = width(idx) / mt.aspect * k;
-        double x = left;
-        const int step = slot < 0 ? -1 : 1;
-        // Walking out from the selected card: going right each step clears the
-        // card just placed, going left the card being placed — widths differ per
-        // depth, so the two sides are not mirror images.
-        for (int kk = 1; kk <= std::abs(slot); ++kk) {
-            // Wrapped: walking out from a selection near either end steps past
-            // the ends of the array.
-            const int raw = sel + step * (step < 0 ? kk : kk - 1);
-            const int between = ((raw % count) + count) % count;
-            const double inner = width(between) * k;
-            x = step < 0 ? x - inner + overlap : x + inner - overlap;
-        }
-        c.x = x;
+        // Anchored to the RUN, not to the centred card: centring the card puts
+        // the whole run on one side whenever the card count is even, and that is
+        // what made the run drift off-centre. originX then centres the run, and
+        // since every box is identical the geometry cannot depend on which
+        // window is selected at all.
+        c.x = static_cast<double>(slot + leftSlots) * (w - overlap);
+        // Every box is the standard box, the centred one included: the caption
+        // strip is reserved in stripH for the panel's budget, not bolted onto
+        // one card, because a taller centred box is a different size.
         c.w = w;
-        c.h = h + (slot == 0 ? (mt.captionGap + mt.captionH) * k : 0.0);
-        // Side cards centre against the SELECTED card's frame, which is taller
-        // because it carries the caption.
-        const double selFrameH = width(sel) / mt.aspect * k;
-        c.y = (selFrameH - h) * 0.5;
+        c.h = h;
+        c.y = 0.0;
     }
     return L;
 }

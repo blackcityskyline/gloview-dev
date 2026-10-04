@@ -379,18 +379,23 @@ void Overview::layoutTiles() {
     const int sel = (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size()))
                         ? m_selected
                         : 0;
-    CarouselMetrics mt;
-    mt.visibleCards = std::max(1, static_cast<int>(cfg::carousel.cards.get()));
-    if (const int w = static_cast<int>(cfg::carousel.card_width.get());
-        w > 0) {
-      mt.selectedW = w;
-      mt.overlap   = w * 60.0 / 500.0;
-    }
     const LRect usable{cfg.padLeft, cfg.padTop,
                        std::max(1.0, m->m_size.x - cfg.padLeft - cfg.padRight),
                        std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
-    m_carousel    = computeCarousel(static_cast<int>(m_tiles.size()), sel,
-                                    usable, mt);
+    CarouselMetrics mt;
+    mt.visibleCards = std::max(1, static_cast<int>(cfg::carousel.cards.get()));
+    // The standard card IS a fullscreen window's box: the usable area, unscaled.
+    // carousel_card_width only narrows it (the height follows the usable aspect);
+    // 0 keeps the fullscreen box.
+    mt.boxW = usable.w;
+    mt.boxH = usable.h;
+    if (const int w = static_cast<int>(cfg::carousel.card_width.get()); w > 0) {
+      mt.boxW = std::min(static_cast<double>(w), usable.w);
+      mt.boxH = mt.boxW * usable.h / usable.w;
+    }
+    mt.overlap = std::min(mt.boxW * 0.12, 60.0);
+    m_carousel = computeCarousel(static_cast<int>(m_tiles.size()), sel, usable,
+                                 mt);
     m_carouselFor = sel;
     for (size_t i = 0; i < m_tiles.size(); ++i) {
       const auto &c = m_carousel.cards[i];

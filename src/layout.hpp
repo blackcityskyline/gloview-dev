@@ -51,17 +51,15 @@ std::vector<LRect> computeLayout(const std::vector<LRect>& naturals, const LRect
 
 Engine parseEngine(const char* s);
 
-// The run is a band of fixed-aspect cards that shrink with distance from the
-// centre. The window is CONTAINED inside its card, so a card of another aspect
-// never pushes content past the ring — that overshoot is what no corner radius
-// can hide.
+// ONE standard box for every card: the size a fullscreen window occupies, to the
+// pixel. Every window is drawn inside that same box — a smaller one fitted whole,
+// neither deformed — so the run's geometry never depends on which window is
+// centred, and no window ever spills past a ring (which no corner radius could
+// hide). The centred card is the only one framed.
 struct CarouselMetrics {
-    double selectedW     = 500.0;
-    double nearK         = 0.76;  // depth 1, as a fraction of selectedW
-    double farK          = 0.56;  // depth 2, as a fraction of selectedW
-    double taper         = 0.8;   // every depth past 2
+    double boxW          = 0.0; // standard card width; 0 = fill the usable area
+    double boxH          = 0.0; // standard card height; 0 = follow boxW
     double overlap       = 60.0;
-    double aspect        = 1.6;
     double captionH      = 44.0;
     double captionGap    = 12.0;
     double countH        = 32.0;

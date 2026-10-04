@@ -76,11 +76,9 @@ void Overview::renderCarousel() const {
 
     TileLook look;
     look.box = currentBox(m_tiles[static_cast<size_t>(i)], i);
-    // Only the centered card is framed, and its window is contained inside the
-    // card: a card of one aspect cannot also be every window's aspect.
-    const bool centre = card.depth == 0;
-    look.frame = centre;
-    look.contain = centre;
+    look.round = cfg::look.preview_round; // one ring size for every card
+    look.frame = card.depth == 0;         // only the centred card is framed
+    look.contain = true;                  // the window goes inside the box whole
     look.tone =
         card.depth > 0
             ? (card.depth == 1 ? kNearTone : kFarTone) *

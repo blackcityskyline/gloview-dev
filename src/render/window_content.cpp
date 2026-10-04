@@ -71,9 +71,9 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 // nothing else: matching it to the ring drawn around the tile is the caller's
 // job (contentRadiusPx).
 //
-// destPx must carry the window's own aspect UNLESS `contain`, which fits the
-// window whole inside the box instead: covering a box of another aspect pushes
-// the content past the ring far enough that the corner arcs cannot meet.
+// destPx must carry the window's own aspect: the surface covers it from the
+// centre, and a box of any other aspect pushes the content past the ring far
+// enough that the corner arcs cannot meet.
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx,

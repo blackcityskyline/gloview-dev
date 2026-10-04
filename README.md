@@ -126,7 +126,7 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `max_scale` | float | `1.0` | Never enlarge a preview past real size × this |
 | `carousel` | int | `0` | Lay the main area out as a card run; all-workspaces view only, over any `layout` |
 | `carousel_cards` | int | `5` | `carousel` only: how many cards the run shows (any count, even included) |
-| `carousel_card_width` | int (px) | `500` | `carousel` only: the centred card's width; the run scales down if it doesn't fit |
+| `carousel_card_width` | int (px) | `0` | `carousel` only: narrow the standard box; 0 keeps the fullscreen box |
 
 ### Animations
 
@@ -287,25 +287,24 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 └───┘└─┘└───────┘└─┘└───┘                  neighbours overlap its edges
 ```
 
-- **Card count and size are yours.** `carousel_cards` sets how many cards the
-  run shows — any number, even included (with an even count the selected card
-  sits one slot off the exact middle). `carousel_card_width` sets the centered
-  card's width in px; the rest step down at 76%, 56% and 8% per step beyond that.
-  Windows beyond the count are simply **not drawn** — the run never shows a card
-  that is not in it. The whole run scales down uniformly if it does not fit, so
-  nothing is ever cut off.
-- **One card shape, shrinking outward.** Every card is the same 1.6 aspect and
-  its width comes from its distance from the centre: `carousel_card_width`, then
-  76%, then 56%, then 8% smaller per step beyond that. A window narrower than its
-  card is fitted whole inside it, so it simply sits in a frame larger than itself.
-- **Only the centred card is framed.** The others have no ring — the run reads as
-  a band of windows with one focus, not a row of boxes. The ring is one fixed size
-  at every depth: it is not scaled down to suit a smaller card.
+- **One standard box for every card.** Every card is the same rect — a
+  fullscreen window's box, to the pixel, in width and height — whatever window
+  holds it. A window smaller than the box is fitted whole inside it; neither the
+  box nor the window is deformed. Because the box never depends on the window,
+  the run's geometry cannot shift with the selection: only the content moves.
+- **Only the centred card is framed.** The rest carry no ring, and the ring is
+  one fixed size everywhere rather than scaled down to suit a smaller card.
+- **Card count is yours.** `carousel_cards` sets how many cards the run shows —
+  any number, even included (with an even count the centred card sits one slot
+  off the exact middle). Windows beyond the count are **not drawn**; the run
+  never shows a card that is not in it. The whole run scales down by one factor
+  if it does not fit, so nothing is ever cut off. `carousel_card_width` narrows
+  the standard box (0 = the fullscreen box).
 - **The chrome is the plugin's own**, exactly as in every other layout, because
   it is literally the same code: a soft drop shadow, the frost underlay while the
   backdrop is still fading, a title pill under the **centred** card (and the
   hovered one), and a bare `n / total` counter above the run. Nothing is filled
-  in behind a window — a tile is the window plus its frame, and where they
+  in behind a window — a card is the window plus its frame, and where they
   differ the backdrop shows.
 - **Depth.** Cards one step out are dimmed slightly, cards two steps out more so
   (`0.125` / `0.25` of the shadow colour), thinning further past that so a deep
@@ -316,7 +315,7 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 |---|---|---|---|
 | `carousel` | int | `0` | Lay the main area out as a card run instead of `layout`; all-workspaces view only |
 | `carousel_cards` | int | `5` | How many cards the run shows (any count, even included) |
-| `carousel_card_width` | int (px) | `500` | Width of the centred card; the run scales down if it doesn't fit |
+| `carousel_card_width` | int (px) | `0` | Narrow the standard box; 0 keeps the fullscreen box |
 
 - **Navigation.** Because the slots are built around the selection, moving it
   rotates the run (all cards glide to their new depths on the usual `glide`
