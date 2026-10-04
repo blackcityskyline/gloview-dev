@@ -367,8 +367,31 @@ void Overview::layoutTiles() {
   if (!m || m_tiles.empty())
     return;
 
+  const Engine engine = parseEngine(cfg::grid.layout.get().c_str());
+
+  // Carousel: fullscreen single row, NO workspace strip (the reference
+  // switcher has none — the card run IS the whole UI). Slots come from
+  // layout.cpp's port, centered on m_selected, so moving the selection is a
+  // plain relayout and the existing tile glide animates the swap.
+  if (engine == Engine::Carousel) {
+    if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
+      m_selected = m_tiles.empty() ? -1 : 0;
+    m_carousel = computeCarousel(static_cast<int>(m_tiles.size()), m_selected,
+                                 LRect{0, 0, m->m_size.x, m->m_size.y});
+    for (size_t i = 0; i < m_tiles.size(); ++i) {
+      const auto &c = m_carousel.cards[i];
+      m_tiles[i].target = c.visible
+                              ? LRect{m_carousel.originX + c.x,
+                                      m_carousel.originY + m_carousel.stripY + c.y,
+                                      c.w, c.h}
+                              : LRect{};
+    }
+    return;
+  }
+  m_carousel = {};
+
   LayoutCfg cfg;
-  cfg.engine = parseEngine(cfg::grid.layout.get().c_str());
+  cfg.engine = engine;
   cfg.gap = cfg::grid.gap;
   const int padX = cfg::grid.padding;
   const int padT = cfg::grid.padding_top;

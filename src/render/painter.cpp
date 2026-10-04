@@ -229,24 +229,35 @@ void Overview::renderStage(eRenderStage stage) {
 void Overview::paint() {
   renderBackdrop(); // Z0
 
-  renderPreviews(); // Z1
-  renderGhosts();
-  renderMainWindows();
-  renderTileButtons();
-  renderPulses(false /* grid slots */);
+  if (carouselMode()) {
+    // Carousel replaces the whole Z1: its cards overlap, so each card's
+    // content must be drawn between its own frame and the next card's —
+    // impossible with the grid's all-chrome-then-all-content staging. It also
+    // has no workspace strip (Z2 is skipped below).
+    renderCarousel();
+    renderGhosts();
+  } else {
+    renderPreviews(); // Z1
+    renderGhosts();
+    renderMainWindows();
+    renderTileButtons();
+    renderPulses(false /* grid slots */);
+  }
 
-  renderStrip(); // Z2
-  renderStripWindows();
-  renderStripButtons();
-  renderPulses(true /* strip slots */);
-  renderSwapFX(); // Z2.5: drag/swap flights, above the strip
+  if (!carouselMode()) {
+    renderStrip(); // Z2
+    renderStripWindows();
+    renderStripButtons();
+    renderPulses(true /* strip slots */);
+    renderSwapFX(); // Z2.5: drag/swap flights, above the strip
 
-  const bool dragging =
-      draggedTile() >= 0 ||
-      (m_drag.press == model::Drag::Press::StripWin && m_drag.lifted);
-  if (dragging) { // Z3
-    renderDragTile();
-    renderDragWindow();
+    const bool dragging =
+        draggedTile() >= 0 ||
+        (m_drag.press == model::Drag::Press::StripWin && m_drag.lifted);
+    if (dragging) { // Z3
+      renderDragTile();
+      renderDragWindow();
+    }
   }
 
   renderAboveLayers(); // Z4

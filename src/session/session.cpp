@@ -285,7 +285,8 @@ namespace {
 // that parses as nothing falls through to `fallback` (also parsed), so a typo
 // degrades to the documented default instead of black.
 SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
-                                           const CHyprColor &col, int size) {
+                                           const CHyprColor &col,
+                                           int size) const {
   auto &c = m_labelCache[key];
   if ((!c.tex || c.text != text) && g_pHyprRenderer)
     c = model::LabelTex{text, g_pHyprRenderer->renderText(text, col, size, false, "",
@@ -464,6 +465,10 @@ void Overview::altTabInvoke(bool reverse) {
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
     m_selected = m_tiles.empty() ? -1 : 0;
+    // Carousel slots are built around m_selected — open() centered the run on
+    // the focused window, so re-centering on tile 0 IS a relayout.
+    if (carouselMode() && !m_tiles.empty())
+      layoutTiles();
     syncFocus();
     damage();
     return;
@@ -479,6 +484,12 @@ void Overview::toggleDesktop() {
 // Flip grid <-> canvas while open, gliding previews into the new layout. Canvas
 // is purely visual — NO real window is floated/moved/resized.
 void Overview::setDesktopMode(bool on) {
+  // Canvas mode parks every preview at its window's real on-screen position —
+  // meaningless for a carousel, whose whole premise is fixed card slots in a
+  // row (parked targets would opt those tiles out of layoutTiles entirely and
+  // scatter the run). Ignore the toggle in this mode.
+  if (carouselMode())
+    return;
   m_desktopMode = on; // each entry into the canvas starts from fresh targets
 
   auto oldBoxes = captureCurrentBoxes();
@@ -571,10 +582,10 @@ void Overview::open() {
   if (m_tiles.empty() && m_strip.size() <= 1) // nothing to show
     return;
 
-  layoutTiles();
-
-  // seed keyboard selection on the focused window (else first tile) for
-  // arrow-nav/Enter.
+  // Seed the keyboard selection on the focused window (else the first tile)
+  // BEFORE laying out: in carousel mode the card slots are built AROUND
+  // m_selected, so laying out first would center the run on tile 0 and then
+  // leave the focused window off-center.
   m_selected = m_tiles.empty() ? -1 : 0;
   if (const auto fw = Desktop::focusState()->window()) {
     for (size_t i = 0; i < m_tiles.size(); ++i)
@@ -583,6 +594,8 @@ void Overview::open() {
         break;
       }
   }
+
+  layoutTiles();
 
   m_active = true;
   m_opening = true;

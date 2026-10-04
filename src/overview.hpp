@@ -114,6 +114,23 @@ public:
   void renderPulses(bool strip) const; // swap success rings (grid|strip)
   void renderPreviews() const; // static tiles' chrome (shadow/border/backing),
                                 // drawn under the strip
+  // layout == "carousel": one self-contained pass that draws the whole
+  // carousel — every card's frame + preview + caption, depth-sorted, in the
+  // reference's order. It cannot be split across the Z1 stages like the grid
+  // is (a card's content must land BETWEEN its own frame and the next card's
+  // frame, or a far card's window paints over the selected card's border), so
+  // paint() routes here INSTEAD of the grid stages. See carousel_view.cpp.
+  void renderCarousel() const;
+  bool carouselMode() const; // plugin:gloview:layout == "carousel"
+  // Step the centered card by dir (+1/-1), circular. In carousel mode this IS
+  // moveSelection/stepAltTab's whole job: the tiles are already in a row, so
+  // there is no direction to find a neighbour in.
+  void stepCarousel(int dir);
+  // Per-frame resolved carousel geometry (layout.cpp): card slots, the
+  // selected card's caption band, and the counter box. Written by layoutTiles,
+  // read by the painter — recomputed on every relayout, so it is always in
+  // sync with m_tiles.
+  CarouselLayout m_carousel;
   void renderMainWindows() const; // live window surfaces for the main-area tiles
   void renderGhosts() const; // removed-tile fade-out (populate mirror), drawn
                              // UNDER the mains
@@ -227,9 +244,11 @@ private:
   std::vector<model::Tile> m_tiles;
   std::vector<model::StripItem> m_strip;
   // Text->texture cache for tile/strip labels — see model::LabelTex.
-  std::unordered_map<void *, model::LabelTex> m_labelCache;
+  // mutable: cachedLabel() is const-callable (the carousel counter is drawn
+  // from the const painter) but the whole point of the cache is to mutate.
+  mutable std::unordered_map<void *, model::LabelTex> m_labelCache;
   SP<Render::ITexture> cachedLabel(void *key, const std::string &text,
-                                   const CHyprColor &col, int size);
+                                   const CHyprColor &col, int size) const;
   // layer surfaces (bars/popups) we faded out while up, with their pre-hide
   // alpha goal, so deactivate() restores them exactly — even if config changed
   // meanwhile.

@@ -194,7 +194,116 @@ Engine parseEngine(const char* s) {
         return Engine::Grid;
     if (std::strcmp(s, "natural") == 0)
         return Engine::Natural;
+    if (std::strcmp(s, "carousel") == 0)
+        return Engine::Carousel;
     return Engine::Rows;
+}
+
+// Ported 1:1 from noctalia v5.2's computeWindowSwitcherCarouselLayout
+// (src/shell/switcher/window_switcher_carousel_style.cpp) — see the
+// CarouselMetrics comment in layout.hpp for the constant-by-constant mapping.
+CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
+                               const CarouselMetrics& mt) {
+    CarouselLayout L;
+    if (count <= 0)
+        return L;
+    L.cards.resize(static_cast<size_t>(count));
+    L.countW = mt.countW;
+    L.countH = mt.countH;
+    L.visibleCards = std::max(1, std::min(mt.visibleCards, count));
+
+    const double availableW = std::max(1.0, screen.w - mt.screenMargin * 2.0);
+    // Width the full visible run needs at the nominal card widths.
+    auto desiredWidth = [&] {
+        const int sideSlots = L.visibleCards / 2;
+        double width = mt.selectedW;
+        if (sideSlots >= 1) width += mt.nearW * 2.0;
+        if (sideSlots >= 2) width += mt.farW * 2.0;
+        width -= mt.overlap * static_cast<double>(sideSlots * 2);
+        return width;
+    };
+    // Too tight for 5 (or 4) cards: shed the outermost slot, never below 3.
+    while (L.visibleCards > 3 && availableW / desiredWidth() < mt.narrowRatio)
+        --L.visibleCards;
+
+    const double widthScale = std::min(1.0, availableW / desiredWidth());
+    double selW = mt.selectedW * widthScale;
+    double nearW = mt.nearW * widthScale;
+    double farW = mt.farW * widthScale;
+    double overlap = mt.overlap * widthScale;
+
+    // Card height from its width: the preview box is a fixed-aspect rect inset
+    // by frameInset on every side.
+    auto frameH = [&](double cardW) {
+        const double innerW = std::max(0.0, cardW - mt.frameInset * 2.0);
+        return innerW / mt.aspect + mt.frameInset * 2.0;
+    };
+
+    auto updateExtents = [&] {
+        const int sideSlots = L.visibleCards / 2;
+        L.stripW = selW;
+        if (sideSlots >= 1) L.stripW += (nearW - overlap) * 2.0;
+        if (sideSlots >= 2) L.stripW += (farW - overlap) * 2.0;
+        L.stripH = frameH(selW) + mt.captionGap + mt.captionH;
+        L.panelW = L.stripW;
+        L.panelH = mt.countH + mt.sectionGap + L.stripH;
+    };
+    updateExtents();
+
+    // Height fit: two shrinking passes until the panel (count badge + strip)
+    // clears the screen margins.
+    const double maxPanelH = std::max(1.0, screen.h - mt.screenMargin * 2.0);
+    for (int pass = 0; pass < 2 && L.panelH > maxPanelH; ++pass) {
+        const double availStripH =
+            std::max(1.0, maxPanelH - mt.countH - mt.sectionGap);
+        const double hScale = std::min(1.0, availStripH / L.stripH);
+        selW *= hScale;
+        nearW *= hScale;
+        farW *= hScale;
+        overlap *= hScale;
+        updateExtents();
+    }
+
+    L.countX = (L.panelW - L.countW) * 0.5;
+    L.stripY = mt.countH + mt.sectionGap;
+    L.originX = std::round((screen.w - L.panelW) * 0.5);
+    L.originY = std::round((screen.h - L.panelH) * 0.5);
+
+    const int visibleCount = std::min(L.visibleCards, count);
+    const int centerSlot = visibleCount / 2;
+    const int sel = ((selected % count) + count) % count;
+    const int start = ((sel - centerSlot) % count + count) % count;
+    const double selX = (L.stripW - selW) * 0.5;
+    const double selFrameH = frameH(selW);
+    for (int slot = 0; slot < visibleCount; ++slot) {
+        const int idx = (start + slot) % count;
+        const int rel = slot - centerSlot;
+        const int dist = std::abs(rel);
+        CarouselLayout::Card& c = L.cards[static_cast<size_t>(idx)];
+        c.visible = true;
+        c.showCaption = dist == 0;
+        c.depth = dist;
+        c.direction = rel < 0 ? -1 : (rel > 0 ? 1 : 0);
+        c.zIndex = 3 - std::min(dist, 3);
+        if (dist == 0) {
+            c.w = selW;
+            c.x = selX;
+        } else if (dist == 1) {
+            c.w = nearW;
+            c.x = rel < 0 ? selX - nearW + overlap : selX + selW - overlap;
+        } else {
+            c.w = farW;
+            const double nearL = selX - nearW + overlap;
+            const double nearR = selX + selW - overlap;
+            c.x = rel < 0 ? nearL - farW + overlap : nearR + nearW - overlap;
+        }
+        // The centered card is the tall one (it carries the caption), so the
+        // shorter side cards center their preview against ITS preview box.
+        const double h = frameH(c.w);
+        c.h = h + (c.showCaption ? mt.captionGap + mt.captionH : 0.0);
+        c.y = (selFrameH - h) * 0.5;
+    }
+    return L;
 }
 
 } // namespace gloview

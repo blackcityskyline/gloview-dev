@@ -34,6 +34,14 @@ bool Overview::onMouseAxis(const IPointer::SAxisEvent &e) {
                              ? static_cast<double>(e.deltaDiscrete)
                              : e.delta / 15.0;
 
+  // Carousel has no strip and no workspaces to step: the wheel walks the
+  // centered card (the reference's navigateList, which is cycleSelection).
+  if (carouselMode()) {
+    if (notches != 0.0)
+      stepCarousel(notches > 0 ? 1 : -1);
+    return true;
+  }
+
   // Wheel over the STRIP band scrolls the card group; over the MAIN area it
   // steps the displayed workspace (when enabled).
   bool overStrip = false;
@@ -92,6 +100,25 @@ void Overview::onMouseMove() {
 }
 
 int Overview::tileAt(double lx, double ly) const {
+  if (carouselMode()) {
+    // Cards OVERLAP in a carousel, so a plain first-match scan would hand the
+    // click to whichever card happens to sit lowest in m_tiles even when the
+    // card drawn on top (the shallower depth — see renderCarousel's sort) is
+    // the one under the cursor. Scan by paint order instead: front to back.
+    int best = -1;
+    int bestDepth = 1 << 30;
+    for (size_t i = 0; i < m_tiles.size(); ++i) {
+      if (i >= m_carousel.cards.size() || !m_carousel.cards[i].visible)
+        continue;
+      if (!currentBox(m_tiles[i], static_cast<int>(i)).contains(lx, ly))
+        continue;
+      if (m_carousel.cards[i].depth < bestDepth) {
+        bestDepth = m_carousel.cards[i].depth;
+        best = static_cast<int>(i);
+      }
+    }
+    return best;
+  }
   for (size_t i = 0; i < m_tiles.size(); ++i)
     if (currentBox(m_tiles[i], static_cast<int>(i)).contains(lx, ly))
       return static_cast<int>(i);
@@ -150,8 +177,15 @@ void Overview::updateHover() {
     // keep the keyboard selection under the pointer so arrow-nav picks up where
     // the mouse left off (macOS-like). Only when actually over a tile.
     if (newTile >= 0 && cfg::behavior.focus_follows_mouse != 0) {
-      m_selected = newTile;
-      syncFocus(); // so a passthrough killactive/hotkey hits the hovered window
+      // Carousel: hovering must NOT move the selection — the card slots
+      // depend on it, so every pointer crossing would relayout and re-glide
+      // the whole run, and the carousel would chase the cursor. Hover only
+      // swaps the ring (the reference behaves the same: setPointerHovered
+      // without touching m_selectedIndex).
+      if (!carouselMode()) {
+        m_selected = newTile;
+        syncFocus(); // so a passthrough killactive/hotkey hits the hovered window
+      }
     }
     const auto m = m_monitor.lock();
     if (m) {
@@ -208,6 +242,35 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     m_drag = {};
     m_drag.press = model::Drag::Press::Empty;
     m_drag.button = e.button;
+
+    // Carousel mode: a click selects + activates, handled in full right here
+    // (see the tile branch below). Everything above this point is strip
+    // chrome, of which a carousel has none, and the grid's drag candidate is
+    // meaningless here — so bail out before any of it can misfire on a card.
+    if (carouselMode()) {
+      if (e.button != BTN_LEFT)
+        return true;
+      const int hit = tileAt(lx, ly);
+      if (hit < 0)
+        return true; // swallow: never let a click reach a window behind
+      if (!closeOnDoubleClick()) {
+        const LRect br = closeButtonRect(currentBox(m_tiles[hit], hit));
+        if (br.contains(lx, ly)) {
+          closeTileWindow(hit);
+          return true;
+        }
+      }
+      if (hit != m_selected) {
+        m_selected = hit;
+        layoutTiles();
+      }
+      const auto hw = m_tiles[hit].win.lock();
+      if (hw) {
+        syncFocus();
+        focusAndClose(hw, Desktop::FOCUS_REASON_CLICK);
+      }
+      return true;
+    }
 
     // middle-click a workspace card → close every window on it (handled fully
     // on press). Per-window close is keyboard-only now (key_close_window, see

@@ -105,7 +105,7 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx,
-                      float roundingPower, bool settled) {
+                      float roundingPower, bool settled, WindowFit fit) {
   if (!w || !mon || !w->m_isMapped || !w->wlSurface() ||
       !w->wlSurface()->resource())
     return;
@@ -138,12 +138,16 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   // for the common, at-rest viewing case. Anchored at destPx's CENTER (see
   // translate below) so any pad still in effect distributes evenly on all
   // four sides; clipPx trims any remaining overflow.
-  const float pad = settled ? 0.0F : 1.5F;
+  const bool contain = fit == WindowFit::Contain;
+  // Contain never over-covers: its whole point is that the window stays WHOLE
+  // inside the box, so a pad would crop the very edges it is meant to preserve
+  // (and would push the scale back toward Cover).
+  const float pad = (settled || contain) ? 0.0F : 1.5F;
   const float sW  = (static_cast<float>(destPx.w) + pad) /
                    std::max(logicalW * mon->m_scale, 5.F);
   const float sH  = (static_cast<float>(destPx.h) + pad) /
                    std::max(logicalH * mon->m_scale, 5.F);
-  const float scaleMod = std::max(sW, sH);
+  const float scaleMod = contain ? std::min(sW, sH) : std::max(sW, sH);
   if (!(scaleMod > 0.F))
     return;
 

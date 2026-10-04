@@ -39,6 +39,7 @@ add_library(gloview SHARED
   src/render/backdrop.cpp
   src/render/window_content.cpp
   src/render/tile_view.cpp
+  src/render/carousel_view.cpp
   src/render/strip_view.cpp
   src/render/fx.cpp
 )

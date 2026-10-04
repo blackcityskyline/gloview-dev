@@ -11,6 +11,15 @@
 
 namespace gloview {
 
+// How a window's real shape is mapped onto its destination box.
+enum class WindowFit {
+  Cover,  // uniform scale that FILLS the box, cropping the overflow (grid
+          // tiles: the live surface must cover the slot edge-to-edge)
+  Contain, // uniform scale that FITS the box whole, letterboxed on the
+          // short axis and centered on both (carousel cards: the preview box
+          // has a fixed aspect, the window keeps its own)
+};
+
 // Draw a window's LIVE surface tree (or its frozen snapshot texture, when
 // preview_mode == "snapshot") scaled into `destPx`, clipped to `clipPx` —
 // both monitor PIXEL coords. `roundPx`/`roundingPower` let the caller match
@@ -23,6 +32,7 @@ namespace gloview {
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx = 0,
-                      float roundingPower = 2.0F, bool settled = false);
+                      float roundingPower = 2.0F, bool settled = false,
+                      WindowFit fit = WindowFit::Cover);
 
 } // namespace gloview

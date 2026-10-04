@@ -99,10 +99,13 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
   if (keyMatches(k, mods, cfg::keys.close.get()))
     close();
   else if (keyMatches(k, mods, cfg::keys.next_workspace.get()))
-    stepWorkspace(
-        1); // cycle the displayed workspace card (wraps; committed on close)
+    // Carousel has no workspaces/strip: tab walks the card run instead (the
+    // reference's whole navigation model — its trigger key IS tab/alt-tab).
+    carouselMode() ? stepCarousel(1)
+                   : stepWorkspace(1); // grid: cycle the displayed workspace
+                                      // card (wraps; committed on close)
   else if (keyMatches(k, mods, cfg::keys.prev_workspace.get()))
-    stepWorkspace(-1);
+    carouselMode() ? stepCarousel(-1) : stepWorkspace(-1);
   else if (keyMatches(k, mods, cfg::keys.activate.get()))
     activateSelection();
   else if (keyMatches(k, mods, cfg::keys.close_window.get()))
@@ -420,6 +423,15 @@ void Overview::moveSelection(int dx, int dy) {
     damage();
     return;
   }
+  // Carousel: the tiles ARE a row, so there is no direction to search in —
+  // left/right is a circular index step (the reference's cycleSelection), and
+  // up/down has no meaning. dy is deliberately ignored rather than mapped to
+  // something arbitrary.
+  if (carouselMode()) {
+    if (dx != 0)
+      stepCarousel(dx);
+    return;
+  }
   const LRect cur = currentBox(m_tiles[m_selected], m_selected);
   const double cx = cur.cx(), cy = cur.cy();
   int best = -1;
@@ -457,6 +469,10 @@ void Overview::stepAltTab(int dir) {
   const int n = static_cast<int>(m_tiles.size());
   if (n == 0)
     return;
+  if (carouselMode()) {
+    stepCarousel(dir); // slots depend on the selection — needs the relayout
+    return;
+  }
   m_selected = ((m_selected + dir) % n + n) % n;
   syncFocus();
   damage();

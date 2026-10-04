@@ -114,10 +114,11 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 - **`rows`** (default) — macOS-like: previews keep their aspect ratio and are packed into balanced rows, with the row count chosen to make the previews as large as possible. Reads spatially like the real desktop.
 - **`grid`** — uniform cells, one preview centered in each.
 - **`natural`** — keeps each window's real on-screen position, uniformly scaling the whole arrangement to fit.
+- **`carousel`** — a fullscreen switcher: fixed-width cards in one overlapped horizontal run with the selected window centered and its neighbours peeking out on both sides. Geometry is ported 1:1 from [noctalia](https://github.com/noctalia-dev/noctalia)'s window switcher (v5.2). Each card's preview box has a **fixed 1.6 aspect** and the window is **contained** (letterboxed) inside it, so windows of any shape sit whole inside the same card. See [Carousel mode](#carousel-mode).
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `layout` | `rows` \| `grid` \| `natural` | `rows` | Main-area preview layout engine |
+| `layout` | `rows` \| `grid` \| `natural` \| `carousel` | `rows` | Main-area preview layout engine |
 | `gap` | int (px) | `34` | Min spacing between window previews |
 | `padding` | int (px) | `80` | Left/right outer margin of the preview area |
 | `padding_top` | int (px) | `40` | Extra gap between the strip and the previews |
@@ -261,6 +262,54 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 
 `top`/`bottom` give a horizontal strip, `left`/`right` a vertical one. `anchor`
 supersedes the older `bar_position` (top/bottom only); set `anchor` and it wins.
+
+### Carousel mode
+
+`layout = "carousel"` replaces the grid with a fullscreen window switcher, ported
+1:1 from [noctalia](https://github.com/noctalia-dev/noctalia) v5.2's window
+switcher.
+
+```
+        ┌───────┐
+        │ 2 / 5 │                          counter (n / total)
+┌───┐┌───┴───┐┌─┴─┐┌───┐
+│   ││       ││   ││   │                    selected card is centered;
+└───┘└───────┘└───┘└───┘                    neighbours overlap its edges
+```
+
+- **Fixed card slots.** Selected 500px wide, near 380px, far 280px (logical px),
+  overlapping by 60px. Up to 5 cards show; on a narrow screen the run sheds a
+  slot (never below 3), and the whole run then scales down to fit.
+- **Contained previews.** Each card's preview box has a fixed **1.6 aspect**
+  regardless of the window's own shape, and the window is scaled to fit WHOLE
+  inside it (letterboxed on whichever axis is short). A 16:10 window and a 9:21
+  window both sit complete inside the same card — this is the reference's
+  behavior, and the reason the mode exists.
+- **Depth.** Cards one step out are dimmed slightly, cards two steps out more so
+  (`0.125` / `0.25` of the shadow color — the reference's `kNearToneAlpha` /
+  `kFarToneAlpha`). The centered card gets the emphasized ring.
+- **Caption** under the selected card only, plus the `n / total` counter above
+  the run.
+- **Navigation.** Left/Right and Tab/Shift-Tab step the centered card
+  (circular); the scroll wheel does the same; Enter or a click focuses the
+  selected window and dismisses; `✕` on the hovered card closes that window.
+
+Differences from the reference, all deliberate:
+
+- **No workspace strip.** The reference has none, so carousel mode drops ours
+  too — the card run is the entire UI. Workspace keys (`1`…`0`, `gloview:allworkspaces`,
+  the `+` card) do nothing here.
+- **Canvas/desktop mode is disabled** — it parks previews at their real
+  on-screen positions, which is meaningless against fixed card slots.
+- Hover does **not** move the selection (the slots are built around it, so
+  following the mouse would re-lay-out the run on every crossing). Hover only
+  swaps the ring and reveals the `✕`.
+- No app icons, no drop shadows, no per-card open/close scale-slide: those are
+  the reference's shell-UI chrome, and the plugin's own tile glide already
+  covers the motion.
+
+Colors, border sizes, corner rounding and durations come from the usual
+`look.*`/`colors.*`/`anim.*` options — the carousel has no options of its own.
 
 ### Border modes
 
