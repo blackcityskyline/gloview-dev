@@ -14,6 +14,7 @@
 #include "tile_look.hpp"
 #include "window_content.hpp"
 #include "../config/config.hpp"
+#include "../debug/log.hpp"
 #include "../overview.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -98,7 +99,10 @@ void Overview::renderCarousel() const {
     // arrives — shrinking in place only hid them under the landing a frame
     // later, which is what read as the run vanishing without an animation.
     if (!m_opening && card.depth != 0) {
-      const double out = std::clamp(m_progress / 0.45, 0.0, 1.0);
+      // m_progress runs DOWN on close (1 open -> 0 closed), so the exit has to
+      // read it the other way round: as it was written the first close frame was
+      // already out = 1 and the whole run blinked out in one frame.
+      const double out = std::clamp((1.0 - m_progress) / 0.45, 0.0, 1.0);
       const double k   = 1.0 - 0.4 * out;
       const double cx  = look.box.cx() + (focus.cx() - look.box.cx()) * out;
       const double cy  = look.box.cy() + (focus.cy() - look.box.cy()) * out;
