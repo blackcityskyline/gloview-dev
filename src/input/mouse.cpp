@@ -249,16 +249,17 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     // (see the deferred single-click handling on release, below)
     if (!closeOnDoubleClick() &&
         (m_desktopMode || closeButtonsAlwaysOn() || carouselMode())) {
-      // Carousel draws its ✕ on the HOVERED card only, against the card rect
-      // (renderCarousel) rather than the aspect-fitted content box the grid
-      // uses — hit-test exactly the rect that was drawn, or the two drift.
+      // Carousel draws its ✕ on the HOVERED card only, against the PREVIEW
+      // box (renderCarousel) rather than the grid's aspect-fitted content box
+      // — hit-test exactly the rect that was drawn, or the two drift.
       const int hover = carouselMode() ? m_hovered : -1;
       for (size_t i = 0; i < m_tiles.size(); ++i) {
         if (carouselMode() && static_cast<int>(i) != hover)
           continue;
         const LRect cur = currentBox(m_tiles[i], static_cast<int>(i));
-        const LRect br =
-            closeButtonRect(carouselMode() ? cur : tileContentBox(i, cur));
+        const LRect br = closeButtonRect(
+            carouselMode() ? carouselPreviewBox(cur, carouselMetrics())
+                           : tileContentBox(i, cur));
         if (br.contains(lx, ly)) {
           m_drag.press =
               model::Drag::Press::Consumed; // the release must treat it as handled

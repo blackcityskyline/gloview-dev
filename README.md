@@ -124,6 +124,8 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `padding_top` | int (px) | `40` | Extra gap between the strip and the previews |
 | `padding_bottom` | int (px) | `70` | Bottom outer margin |
 | `max_scale` | float | `1.0` | Never enlarge a preview past real size × this |
+| `carousel_cards` | int | `5` | `layout = "carousel"` only: how many cards the run shows (any count, even included) |
+| `carousel_card_width` | int (px) | `500` | `layout = "carousel"` only: the centered card's width; the run scales down to fit |
 
 ### Animations
 
@@ -272,18 +274,23 @@ workspace strip stays exactly where it is, and workspace switching, the
 all↔one flip, alt-tab, drag-and-drop and canvas mode all keep working.
 
 ```
-        ┌───────┐
-        │ 2 / 5 │                          counter (n / total)
-┌───┐┌───┴───┐┌─┴─┐┌───┐
-│   ││       ││   ││   │                    selected card is centered;
-└───┘└───────┘└───┘└───┘                    neighbours overlap its edges
+            2 / 7                          counter (n / total)
+┌───┐┌─┐┌───┴───┐┌─┐┌───┐
+│   ││ ││       ││ ││   │                  the selected card is centered;
+└───┘└─┘└───────┘└─┘└───┘                  neighbours overlap its edges
 ```
 
-- **Fixed card slots.** Selected 500px wide, near 380px, far 280px (logical px),
-  overlapping by 60px. Up to 5 cards show; on a narrow screen the run sheds a
-  slot (never below 3), and the whole run then scales down to fit. The run is
-  laid out in the same usable box every other mode gets — `padding*` and the
-  reserved strip band still apply.
+- **Card count and size are yours.** `carousel_cards` sets how many cards the
+  run shows — any number, even included (with an even count the selected card
+  sits one slot off the exact middle). `carousel_card_width` sets the centered
+  card's width in px; the rest of the ladder keeps the reference's proportions
+  (380/500 and 280/500 of it). Windows beyond the count are simply **not
+  drawn** — they slide out past the run's edge as you scroll. The whole run
+  scales down uniformly if it doesn't fit, so nothing is ever cut off.
+- **The shrink never repeats.** Card widths step down strictly: centered, then
+  380/500, 280/500, and geometrically smaller beyond that. (The reference has
+  widths for the first three only and reuses the third for every deeper card,
+  so a run deeper than five ends in two identically sized cards.)
 - **Contained previews.** Each card's preview box has a fixed **1.6 aspect**
   regardless of the window's own shape, and the window is scaled to fit WHOLE
   inside it (letterboxed on whichever axis is short). A 16:10 window and a 9:21
@@ -291,10 +298,21 @@ all↔one flip, alt-tab, drag-and-drop and canvas mode all keep working.
   behavior, and the reason the mode exists.
 - **Depth.** Cards one step out are dimmed slightly, cards two steps out more so
   (`0.125` / `0.25` of the shadow color — the reference's `kNearToneAlpha` /
-  `kFarToneAlpha`). The centered card gets the emphasized ring. Cards paint far
-  → selected, so the centered one and its ring sit on top.
-- **Caption** under the selected card only, plus the `n / total` counter above
-  the run.
+  `kFarToneAlpha`), thinning further past that so a deep run doesn't go black.
+  Cards paint far → centered, so the centered one and its ring sit on top.
+- **The chrome is the plugin's own**, exactly as in every other layout: a soft
+  drop shadow, the thin always-on ring plus the thicker focus ring from
+  `show_border` / `show_focus_border` / `border_size` / `select_border`, the
+  frost underlay while the backdrop is still fading, a title pill under the
+  **centered** card only, and a bare `n / total` counter above the run. There is
+  **no filled card surface** — the reference draws its cards as opaque Material
+  panels, which read as dark slabs floating over the blurred desktop.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `carousel_cards` | int | `5` | How many cards the run shows (any count, even included) |
+| `carousel_card_width` | int (px) | `500` | Width of the centered card; the run scales down to fit |
+
 - **Navigation.** Because the slots are built around the selection, moving it
   rotates the run (all cards glide to their new depths on the usual `glide`
   clock, without the per-tile stagger — it is one band, not a queue).
@@ -309,11 +327,10 @@ all↔one flip, alt-tab, drag-and-drop and canvas mode all keep working.
   following the mouse would re-lay-out the run on every crossing. Hover swaps
   the ring and reveals the `✕`.
 
-Only the reference's shell-UI chrome is left out: app icons, drop shadows and
-its per-card open/close scale-slide (the plugin's own tile glide covers the
-motion). Colors, border sizes, corner rounding and durations come from the
-usual `look.*`/`colors.*`/`anim.*` options — the carousel adds no options of
-its own.
+Left out of the reference: app icons and its per-card open/close scale-slide
+(the plugin's own tile glide covers the motion). Colors, border sizes, corner
+rounding and durations all come from the usual `look.*` / `colors.*` / `anim.*`
+options.
 
 Canvas mode still overrides the carousel (it is a different engine entirely and
 keeps its existing precedence over `layout`), so `Shift` while in carousel mode

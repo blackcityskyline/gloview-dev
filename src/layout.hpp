@@ -81,6 +81,11 @@ struct CarouselMetrics {
     double selectedW     = 500.0; // windowSwitcherSelectedCardWidth
     double nearW         = 380.0; // windowSwitcherNearCardWidth
     double farW          = 280.0; // windowSwitcherFarCardWidth
+    // Past depth 2 the reference has no width of its own (it reuses farW), so a
+    // run deeper than 5 cards repeats the same size — read as two identical
+    // cards at the end. Continue the shrink geometrically instead, anchored at
+    // farW so depths 0..2 stay bit-identical to the reference.
+    double taper         = 0.8;
     double overlap       = 60.0;  // windowSwitcherCardOverlap (ctrlH + spaceLg)
     double aspect        = 1.6;   // windowSwitcherPreviewAspect (w/h)
     double frameInset    = 4.0;   // spaceXs — card padding around the preview
@@ -90,8 +95,9 @@ struct CarouselMetrics {
     double countW        = 88.0;  // controlHeightLg * 2
     double sectionGap    = 12.0;  // spaceMd
     double screenMargin  = 32.0;  // controlHeightSm
-    double narrowRatio   = 0.72;  // windowSwitcherNarrowLayoutThreshold
-    int    visibleCards  = 5;     // kVisibleCards
+    int    visibleCards  = 5;     // kVisibleCards — the reference's value; the
+                                  // configured count, and any run up to it, is
+                                  // laid out by the same ladder
 };
 
 // Resolved per layout pass. `cards` is parallel to the window list; the rest is
@@ -100,7 +106,7 @@ struct CarouselLayout {
     struct Card {
         bool   visible = false; // inside the visible run? (else: draw nothing)
         bool   showCaption = false; // only the centered card carries one
-        int    depth = 3;      // 0 = selected, 1 = near, >= 2 = far
+        int    depth = 3;      // 0 = selected, 1 = near, 2+ = progressively far
         int    direction = 0;  // -1 left of center, +1 right, 0 selected
         int    zIndex = 0;     // 3 - min(depth, 3)
         double x = 0.0, y = 0.0, w = 0.0, h = 0.0;
@@ -116,6 +122,11 @@ struct CarouselLayout {
 
 // `selected` is the centered card's index (wrapped). `screen` is the monitor
 // box in logical px. Cards come out panel-local; callers offset by origin.
+// `count` windows, `selected` centered (wrapped), in the `screen` box. Cards
+// come out panel-local; callers offset by origin. `mt.visibleCards` is how many
+// cards the run SHOWS at most (any count, even included); windows beyond it are
+// simply not drawn. `mt.selectedW` is the centered card's width in logical px,
+// and the whole run scales down from there to fit `screen`.
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                                const CarouselMetrics& mt = {});
 

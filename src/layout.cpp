@@ -199,9 +199,33 @@ Engine parseEngine(const char* s) {
     return Engine::Rows;
 }
 
-// Ported 1:1 from noctalia v5.2's computeWindowSwitcherCarouselLayout
-// (src/shell/switcher/window_switcher_carousel_style.cpp) — see the
+// Ported from noctalia v5.2's computeWindowSwitcherCarouselLayout
+// (src/shell/switcher/window_switcher_carousel_style.cpp); see the
 // CarouselMetrics comment in layout.hpp for the constant-by-constant mapping.
+//
+// Two deliberate divergences, both because the reference only ever lays out
+// exactly 5 cards and we let the count be anything:
+//   * no slot shedding on a narrow screen (its
+//     windowSwitcherNarrowLayoutThreshold drops cards down to 3) — we scale
+//     the run uniformly instead, since the count is the user's choice.
+//   * the width ladder continues past depth 2 (see cardWidth) instead of
+//     reusing farW.
+// For odd counts up to 5 this is still bit-identical to the reference — see
+// tests/carousel_reference_xcheck.cpp, which diffs every resolved number
+// against an independent transcription of the original.
+// Width of the card `depth` steps out from the center. Depths 0-2 are the
+// reference's three fixed widths verbatim (500/380/280); beyond that the
+// reference simply reuses farW, so a 7-card run ends in two identically sized
+// cards (it only ever shows 5, so it never hit that). Taper geometrically from
+// farW instead — every card out is strictly smaller than the one inside it.
+static double cardWidth(int depth, const CarouselMetrics& mt) {
+    if (depth <= 0)
+        return mt.selectedW;
+    if (depth == 1)
+        return mt.nearW;
+    return mt.farW * std::pow(mt.taper, static_cast<double>(depth - 2));
+}
+
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                                const CarouselMetrics& mt) {
     CarouselLayout L;
@@ -211,27 +235,34 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.cards.resize(static_cast<size_t>(count));
     L.countW = mt.countW;
     L.countH = mt.countH;
-    L.visibleCards = std::max(1, std::min(mt.visibleCards, count));
+
+    // How many cards the run shows: the configured count, capped by how many
+    // windows there are. ANY count is allowed (even included) — centerSlot
+    // below handles the asymmetry, the selected card just sits one slot off
+    // the exact middle.
+    const int want = std::max(1, mt.visibleCards);
+    const int shown = std::min(want, count);
+    L.visibleCards = shown;
 
     const double availableW = std::max(1.0, screen.w - mt.screenMargin * 2.0);
-    // Width the full visible run needs at the nominal card widths.
-    auto desiredWidth = [&] {
-        const int sideSlots = L.visibleCards / 2;
-        double width = mt.selectedW;
-        if (sideSlots >= 1) width += mt.nearW * 2.0;
-        if (sideSlots >= 2) width += mt.farW * 2.0;
-        width -= mt.overlap * static_cast<double>(sideSlots * 2);
-        return width;
-    };
-    // Too tight for 5 (or 4) cards: shed the outermost slot, never below 3.
-    while (L.visibleCards > 3 && availableW / desiredWidth() < mt.narrowRatio)
-        --L.visibleCards;
+    const int centerSlot = shown / 2;
+    const int leftSlots = centerSlot;
+    const int rightSlots = shown - 1 - centerSlot;
 
-    const double widthScale = std::min(1.0, availableW / desiredWidth());
-    double selW = mt.selectedW * widthScale;
-    double nearW = mt.nearW * widthScale;
-    double farW = mt.farW * widthScale;
-    double overlap = mt.overlap * widthScale;
+    // Run width at nominal card widths: the selected card plus each side card's
+    // contribution (its width less the overlap it tucks under its neighbor).
+    double nominal = mt.selectedW;
+    for (int d = 1; d <= leftSlots; ++d)
+        nominal += cardWidth(d, mt) - mt.overlap;
+    for (int d = 1; d <= rightSlots; ++d)
+        nominal += cardWidth(d, mt) - mt.overlap;
+
+    // Uniform scale so the whole run fits the width. Depth ratios (and thus the
+    // strict per-step shrink) are preserved by scaling every width by the same
+    // factor.
+    const double scale = std::min(1.0, availableW / std::max(1.0, nominal));
+    auto width = [&](int depth) { return cardWidth(depth, mt) * scale; };
+    const double overlap = mt.overlap * scale;
 
     // Card height from its width: the preview box is a fixed-aspect rect inset
     // by frameInset on every side.
@@ -240,70 +271,69 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         return innerW / mt.aspect + mt.frameInset * 2.0;
     };
 
-    auto updateExtents = [&] {
-        const int sideSlots = L.visibleCards / 2;
-        L.stripW = selW;
-        if (sideSlots >= 1) L.stripW += (nearW - overlap) * 2.0;
-        if (sideSlots >= 2) L.stripW += (farW - overlap) * 2.0;
-        L.stripH = frameH(selW) + mt.captionGap + mt.captionH;
-        L.panelW = L.stripW;
-        L.panelH = mt.countH + mt.sectionGap + L.stripH;
-    };
-    updateExtents();
+    const double selW = width(0);
+    L.stripW = selW;
+    for (int d = 1; d <= leftSlots; ++d)
+        L.stripW += width(d) - overlap;
+    for (int d = 1; d <= rightSlots; ++d)
+        L.stripW += width(d) - overlap;
+    L.stripH = frameH(selW) + mt.captionGap + mt.captionH;
 
-    // Height fit: two shrinking passes until the panel (count badge + strip)
-    // clears the screen margins.
+    // Height fit: scale down until the panel (counter + strip) clears the box.
     const double maxPanelH = std::max(1.0, screen.h - mt.screenMargin * 2.0);
-    for (int pass = 0; pass < 2 && L.panelH > maxPanelH; ++pass) {
-        const double availStripH =
-            std::max(1.0, maxPanelH - mt.countH - mt.sectionGap);
-        const double hScale = std::min(1.0, availStripH / L.stripH);
-        selW *= hScale;
-        nearW *= hScale;
-        farW *= hScale;
-        overlap *= hScale;
-        updateExtents();
-    }
+    const double hScale =
+        std::min(1.0, std::max(1.0, maxPanelH - mt.countH - mt.sectionGap) /
+                           std::max(1.0, L.stripH));
+    L.stripW *= hScale;
+    L.stripH *= hScale;
 
+    L.panelW = L.stripW;
+    L.panelH = mt.countH + mt.sectionGap + L.stripH;
     L.countX = (L.panelW - L.countW) * 0.5;
     L.stripY = mt.countH + mt.sectionGap;
     L.originX = std::round((screen.w - L.panelW) * 0.5);
     L.originY = std::round((screen.h - L.panelH) * 0.5);
 
-    const int visibleCount = std::min(L.visibleCards, count);
-    const int centerSlot = visibleCount / 2;
+    // Lay the run out from the center outward, accumulating each side's
+    // overlaps. `hScale` folds into every width so positions and sizes stay
+    // consistent with the extents above.
+    const double selX = (L.stripW - selW * hScale) * 0.5;
+    const double selFrameH = frameH(selW * hScale);
     const int sel = ((selected % count) + count) % count;
-    const int start = ((sel - centerSlot) % count + count) % count;
-    const double selX = (L.stripW - selW) * 0.5;
-    const double selFrameH = frameH(selW);
-    for (int slot = 0; slot < visibleCount; ++slot) {
-        const int idx = (start + slot) % count;
-        const int rel = slot - centerSlot;
-        const int dist = std::abs(rel);
+
+    // Walk left and right separately: an even run has one more slot on one
+    // side, and each side's cards step out from the center in order.
+    auto place = [&](int relSlot) {
+        const int idx = ((sel + relSlot) % count + count) % count;
+        const int dist = std::abs(relSlot);
         CarouselLayout::Card& c = L.cards[static_cast<size_t>(idx)];
         c.visible = true;
         c.showCaption = dist == 0;
         c.depth = dist;
-        c.direction = rel < 0 ? -1 : (rel > 0 ? 1 : 0);
+        c.direction = relSlot < 0 ? -1 : (relSlot > 0 ? 1 : 0);
         c.zIndex = 3 - std::min(dist, 3);
-        if (dist == 0) {
-            c.w = selW;
-            c.x = selX;
-        } else if (dist == 1) {
-            c.w = nearW;
-            c.x = rel < 0 ? selX - nearW + overlap : selX + selW - overlap;
-        } else {
-            c.w = farW;
-            const double nearL = selX - nearW + overlap;
-            const double nearR = selX + selW - overlap;
-            c.x = rel < 0 ? nearL - farW + overlap : nearR + nearW - overlap;
+        c.w = width(dist) * hScale;
+        // Each side card's inner edge tucks `overlap` under the previous one's.
+        double x = selX;
+        const int step = relSlot < 0 ? -1 : 1;
+        for (int k = 1; k <= dist; ++k) {
+            const double prevW = width(k - 1) * hScale;
+            const double curW = width(k) * hScale;
+            x = step < 0 ? x - curW + overlap * hScale
+                         : x + prevW - overlap * hScale;
         }
+        c.x = x;
         // The centered card is the tall one (it carries the caption), so the
         // shorter side cards center their preview against ITS preview box.
         const double h = frameH(c.w);
         c.h = h + (c.showCaption ? mt.captionGap + mt.captionH : 0.0);
         c.y = (selFrameH - h) * 0.5;
-    }
+    };
+    place(0);
+    for (int k = 1; k <= leftSlots; ++k)
+        place(-k);
+    for (int k = 1; k <= rightSlots; ++k)
+        place(k);
     return L;
 }
 

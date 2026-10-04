@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 
 using namespace gloview;
 
@@ -170,25 +171,110 @@ int main() {
     yes(L.cards[4].visible, "9 cards: the selected tile is in the run");
   }
 
-  // ---- narrow screen: sheds slots, never below 3 -------------------------
+  // ---- narrow screen: the whole run scales down, card count is NOT shed ---
   {
-    // 1000px wide → available 936. desired(5)=1580 → 0.592 < 0.72 → shed
-    // to 4; desired(4) is the same 1580 → shed to 3; desired(3) with one
-    // side slot = 500+760-120 = 1140 → 936/1140 = 0.821 → stop at 3.
-    const auto L = computeCarousel(9, 4, LRect{0, 0, 1000, 1080}, mt);
-    is(L.visibleCards, 3, "narrow: dropped to 3 cards");
-    is(L.cards[3].depth, 1, "narrow: no depth-2 slots left");
-    // start = (4-1) mod 9 = 3 → only tiles 3,4,5 are in the 3-card run.
-    yes(L.cards[3].visible && L.cards[4].visible && L.cards[5].visible,
-        "narrow: the three run cards are visible");
-    yes(!L.cards[0].visible && !L.cards[8].visible,
+    // The reference sheds slots down to 3 when the screen is tight
+    // (windowSwitcherNarrowLayoutThreshold). We don't: the configured card
+    // count is the user's explicit choice, so the run scales uniformly to fit
+    // instead — a 5-card carousel on a narrow screen is 5 smaller cards, not 3
+    // cards with 2 windows silently missing.
+    CarouselMetrics m2 = mt;
+    m2.visibleCards = 5;
+    const auto L = computeCarousel(9, 4, LRect{0, 0, 1000, 1080}, m2);
+    is(L.visibleCards, 5, "narrow: keeps the configured 5 cards");
+    // start = (4-2) mod 9 = 2 → tiles 2..6 are in the run.
+    yes(L.cards[2].visible && L.cards[6].visible,
+        "narrow: the five run cards are visible");
+    yes(!L.cards[1].visible && !L.cards[7].visible,
         "narrow: cards outside the run are not");
-    // Everything is then scaled by widthScale = 936/1140.
-    const double ws = 936.0 / 1140.0;
-    near(L.cards[3].w, 380 * ws, "narrow: near width scaled");
-    near(L.cards[4].w, 500 * ws, "narrow: selected width scaled");
-    near(L.stripW, (500 + (380 - 60) * 2) * ws, "narrow: strip width");
-    yes(L.stripW <= 936.0 + 1e-9, "narrow: run fits the screen");
+    is(L.cards[4].depth, 0, "narrow: selected is tile 4");
+    yes(L.stripW <= 1000.0 - 2 * mt.screenMargin + 1e-9,
+        "narrow: run fits inside the margins");
+    // Depth ratios survive the uniform scale: 500 : 380 : 280.
+    near(L.cards[4].w / L.cards[3].w, 500.0 / 380.0,
+         "narrow: sel/near ratio kept");
+    near(L.cards[3].w / L.cards[2].w, 380.0 / 280.0,
+         "narrow: near/far ratio kept");
+  }
+
+  // ---- the shrink is MONOTONIC at every depth ----------------------------
+  // Regression: the reference has widths only for depths 0/1/2 and reuses farW
+  // beyond, so a 7-card run ended in two identically sized cards. Every card
+  // out from the center must be strictly smaller than the one inside it.
+  for (const int n : {2, 3, 4, 5, 6, 7, 9, 12, 20}) {
+    for (const int sel : {0, 1, 5, -1}) {
+      CarouselMetrics m2 = mt;
+      m2.visibleCards = n;
+      // Wide/tall enough that no uniform down-scale kicks in, so the widths can
+      // be compared against the nominal ladder directly.
+      const auto L = computeCarousel(n, sel, LRect{0, 0, 20000, 12000}, m2);
+      const int shown = std::min(n, m2.visibleCards);
+      const int centerSlot = shown / 2;
+      for (const int side : {-1, 1}) {
+        const int slots = side < 0 ? centerSlot : shown - 1 - centerSlot;
+        double prev = mt.selectedW;
+        for (int d = 1; d <= slots; ++d) {
+          const int idx = ((sel + side * d) % n + n) % n;
+          const auto &c = L.cards[static_cast<size_t>(idx)];
+          yes(c.visible, "monotonic: card in the run is visible");
+          is(c.depth, d, "monotonic: depth matches the step");
+          // Reference widths for depths 0..2, then the geometric taper.
+          const double want = d <= 1 ? (d == 1 ? mt.nearW : mt.selectedW)
+                             : mt.farW * std::pow(mt.taper, d - 2.0);
+          near(c.w, want, "monotonic: width matches the ladder");
+          if (!(c.w < prev - 1e-9)) {
+            std::printf("FAIL monotonic n=%d sel=%d side=%d depth=%d: %.3f "
+                        "not smaller than %.3f\n",
+                        n, sel, side, d, c.w, prev);
+            ++g_failed;
+          }
+          prev = c.w;
+        }
+      }
+    }
+  }
+
+  // ---- even card counts put the selection one slot off center -------------
+  {
+    CarouselMetrics m2 = mt;
+    m2.visibleCards = 4;
+    const auto L = computeCarousel(8, 3, LRect{0, 0, 1920, 1080}, m2);
+    is(L.visibleCards, 4, "even: four cards shown");
+    is(L.cards[3].depth, 0, "even: selected is centered");
+    is(L.cards[2].depth, 1, "even: one card to its left");
+    is(L.cards[1].depth, 2, "even: two cards to its left");
+    is(L.cards[4].depth, 1, "even: one card to its right");
+    yes(!L.cards[5].visible, "even: the 5th card is out of the run");
+  }
+
+  // ---- 6 and 12 cards: exactly the configured count, nothing dropped -----
+  {
+    for (const int n : {3, 6, 9, 12}) {
+      CarouselMetrics m2 = mt;
+      m2.visibleCards = n;
+      const auto L = computeCarousel(20, 0, LRect{0, 0, 2560, 1440}, m2);
+      is(L.visibleCards, n, "count: shows exactly the configured n");
+      int visible = 0;
+      for (const auto &c : L.cards)
+        if (c.visible)
+          ++visible;
+      is(visible, n, "count: exactly n cards marked visible");
+      // And it still fits.
+      yes(L.stripW <= 2560.0 - 2 * mt.screenMargin + 1e-9,
+          "count: run fits the screen");
+    }
+  }
+
+  // ---- card width is the user's knob -------------------------------------
+  {
+    CarouselMetrics wide = mt;
+    wide.selectedW = 700.0;
+    wide.nearW = 700.0 * 380.0 / 500.0;
+    wide.farW = 700.0 * 280.0 / 500.0;
+    const auto W = computeCarousel(5, 2, LRect{0, 0, 2560, 1440}, wide);
+    near(W.cards[2].w, 700.0, "size: selected honors selectedW");
+    near(W.cards[1].w, 700.0 * 380.0 / 500.0, "size: near scales with it");
+    near(W.cards[0].w, 700.0 * 280.0 / 500.0, "size: far scales with it");
   }
 
   // ---- short screen: the two-pass height fit shrinks the cards -----------

@@ -122,6 +122,10 @@ public:
   // paint() routes here INSTEAD of the grid stages. See carousel_view.cpp.
   void renderCarousel() const;
   bool carouselMode() const; // plugin:gloview:layout == "carousel"
+  // The metrics layoutTiles actually laid the run out with (config-resolved:
+  // carousel_cards / carousel_card_width). Hit-testing must use the SAME box the
+  // renderer drew, and re-deriving them from config here could drift.
+  CarouselMetrics carouselMetrics() const { return m_carouselMetrics; }
   // Step the centered card by dir (+1/-1), circular. In carousel mode this IS
   // moveSelection/stepAltTab's whole job: the tiles are already in a row, so
   // there is no direction to find a neighbour in.
@@ -131,6 +135,7 @@ public:
   // read by the painter — recomputed on every relayout, so it is always in
   // sync with m_tiles.
   CarouselLayout m_carousel;
+  CarouselMetrics m_carouselMetrics; // config-resolved, set by layoutTiles
   // The selection m_carousel was built for (-1 when not in carousel mode).
   // The slots are laid out AROUND the selection, so any change to it needs a
   // relayout; renderStage() compares against this and glides the run into its

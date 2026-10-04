@@ -80,10 +80,19 @@ struct grid {
   Int padding_top;         // gap below the strip
   Int padding_bottom;      // bottom margin
   Float max_scale;         // never upscale past real*this
-  Str layout;              // rows | grid | natural
+  Str layout;              // rows | grid | natural | carousel
 };
 
 inline grid grid;
+
+// ---- carousel: the "carousel" layout's own knobs ---------------------------
+// Only consulted when layout == "carousel"; every other engine ignores them.
+struct carousel {
+  Int cards;       // how many cards the run shows (any count, even included)
+  Int card_width;  // the CENTERED card's width in px; the run scales to fit
+};
+
+inline carousel carousel;
 
 // ---- strip: band geometry + contents ----------------------------------------
 struct strip {

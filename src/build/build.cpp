@@ -441,15 +441,30 @@ void Overview::layoutTiles() {
     const int sel = (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size()))
                         ? m_selected
                         : 0;
+    // Config -> metrics. card_width sets the CENTERED card; the rest of the
+    // ladder keeps the reference's 500:380:280 ratios, and the taper past
+    // depth 2 continues shrinking so no two cards in a deep run match.
+    CarouselMetrics mt;
+    mt.visibleCards = std::max(1, static_cast<int>(cfg::carousel.cards.get()));
+    if (const int w = static_cast<int>(cfg::carousel.card_width.get());
+        w > 0) {
+      mt.selectedW = w;
+      mt.nearW     = w * 380.0 / 500.0;
+      mt.farW      = w * 280.0 / 500.0;
+      mt.overlap   = w * 60.0 / 500.0;
+    }
     const LRect usable{cfg.padLeft, cfg.padTop,
                        std::max(1.0, m->m_size.x - cfg.padLeft - cfg.padRight),
                        std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
-    m_carousel    = computeCarousel(static_cast<int>(m_tiles.size()), sel, usable);
-    m_carouselFor = sel;
+    m_carousel        = computeCarousel(static_cast<int>(m_tiles.size()),
+                                        sel, usable, mt);
+    m_carouselMetrics = mt;
+    m_carouselFor     = sel;
     for (size_t i = 0; i < m_tiles.size(); ++i) {
       const auto &c = m_carousel.cards[i];
       // An off-run card gets a ZERO target — currentBox() parks it just past
-      // the run's edge instead (so it slides out and stops being drawn).
+      // the run's edge instead, and renderCarousel fades it out over the glide
+      // and stops drawing it once the glide is done.
       m_tiles[i].target = c.visible ? LRect{usable.x + m_carousel.originX + c.x,
                                             usable.y + m_carousel.originY +
                                                 m_carousel.stripY + c.y,
@@ -458,8 +473,9 @@ void Overview::layoutTiles() {
     }
     return;
   }
-  m_carousel    = {};
-  m_carouselFor = -1;
+  m_carousel        = {};
+  m_carouselMetrics = {};
+  m_carouselFor     = -1;
 
   std::vector<LRect> nat;
   nat.reserve(m_tiles.size());

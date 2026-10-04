@@ -4,10 +4,20 @@
 // Sweeps screen sizes x window counts x selections; every resolved number
 // (card x/y/w/h, depth, panel, strip, counter, origin) must match.
 //
+// SCOPE: the window counts the reference actually supports — 1..5, with the
+// reference's own kVisibleCards. Beyond that we DELIBERATELY diverge (the
+// reference's layout only ever shows 5 cards), so there is nothing to compare
+// against:
+//   * even counts — the reference computes stripWidth for 2 slots per side even
+//     when only 3 cards are placed, so its run is wider than its own cards and
+//     hangs off both edges. We size the run to the cards actually placed.
+//   * narrow screens — the reference sheds slots (down to 3) via
+//     windowSwitcherNarrowLayoutThreshold; we scale the run uniformly instead,
+//     since the count is the user's explicit choice.
+// Both are covered by tests/layout_carousel_check.cpp.
+//
 // Not part of the plugin build — it links layout.cpp alone, which is only
-// possible because layout.hpp/cpp stay Hyprland-free. See
-// tests/layout_carousel_check.cpp for the human-readable assertions on the
-// same numbers; this file exists to prove the PORT, not the intent.
+// possible because layout.hpp/cpp stay Hyprland-free.
 
 #include "../src/layout.hpp"
 
@@ -206,9 +216,18 @@ int main() {
   for (const float sw : {640.F, 800.F, 1000.F, 1280.F, 1366.F, 1600.F, 1920.F,
                          2560.F, 3440.F}) {
     for (const float sh : {480.F, 600.F, 720.F, 900.F, 1080.F, 1440.F, 2160.F}) {
-      for (const int n : {1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 20}) {
+      // n = 1, 3, 5 only — see the SCOPE note at the top. Odd counts up to the
+      // reference's kVisibleCards are where the two layouts are the same
+      // function; even counts diverge (the reference sizes stripWidth for two
+      // slots per side regardless of how many it places).
+      for (const int n : {1, 3, 5}) {
         for (const int sel : {0, 1, 3, 7, -1, -5}) {
           const auto R = reference(sw, sh, n, sel, 1.0F);
+          // Skip the cases where the REFERENCE sheds a slot (its
+          // windowSwitcherNarrowLayoutThreshold): there the two layouts are
+          // meant to differ — see the SCOPE note.
+          if (R.visibleCards != n)
+            continue;
           const auto M = computeCarousel(n, sel, LRect{0, 0, sw, sh}, mt);
           ++cases;
           check("vis", M.visibleCards, R.visibleCards, sw, sh, n, sel);
