@@ -186,20 +186,16 @@ Engine parseEngine(const char* s) {
     return Engine::Rows;
 }
 
-// ONE standard box for every card, the size a fullscreen window occupies. Every
-// card is that box to the pixel, so the run's geometry cannot depend on which
-// window happens to be centred: only its CONTENT differs. A window smaller than
-// the box is fitted whole inside it and neither the box nor the window is
-// deformed — which is also the only fit that keeps the content's corner arcs off
-// the ring, since anything that spills out cannot be rounded back in.
+// ONE standard box for every card, the size a fullscreen window occupies, so the
+// run's geometry cannot depend on which window is centred — only its content
+// differs. A window smaller than the box is fitted whole inside it; nothing is
+// deformed, which also keeps the content's corner arcs off the ring.
 //
-// Cards are laid out from the FOCUSED one, overlapping. The focused
-// card is centred in the usable rect — which already has the strip's band added
-// to the padding on whichever edge it is anchored to, so the centre is the centre
-// of the free space and moves with the strip instead of being the screen's.
-// Nothing is positioned relative to the run's own extent: with an even card count
-// the run is not symmetric about its middle card, and anchoring to it is what put
-// the focused card half a card off.
+// Cards are laid out from the FOCUSED one, overlapping, and it is centred in the
+// usable rect — which already carries the strip's band in the padding, so that is
+// the centre of the free space and it moves with the strip. Nothing is anchored to
+// the run's own extent: with an even card count the run is not symmetric about its
+// middle card, and anchoring to it is what put the focused card half a card off.
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                                const CarouselMetrics& mt) {
     CarouselLayout L;

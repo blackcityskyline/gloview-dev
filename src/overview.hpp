@@ -82,15 +82,15 @@ public:
   void renderStripButtons() const;
   void renderPulses(bool strip) const;
   void renderTiles() const;
-  // Carousel paints its run in ONE pass: cards overlap, so each has to be a
-  // whole tile, chrome through content, before the next card goes over it.
+  // Carousel paints its run in ONE pass: overlapping cards are each a whole
+  // tile, chrome through content, before the next goes over it.
   void renderCarousel() const;
   void renderCarouselCounter() const;
   bool carouselMode() const;
   void stepCarousel(int dir); // center the next/previous card, circular
   CarouselLayout m_carousel; // written by layoutTiles
-  // The selection m_carousel was built for. Slots are laid out AROUND it, so any
-  // change needs a relayout; renderStage checks once for all paths.
+  // The selection m_carousel was built for; slots are laid out around it, so any
+  // change needs a relayout.
   int m_carouselFor = -1;
   void relayoutCarousel();
   // What layoutTiles resolved on its last call — the renderer's only source.
@@ -122,8 +122,7 @@ public:
 
   [[nodiscard]] bool active() const { return m_active; }
   [[nodiscard]] bool opening() const { return m_opening; } // entry anim only
-  // Monotonic RENDER_LAST_MOMENT count, ticked even when inactive, so the
-  // frame-correlated debug traces line up.
+  // Monotonic RENDER_LAST_MOMENT count, ticked even when inactive.
   [[nodiscard]] std::uint64_t frameTick() const { return m_frameTick; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool blurEnabled() const;
@@ -153,8 +152,8 @@ private:
   mutable std::chrono::steady_clock::time_point m_lastAnimTick{};
   // Tiles ride their own clock: any layout change is "retarget + restart".
   anim::Tween m_tileClock;
-  // Freeze every tile at the box it is shown at NOW (oldBoxes, captured before
-  // the rebuild); empty = start from the fresh naturals.
+  // Freeze every tile at the box it is shown at NOW; empty = start from the
+  // fresh naturals.
   void startTileGlide(
       const std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);
   PHLMONITORREF m_monitor;
@@ -201,9 +200,9 @@ private:
   anim::AnimCfg m_glide, m_entry, m_ghost, m_lift;
   std::string m_enterStyle, m_exitStyle;
   bool animBusy() const;
-  // Secondary clocks belong in the pump predicates: after a card/digit switch
-  // the master clock is done, so without them the pump never arms and later
-  // frames commit EMPTY damage over stale buffers.
+  // Secondary clocks belong in the pump predicates: after a card/digit switch the
+  // master clock is done, so without them the pump never arms and later frames
+  // commit EMPTY damage over stale buffers.
   bool secondaryAnimsActive() const {
     return !m_rebuildClock.done(leaf(entryLeaf()).ms) ||
            !m_rebuildClock.done(leaf(ghostLeaf()).ms) ||
@@ -224,9 +223,9 @@ private:
   [[nodiscard]] bool swapfxActive(const PHLWINDOW &w) const;
   void renderSwapFX() const;
 
-  // close_trigger == "doubleclick": the single click is deferred behind a timer.
-  // An armed timer with m_pendingClickWin == w IS the "first click" record; a
-  // second click before it fires closes the window instead.
+  // close_trigger == "doubleclick": the first click is deferred behind a timer. An
+  // armed timer with m_pendingClickWin == w IS the "first click" record; a second
+  // click before it fires closes the window instead.
   PHLWINDOWREF m_pendingClickWin;
   SP<CEventLoopTimer> m_clickTimer;
 
@@ -244,12 +243,12 @@ private:
 
   CCursorModule m_cursor; // KMS plane preferred, software erases-and-redraws
 
-  // Backdrop cache: frame one's blur lives in a persistent FBO, later frames
-  // blit it. srcId + recipe are the key, compared EVERY frame, so the cache
-  // survives a ws switch but catches a real recipe change.
+  // Backdrop cache: frame one's blur lives in a persistent FBO, later frames blit
+  // it. srcId + recipe are the key, compared EVERY frame, so the cache survives a
+  // ws switch but catches a real recipe change.
   mutable render::BlurCache m_blur;
   // Full-res FBO holding a rendered desktop background when there is no direct
-  // texture to blur; drawn once per session.
+  // texture to blur.
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false;
   mutable std::chrono::steady_clock::time_point m_lastBackdropCapture{};
@@ -280,9 +279,9 @@ private:
   void updateAnimation();
   void deactivate();
   // Boundary policy (user-specified): real windows hard-switch at BOTH edges,
-  // hidden on the first open frame and restored only after the close completes.
-  // NO per-window fades: the window resizes mid-glide, so a fading original
-  // under the moving preview reads as double vision. The fade is the BLUR's.
+  // hidden from the first open frame and restored only after the close completes.
+  // NO per-window fades — the window resizes mid-glide, so a fading original under
+  // the moving preview reads as double vision. The fade is the BLUR's.
   double eased() const; // chrome opacity / backdrop progress
   double animDuration() const; // read LIVE, so config applies in-flight
   double glideDur() const { return m_tileClockMs > 0 ? m_tileClockMs : leaf(glideLeaf()).ms; }
@@ -340,7 +339,7 @@ private:
   void activateSelection();
   // A target not on the DISPLAYED workspace (expo, cross-ws click) collapses onto
   // it and rebuilds BEFORE the close glide, so the glide aims at the real final
-  // position instead of a stale grid.
+  // position.
   void focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason);
   bool crossesRealWorkspace(const PHLWINDOW &w) const;
   void syncFocus() const;

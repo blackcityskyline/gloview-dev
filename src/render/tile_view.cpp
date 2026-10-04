@@ -104,11 +104,10 @@ LRect Overview::tileBox(size_t i, const LRect &slot) const {
   return fitInside(slot, aspect);
 }
 
-// THE tile. Shadow, ring, focus ring, transition frost, safety backing, the
-// content, the pill and the ✕ — in this order, each layer under the next, for
-// every layout. A layout contributes a box and flags and nothing else; the ring
-// width that goes into contentRadiusPx is the one actually stroked below, which
-// is why the content cannot come out with corners of a different shape.
+// THE tile. Shadow, ring, focus ring, transition frost, content, pill, ✕ — in
+// this order, each under the next, for every layout. A layout contributes a box
+// and flags only; the ring width handed to contentRadiusPx is the one actually
+// stroked below, so the content cannot come out with corners of another shape.
 void Overview::drawTile(size_t i, const TileLook &look) const {
   const auto m = m_monitor.lock();
   if (!m || i >= m_tiles.size())
@@ -124,7 +123,8 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
 
   const double s        = m->m_scale;
   const double e        = eased();
-  const float  f        = static_cast<float>(entryFade(i));
+  const float  f        = static_cast<float>(entryFade(i)) *
+                             static_cast<float>(look.fade);
   const int    round    = look.round >= 0.0
                               ? static_cast<int>(look.round)
                               : cfg::look.preview_round;
@@ -153,10 +153,8 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
                  ringW, round, roundPow);
   }
 
-  // Transition frost: the cached blur redrawn at CONSTANT alpha (fading it
-  // leaves C*e*(1-e) of the sharp desktop leaking), plus the dim rect at the
-  // GLOBAL alpha e so the interior's dim tracks the surroundings. Rounded like
-  // the content, UV-mapped to the tile's region. Stops at e >= 0.999.
+  // Transition frost: the cached blur at CONSTANT alpha (fading it leaks C*e*(1-e)
+  // of the sharp desktop) plus the dim rect at the GLOBAL alpha e.
   const double apNow = t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
   if (e < 0.999 || apNow < 0.999) {
     if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {

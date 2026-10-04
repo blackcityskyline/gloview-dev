@@ -1,6 +1,6 @@
-// Carousel: cards overlap, so the run is painted in ONE pass sorted far ->
-// selected and each card is a whole tile. This file supplies the ORDER and the
-// per-card boxes; Overview::drawTile supplies everything a card looks like.
+// Cards overlap, so the run is painted in ONE pass sorted far -> selected, each
+// card a whole tile. This file supplies the order and the boxes; drawTile the
+// looks.
 
 #include <algorithm>
 #include <cmath>
@@ -85,6 +85,12 @@ void Overview::renderCarousel() const {
                   std::pow(kDepthTaper, static_cast<double>(card.depth - 1))
             : 0.0;
     look.button = tileCloseButtons();
+    // Only the focused card lands: it grows into the real window and must stay
+    // whole for the handoff. Every other card rides the close curve out, so the
+    // run dissolves while it travels instead of the focused window's landing
+    // blanketing it a frame later.
+    if (!m_opening && card.depth != 0)
+      look.fade = eased();
     drawTile(static_cast<size_t>(i), look);
   }
 
