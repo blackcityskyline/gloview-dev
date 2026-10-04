@@ -69,13 +69,17 @@ float windowRealAlpha(const PHLWINDOW &w, const PHLMONITOR &mon) {
 
 // roundPx is the corner radius the CONTENT carries, in monitor pixels, and
 // nothing else: matching it to the ring drawn around the tile is the caller's
-// job (contentRadiusPx). The surface COVERS destPx from its centre, so destPx
-// must already carry the window's own aspect — with any other aspect the corner
-// arcs are geometrically incapable of meeting.
+// job (contentRadiusPx).
+//
+// `contain` fits the window WHOLE inside destPx instead of covering it. Covering
+// requires destPx to carry the window's own aspect — a window covering a box of
+// another aspect sticks out past the ring far enough that the corner arcs cannot
+// meet. Contained content never sticks out, so a fixed-aspect box is safe; it
+// leaves a margin, and the caller's card surface is what fills it.
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx,
-                      float roundingPower, bool settled) {
+                      float roundingPower, bool settled, bool contain) {
   if (!w || !mon || !w->m_isMapped || !w->wlSurface() ||
       !w->wlSurface()->resource())
     return;
@@ -90,12 +94,13 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   const float logicalW = std::max((float)size.x, 5.F);
   const float logicalH = std::max((float)size.y, 5.F);
   // Over-cover from the CENTER: fit-exact lets the opaque backing show as seams.
-  const float pad = settled ? 0.0F : kSeamPadPx;
+  // Contained content sits inside the box, so the seam pad would only shrink it.
+  const float pad = (settled || contain) ? 0.0F : kSeamPadPx;
   const float sW  = (static_cast<float>(destPx.w) + pad) /
                    std::max(logicalW * mon->m_scale, 5.F);
   const float sH  = (static_cast<float>(destPx.h) + pad) /
                    std::max(logicalH * mon->m_scale, 5.F);
-  const float scaleMod = std::max(sW, sH);
+  const float scaleMod = contain ? std::min(sW, sH) : std::max(sW, sH);
   if (!(scaleMod > 0.F))
     return;
 

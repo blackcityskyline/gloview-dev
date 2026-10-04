@@ -181,11 +181,20 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
                                 {.round = pxr(round, s), .roundingPower = roundPow});
     }
   }
-  safetyBacking(box, s, cfg::colors.backing.get(), 0.08, round, roundPow);
+  // A card is filled edge to edge: its content is contained, so whatever the
+  // window does not cover would otherwise be bare backdrop inside the ring.
+  if (look.card) {
+    const CBox boxPx = pxb(box, s);
+    if (boxPx.width > 0 && boxPx.height > 0)
+      g_pHyprOpenGL->renderRect(boxPx, cfg::colors.backing.get(e * f),
+                                {.round = pxr(round, s), .roundingPower = roundPow});
+  } else {
+    safetyBacking(box, s, cfg::colors.backing.get(), 0.08, round, roundPow);
+  }
 
   renderWindowLive(w, m, pxb(box, s), pxb(box, s), f, Time::steadyNow(),
-                   contentRadiusPx(round, ringW, roundPow, s), roundPow,
-                   m_tileClock.done(glideDur()));
+                   contentRadiusPx(round, ringW, roundPow, s, !look.card),
+                   roundPow, m_tileClock.done(glideDur()), look.card);
 
   if (look.tone > 0.0)
     g_pHyprOpenGL->renderRect(pxb(box, s), argb(shadowCol, look.tone * e * f),

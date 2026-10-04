@@ -66,9 +66,11 @@ inline constexpr float kSeamPadPx = 1.5F;
 // outer edge. Derived from the ring's OWN inputs, never from a different ring's
 // config: a tile whose content and ring disagree shows square content inside a
 // round frame. +1 because Hyprland subtracts one from the radius it is given.
-inline int contentRadiusPx(int round, int width, float roundPow, double scale) {
+// `overCovers` false = contained content, whose arc does not walk outward.
+inline int contentRadiusPx(int round, int width, float roundPow, double scale,
+                           bool overCovers = true) {
   return pxr(round, scale) + static_cast<int>(std::lround(width * scale)) +
-         pxr(kSeamPadPx, scale) + 1;
+         (overCovers ? pxr(kSeamPadPx, scale) : 0) + 1;
 }
 
 inline void strokeRingPx(const CBox &b, const CHyprColor &col, float alpha,

@@ -75,9 +75,12 @@ void Overview::renderCarousel() const {
       continue;
 
     TileLook look;
-    look.box = tileBox(static_cast<size_t>(i),
-                       currentBox(m_tiles[static_cast<size_t>(i)], i));
+    // The card IS the box: layoutTiles already gave it the run's one aspect.
+    look.box = currentBox(m_tiles[static_cast<size_t>(i)], i);
+    if (look.box.w < 1.0 || look.box.h < 1.0)
+      continue;
     look.round = clampRound(cfg::look.preview_round, look.box.w, look.box.h);
+    look.card  = true;
     look.tone =
         card.depth > 0
             ? (card.depth == 1 ? kNearTone : kFarTone) *

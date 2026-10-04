@@ -306,11 +306,15 @@ void Overview::layoutTiles() {
   if (!m || m_tiles.empty())
     return;
 
-  // The renderer asks m_engine, never the config: the desktop branch below
-  // overrides the layout engine entirely, and a renderer that picked its path
+  // The renderer asks m_engine, never the config: free-arrange and the all/one
+  // flip both override the layout engine, and a renderer that picked its path
   // from the config would draw a run this function never produced.
-  const Engine engine = parseEngine(cfg::grid.layout.get().c_str());
-  m_engine = m_desktopMode ? Engine::Natural : engine;
+  Engine engine = parseEngine(cfg::grid.layout.get().c_str());
+  if (m_desktopMode)
+    engine = Engine::Natural;
+  else if (engine == Engine::Carousel && !showAllWorkspaces())
+    engine = Engine::Rows; // the run is a many-windows arrangement
+  m_engine = engine;
 
   LayoutCfg cfg;
   cfg.engine = engine;
@@ -367,9 +371,11 @@ void Overview::layoutTiles() {
   m_carousel        = {};
   m_carouselFor     = -1;
 
-  // Carousel only reshapes the main area.
+  // Carousel only reshapes the main area, and only in the all-workspaces view:
+  // it arranges one window against its neighbours, which a single workspace's
+  // handful of tiles has no use for.
   // Slots are built AROUND m_selected: selection = relayout, not repaint.
-  if (engine == Engine::Carousel) {
+  if (m_engine == Engine::Carousel) {
     const int sel = (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size()))
                         ? m_selected
                         : 0;
@@ -385,20 +391,9 @@ void Overview::layoutTiles() {
     const LRect usable{cfg.padLeft, cfg.padTop,
                        std::max(1.0, m->m_size.x - cfg.padLeft - cfg.padRight),
                        std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
-    std::vector<double> aspects;
-    aspects.reserve(m_tiles.size());
-    for (const auto &t : m_tiles) {
-      double a = 0.0;
-      if (const auto w = t.win.lock()) {
-        const auto sz = w->sizeAnimation()->goal();
-        if (sz.x > 0.0 && sz.y > 0.0)
-          a = sz.x / sz.y;
-      }
-      aspects.push_back(a);
-    }
-    m_carousel        = computeCarousel(static_cast<int>(m_tiles.size()),
-                                        sel, usable, aspects, mt);
-    m_carouselFor     = sel;
+    m_carousel    = computeCarousel(static_cast<int>(m_tiles.size()), sel,
+                                    usable, mt);
+    m_carouselFor = sel;
     for (size_t i = 0; i < m_tiles.size(); ++i) {
       const auto &c = m_carousel.cards[i];
       // Zero target = off-run. Nothing paints an off-run card, so where it would

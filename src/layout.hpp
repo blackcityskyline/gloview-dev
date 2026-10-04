@@ -52,15 +52,16 @@ std::vector<LRect> computeLayout(const std::vector<LRect>& naturals, const LRect
 
 Engine parseEngine(const char* s);
 
-// A carousel card IS a tile: its box carries the window's own aspect, exactly
-// like every other layout's, so the run varies in height and the shared tile
-// draw stays correct.
+// A carousel card is a fixed-aspect panel with the window CONTAINED inside it:
+// the run needs one card height, and a window scaled to cover a card of another
+// aspect sticks out past the ring far enough that the corner arcs cannot meet.
 struct CarouselMetrics {
     double selectedW     = 500.0;
     double nearW         = 380.0;
     double farW          = 280.0;
     double taper         = 0.8;
     double overlap       = 60.0;
+    double aspect        = 1.6;
     double captionH      = 44.0;
     double captionGap    = 12.0;
     double countH        = 32.0;
@@ -86,10 +87,8 @@ struct CarouselLayout {
     LRect area;
 };
 
-// `selected` = centered card index, wrapped. `aspect[i]` is window i's own
-// width/height; <= 0 means "unknown", which falls back to 16:9.
+// `selected` = centered card index, wrapped
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
-                               const std::vector<double>& aspect,
                                const CarouselMetrics& mt = {});
 
 }
