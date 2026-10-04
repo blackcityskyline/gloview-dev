@@ -7,11 +7,10 @@
 
 namespace gloview {
 
+// Every clock here is pure linear progress; shaping lives in curves.cpp and
+// durations are re-read from config on every call.
 namespace {
 
-// Tight cascade window shared by the position glide and the appear stagger:
-// a loose per-tile fan reads as a scatter of individually-arriving tiles;
-// capped low so the grid moves as one group with just enough depth hint.
 double staggered(double base, int i, int n) {
   if (n <= 1)
     return base;
@@ -20,19 +19,9 @@ double staggered(double base, int i, int n) {
   return std::clamp((base - start) / std::max(0.001, 1.0 - spread), 0.0, 1.0);
 }
 
-} // namespace
+}
 
-// ---- Clocks -----------------------------------------------------------------
-// The only domain that touches time. Everything here is pure linear progress;
-// shaping happens once, in the curve registry. Durations are re-read from
-// config on every call so changes reach in-flight animations — a Tween owns
-// nothing but its start point (plus the stall guard in updateAnimation:
-// wall-time inside a render hole never counts).
-
-// Resolved animation group: {on, ms >= 16, curve}. Resolution order per field:
-// imperative rule (gloview.animation{...}) > schema key > built-in default.
-// Master off -> 1ms (instant); speed is a multiplier over the leaf's base
-// (2.0 = twice as fast), clamped to a one-frame floor.
+// imperative rule > schema key > default; off -> 1ms, speed divides base
 anim::AnimCfg Overview::leaf(const char *name) const {
   anim::AnimCfg a;
   const auto *spec = cfg::animLeaf(name);
@@ -67,9 +56,6 @@ anim::AnimCfg Overview::leaf(const char *name) const {
   return a;
 }
 
-// Which config group drives each side of a rebuild transition. Precedence:
-// the all<->one flip owns both halves (expo_in/expo_out), a workspace switch
-// uses its enter/exit groups, everything else falls back to plain appear.
 const char *Overview::entryLeaf() const {
   if (m_expoFlip != 0)
     return m_expoFlip > 0 ? "expo_in" : "expo_out";
@@ -88,9 +74,6 @@ const char *Overview::glideLeaf() const {
 }
 
 double Overview::eased() const {
-  // Chrome reveal/collapse follows its own leaf: open while entering, close
-  // while exiting (m_progress is the LINEAR clock value either way).
-  // Jump mode uses jump_out for the close glide so it can have its own feel.
   const char *leaf_name = (m_jumpMode && !m_opening) ? "jump_out"
                         : m_opening ? "open" : "close";
   return curves::eval(leaf(leaf_name).curve, m_progress);
@@ -101,19 +84,12 @@ double Overview::animDuration() const {
   return leaf(m_opening ? "open" : "close").ms;
 }
 
+// CLOSE rides m_progress DOWN: tiles then match the collapsing chrome.
+// Read m_tileClockMs, not m_glide.ms: a glideLeaf() flip jumps progress.
 double Overview::tileProgress(int i) const {
-  // Slot glides ride the tiles' forward clock (m_tileClock). CLOSE
-  // deliberately goes back to riding m_progress DOWN: the tile lerp then has
-  // the exact same shape as the collapsing chrome, keeping landing and
-  // strip-collapse frame-synced.
-  // Use the snapshotted duration (m_tileClockMs) while a glide is in flight
-  // so the progress doesn't jump when glideLeaf() changes (e.g. expoFlip
-  // clears mid-flight and m_glide switches from expo_in → glide).
   const double glideMs = (m_tileClockMs > 0) ? m_tileClockMs : m_glide.ms;
   const double base = m_opening ? m_tileClock.raw(glideMs) : m_progress;
-  // Carousel: one shared clock for the whole run. Cards swap depths by sliding
-  // PAST each other, so a per-card stagger would make them arrive out of
-  // order (a queue shuffling) instead of as one rotating band.
+  // carousel shares one clock: cards pass each other, never stagger
   if (carouselMode())
     return base;
   return staggered(base, i, static_cast<int>(m_tiles.size()));
@@ -133,13 +109,7 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
   const auto &b = t.target;
   LRect r{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
           lerp(a.h, b.h, e)};
-  // A card the carousel just dropped out of the visible run has no slot
-  // (layoutTiles leaves its target zeroed). Without this it would lerp toward
-  // the monitor's top-left corner — a shrinking card flying diagonally off
-  // screen. Park it just past the run's edge instead, on its own side: the
-  // reference's outgoing card slides outward before it hides
-  // (windowSwitcherOutgoingCardSlide). Size frozen at the last real slot, so it
-  // slides out at its old width and then stops being drawn (visible == false).
+  // dropped carousel card has a zeroed target: park it past the edge
   if (carouselMode() && b.w < 1.0 && a.w >= 1.0 && i >= 0 &&
       static_cast<size_t>(i) < m_carousel.cards.size()) {
     const auto &c = m_carousel.cards[static_cast<size_t>(i)];
@@ -156,11 +126,6 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
   const double ap = t.appear < 1.0 ? tileAppear(i) : 1.0;
   if (ap >= 1.0)
     return r;
-  // Entry style on any rebuild transition that carries a direction (ws
-  // switches and the all<->one flip, dir fixed +1 there): slide arrives from
-  // the ws-id-order side a full monitor width out; slidevert drops from the
-  // top edge — mirrors of the ghost exits in renderGhosts; fade is a pure
-  // alpha ramp (entryFade), no geometry; anything else pops from the center.
   if (m_wsSlideDir != 0 && m_enterStyle != "pop") {
     if (const auto m = m_monitor.lock()) {
       if (m_enterStyle == "slide")
@@ -178,7 +143,6 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
 }
 
 void Overview::updateAnimation() {
-  // Resolve this frame's leaves ONCE; paint (per-tile) reads the caches.
   m_glide      = leaf(glideLeaf());
   m_entry      = leaf(entryLeaf());
   m_ghost      = leaf(ghostLeaf());
@@ -187,8 +151,7 @@ void Overview::updateAnimation() {
   m_exitStyle  = cfg::animStyle("ws_exit");
 
   const double dur = animDuration();
-  // Stall guard: a render hole rewinds EVERY clock to its last-known value so
-  // wall-time inside the hole never counts.
+  // stall guard: rewind every clock past a render hole
   const auto now = std::chrono::steady_clock::now();
   if (m_lastAnimTick.time_since_epoch().count() != 0) {
     const double gapMs =
@@ -209,7 +172,6 @@ void Overview::updateAnimation() {
   }
   m_lastAnimTick = now;
 
-  // Hold timer: promote armed-but-not-lifted press to lift after hold_lift_ms.
   if (m_drag.armed() && !m_drag.lifted) {
     const double elapsedMs = std::chrono::duration<double, std::milli>(
         now - m_drag.holdStartMs).count();
@@ -218,8 +180,6 @@ void Overview::updateAnimation() {
       m_dragLiftClock.begin();
       damage();
     } else {
-      // Stale-repaint: ensure the overlay redraws periodically while
-      // armed-but-not-lifted so the hold timer can tick even without input.
       static auto lastHoldDamage = std::chrono::steady_clock::time_point{};
       const auto sinceLast = std::chrono::duration<double, std::milli>(
           now - lastHoldDamage).count();
@@ -238,19 +198,15 @@ void Overview::updateAnimation() {
   else
     m_stripScroll = m_stripScrollTarget;
 
-  // Each side of the transition closes in its own window...
   if (!m_ghosts.empty() && m_rebuildClock.done(m_ghost.ms))
     m_ghosts.clear();
-  // ...and entries settle explicitly, or every newcomer tile keeps resolving
-  // config and evaluating curves forever after.
+  // entries must settle explicitly or they keep evaluating curves forever
   if (m_rebuildClock.done(m_entry.ms) &&
       std::any_of(m_tiles.begin(), m_tiles.end(),
                   [](const model::Tile &t) { return t.appear < 1.0; }))
     for (auto &t : m_tiles)
       t.appear = 1.0;
 
-  // Swap pulses accumulate per animated frame with the delta CAPPED, so a
-  // post-drop render hole cannot jump the ring through its overshoot plateau.
   const auto pulse = leaf("pulse");
   for (auto &p : m_pulses) {
     if (p.w.expired())
@@ -264,27 +220,21 @@ void Overview::updateAnimation() {
     return p.w.expired() || p.p >= 1.0;
   });
 
-  // Transition over only when BOTH sides finished (flags must outlive the
-  // caches computed from them).
   if (m_rebuildClock.done(m_ghost.ms) && m_rebuildClock.done(m_entry.ms)) {
     m_wsSlideDir = 0;
     m_expoFlip = 0;
-    // Jump slide settled: now start the close glide.
     if (m_pendingJumpClose) {
       m_pendingJumpClose = false;
       close();
     }
   }
 
-  // Glide done: clear the snapshotted duration so glideDur() reads live
-  // config again on the next startTileGlide() call.
   if (m_tileClockMs > 0 && m_tileClock.done(m_tileClockMs)) {
     m_tileClockMs = 0;
     m_tileClockCurve.clear();
   }
 
-  // Done flights (and vanished windows) leave the Model by their OWN clock —
-  // pruning against live config cut mid-flight landings on a config change.
+  // prune on each flight's own clock; live config would cut landings short
   for (auto it = m_swapfx.begin(); it != m_swapfx.end();) {
     if (it->win.expired() || it->clock.raw(it->ms) >= 1.0)
       it = m_swapfx.erase(it);
@@ -298,23 +248,13 @@ void Overview::updateAnimation() {
     m_newCardAnim = false;
     m_newCardId = 0;
   }
-  // Close completion waits for the timeline AND any tile clock still draining
-  // (a reflow begun during close would otherwise pop its landing tiles).
-  // Do NOT set m_progress = 0.0 here — that would make eased() return 0 and
-  // paint one fully-transparent overlay frame before deactivate() fires, which
-  // is the "flash of empty desktop" the user sees as a щелчок.
-  // Pin m_progress at epsilon so the overlay stays just barely visible on this
-  // last frame; deactivate() (called via finishPendingDeactivate after the
-  // frame has painted) zeroes it properly.
+  // NEVER zero m_progress: a transparent frame before deactivate() flashes
   if (!m_opening && t >= 1.0 && m_tileClock.done(dur)) {
-    m_progress = 1e-6; // epsilon: overlay alpha ≈ 0 but not zero — no flash
+    m_progress = 1e-6;
     m_pendingDeactivate = true;
   }
 }
 
-// The single pump predicate: anything that can still produce motion. Every
-// site (paint tail, pump arm, pump tick) asks this one function — a new clock
-// registers here exactly once.
 bool Overview::animBusy() const {
   return m_active &&
          (secondaryAnimsActive() || !m_tileClock.done(glideDur()) ||
@@ -337,12 +277,10 @@ void Overview::animateStripTo(double from, double to) {
     m_stripScrollFrom = m_stripScrollTarget = m_stripScroll = to;
     return;
   }
-  // Retarget mid-flight from wherever the eased value is NOW so rapid wheel
-  // notches read as one continuous scrub.
   m_stripScrollFrom = !m_stripTween.done(st.ms) ? m_stripScroll : from;
   m_stripScrollTarget = to;
   m_stripTween.begin();
   ensureAnimPump();
 }
 
-} // namespace gloview
+}

@@ -114,7 +114,7 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 - **`rows`** (default) — macOS-like: previews keep their aspect ratio and are packed into balanced rows, with the row count chosen to make the previews as large as possible. Reads spatially like the real desktop.
 - **`grid`** — uniform cells, one preview centered in each.
 - **`natural`** — keeps each window's real on-screen position, uniformly scaling the whole arrangement to fit.
-- **`carousel`** — fixed-width cards in one overlapped horizontal run, the selected window centered and its neighbours peeking out on both sides. Geometry ported 1:1 from [noctalia](https://github.com/noctalia-dev/noctalia)'s window switcher (v5.2). Each card's preview box has a **fixed 1.6 aspect** and the window is **contained** (letterboxed) inside it, so windows of any shape sit whole inside the same card. It is only a different arrangement of the main area — the strip, workspace switching and the all↔one flip all work exactly as they do in the other modes. See [Carousel mode](#carousel-mode).
+- **`carousel`** — fixed-width cards in one overlapped horizontal run, the selected window centered and its neighbours peeking out on both sides. Each card's preview box has a **fixed 1.6 aspect** and the window is **contained** (letterboxed) inside it, so windows of any shape sit whole inside the same card. It is only a different arrangement of the main area — the strip, workspace switching and the all↔one flip all work exactly as they do in the other modes. See [Carousel mode](#carousel-mode).
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -267,11 +267,11 @@ supersedes the older `bar_position` (top/bottom only); set `anchor` and it wins.
 
 ### Carousel mode
 
-`layout = "carousel"` rearranges the MAIN AREA into a window switcher run,
-ported 1:1 from [noctalia](https://github.com/noctalia-dev/noctalia) v5.2's
-window switcher. It is a layout mode, not a separate mode of the plugin: the
-workspace strip stays exactly where it is, and workspace switching, the
-all↔one flip, alt-tab, drag-and-drop and canvas mode all keep working.
+`layout = "carousel"` rearranges the MAIN AREA into a window switcher run: one
+row of overlapped fixed-width cards with the selected window centered. It is a
+layout mode, not a separate mode of the plugin: the workspace strip stays exactly
+where it is, and workspace switching, the all↔one flip, alt-tab, drag-and-drop
+and canvas mode all keep working.
 
 ```
             2 / 7                          counter (n / total)
@@ -305,7 +305,7 @@ all↔one flip, alt-tab, drag-and-drop and canvas mode all keep working.
   `show_border` / `show_focus_border` / `border_size` / `select_border`, the
   frost underlay while the backdrop is still fading, a title pill under the
   **centered** card only, and a bare `n / total` counter above the run. There is
-  **no filled card surface** — the reference draws its cards as opaque Material
+  **no filled card surface** — the source design draws its cards as opaque
   panels, which read as dark slabs floating over the blurred desktop.
 
 | Option | Type | Default | Description |
@@ -355,8 +355,8 @@ them however you like:
 ### Colors
 
 Every color option takes ONE string: a hex literal in any accepted form, or a
-palette-resolved hex produced Lua-side from your theme module (the hyprbars
-pattern) — gloview itself has zero coupling to any scheme engine:
+palette-resolved hex produced Lua-side from your theme module — gloview itself
+has zero coupling to any scheme engine:
 
 | Value | Meaning |
 |---|---|
@@ -366,8 +366,8 @@ pattern) — gloview itself has zero coupling to any scheme engine:
 Scheme integration is fully optional and lives in the config:
 
 ```lua
--- noctalia module — same one hyprbars uses; any key it exposes works
-local ok_c, c = pcall(require, "noctalia.noctalia-colors-extended")
+-- any Lua module that exposes color roles as hex strings
+local ok_c, c = pcall(require, "my-colors")
 local function col(key, fallback)
     if ok_c and type(c[key]) == "string" then return c[key] end
     return fallback
@@ -384,8 +384,8 @@ strip_band_color    = with_alpha(col("primary", "ffffff"), "24"),
 ```
 
 A value that doesn't parse falls through to that option's documented default,
-so a missing module or a typo degrades gracefully instead of going black.
-Noctalia rewrites its module on theme change; re-evaluating `hl.config{}`
+so a missing module or a typo degrades gracefully instead of going black. If
+your module rewrites itself on a theme change, re-evaluating `hl.config{}`
 applies the new colors live.
 
 ### Lua

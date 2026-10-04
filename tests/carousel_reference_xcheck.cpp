@@ -1,23 +1,20 @@
-// Differential check: our layout.cpp port vs noctalia v5.2's formula,
-// transcribed here INDEPENDENTLY and verbatim from
-// src/shell/switcher/window_switcher_carousel_style.cpp + ui/style.h.
-// Sweeps screen sizes x window counts x selections; every resolved number
-// (card x/y/w/h, depth, panel, strip, counter, origin) must match.
+// Differential check: layout.cpp against the source formula this mode was ported
+// from, transcribed here INDEPENDENTLY and verbatim. Sweeps screen sizes x
+// window counts x selections; every resolved number (card x/y/w/h, depth, panel,
+// strip, counter, origin) must match.
 //
-// SCOPE: the window counts the reference actually supports — 1..5, with the
-// reference's own kVisibleCards. Beyond that we DELIBERATELY diverge (the
-// reference's layout only ever shows 5 cards), so there is nothing to compare
-// against:
-//   * even counts — the reference computes stripWidth for 2 slots per side even
-//     when only 3 cards are placed, so its run is wider than its own cards and
-//     hangs off both edges. We size the run to the cards actually placed.
-//   * narrow screens — the reference sheds slots (down to 3) via
-//     windowSwitcherNarrowLayoutThreshold; we scale the run uniformly instead,
-//     since the count is the user's explicit choice.
+// SCOPE: the counts the original formula actually supports — odd, 1..5. Beyond
+// that we DELIBERATELY diverge (it only ever laid out 5 cards), so there is
+// nothing to compare against:
+//   * even counts — it sizes stripWidth for 2 slots per side even when only 3
+//     cards are placed, so its run is wider than its own cards and hangs off
+//     both edges. We size the run to the cards actually placed.
+//   * narrow screens — it sheds slots down to 3; we scale the run uniformly
+//     instead, since the count is the user's explicit choice.
 // Both are covered by tests/layout_carousel_check.cpp.
 //
-// Not part of the plugin build — it links layout.cpp alone, which is only
-// possible because layout.hpp/cpp stay Hyprland-free.
+// Not part of the plugin build: it links layout.cpp alone, possible only because
+// layout.hpp/cpp stay compositor-independent.
 
 #include "../src/layout.hpp"
 
@@ -29,7 +26,7 @@ using namespace gloview;
 
 namespace {
 
-// Style constants, src/ui/style.h (noctalia v5.2).
+// The original formula's constants, verbatim.
 constexpr float kSpaceXs = 4.0F;
 constexpr float kSpaceSm = 8.0F;
 constexpr float kSpaceMd = 12.0F;
@@ -188,7 +185,7 @@ Layout reference(float screenW, float screenH, int count, int selected,
 int g_failed = 0;
 double g_worst = 0.0;
 
-// The reference computes in `float`, we compute in `double` — the same
+// The source design computes in `float`, we compute in `double` — the same
 // expression tree then differs by float rounding, which at these magnitudes
 // (card coords ~1e3, accumulated through two width-fit passes) is ~1e-4.
 // Anything above a few float ULPs is a real divergence, not that noise.
@@ -209,7 +206,7 @@ void check(const char *what, double got, double want, double sw, double sh,
 } // namespace
 
 int main() {
-  // Our metrics are authored at shell UI scale 1 (logical px); the reference
+  // Our metrics are authored at shell UI scale 1 (logical px); the source design
   // multiplies everything by its own `scale`, so compare at 1.
   const CarouselMetrics mt;
   int cases = 0;
@@ -218,7 +215,7 @@ int main() {
     for (const float sh : {480.F, 600.F, 720.F, 900.F, 1080.F, 1440.F, 2160.F}) {
       // n = 1, 3, 5 only — see the SCOPE note at the top. Odd counts up to the
       // reference's kVisibleCards are where the two layouts are the same
-      // function; even counts diverge (the reference sizes stripWidth for two
+      // function; even counts diverge (the source design sizes stripWidth for two
       // slots per side regardless of how many it places).
       for (const int n : {1, 3, 5}) {
         for (const int sel : {0, 1, 3, 7, -1, -5}) {
@@ -246,7 +243,7 @@ int main() {
           for (int i = 0; i < n && i < 32; ++i) {
             check("vis?", M.cards[i].visible, R.cards[i].visible, sw, sh, n,
                   sel);
-            // Only IN-RUN cards carry geometry or a depth: the reference
+            // Only IN-RUN cards carry geometry or a depth: the source design
             // leaves those fields untouched for a card outside the visible
             // window (no assignment in the slot loop), so comparing them
             // would just measure our default initializers.

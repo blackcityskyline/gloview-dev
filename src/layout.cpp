@@ -13,7 +13,6 @@ LRect inset(const LRect& a, const LayoutCfg& c) {
     return LRect{a.x + c.padLeft, a.y + c.padTop, std::max(1.0, a.w - c.padLeft - c.padRight), std::max(1.0, a.h - c.padTop - c.padBottom)};
 }
 
-// Split `n` items into `rows` near-equal groups, earlier rows get the extra.
 std::vector<int> rowCounts(int n, int rows) {
     std::vector<int> out(rows, n / rows);
     for (int i = 0; i < n % rows; ++i)
@@ -26,17 +25,13 @@ struct RowPlan {
     std::vector<int> counts;
 };
 
-// For a fixed row count, the best uniform scale that fits every row in width
-// and the stack in height, given per-window natural sizes (in input order).
 RowPlan planForRows(const std::vector<LRect>& w, const LRect& area, const LayoutCfg& cfg, int rows) {
     const auto counts = rowCounts(static_cast<int>(w.size()), rows);
 
-    // Gaps are a fixed pixel size and are NOT scaled with the tiles, so the
-    // scale must apply only to the tile content that remains after the gaps are
-    // carved out of the area — otherwise wide rows overflow and tiles bleed off
-    // screen / overlap.
+    // Gaps are unscaled: the scale applies only to content left after carving
+    // gaps out of the area, else wide rows overflow the area.
     double sW         = cfg.maxScale;
-    double totalH     = 0.0; // unscaled stacked content height (max per row)
+    double totalH     = 0.0;
     double totalGapsH = std::max(0, rows - 1) * cfg.gap;
     int    idx        = 0;
     for (int r = 0; r < rows; ++r) {
@@ -60,10 +55,8 @@ std::vector<LRect> layoutRows(const std::vector<LRect>& w, const LRect& area, co
     if (n == 0)
         return {};
 
-    // Sorted reading order (top-to-bottom, then left-to-right) keeps tiles near where the
-    // real windows live, which reads more naturally than raw order — UNLESS the caller
-    // already put them in a meaningful order (e.g. MRU for Alt-Tab) and wants it preserved;
-    // cfg.preserveOrder skips this spatial re-sort so row-major fill reflects input order.
+    // Spatial reading order, unless cfg.preserveOrder: a caller-supplied order
+    // (e.g. MRU for alt-tab) must survive untouched.
     std::vector<int> order(n);
     std::iota(order.begin(), order.end(), 0);
     if (!cfg.preserveOrder) {
@@ -77,7 +70,6 @@ std::vector<LRect> layoutRows(const std::vector<LRect>& w, const LRect& area, co
     for (int i = 0; i < n; ++i)
         sorted[i] = w[order[i]];
 
-    // pick the row count that yields the largest tiles.
     RowPlan best;
     int     bestRows = 1;
     for (int rows = 1; rows <= n; ++rows) {
@@ -89,7 +81,6 @@ std::vector<LRect> layoutRows(const std::vector<LRect>& w, const LRect& area, co
     }
 
     const double s = best.scale;
-    // total stack height at this scale, to vertically center.
     double totalH = 0.0;
     {
         int idx = 0;
@@ -115,13 +106,12 @@ std::vector<LRect> layoutRows(const std::vector<LRect>& w, const LRect& area, co
         for (int c = 0; c < best.counts[r]; ++c, ++idx) {
             const double tw = sorted[idx].w * s;
             const double th = sorted[idx].h * s;
-            outSorted[idx]  = LRect{x, y + (rowH - th) / 2.0, tw, th}; // baseline-center within row
+            outSorted[idx]  = LRect{x, y + (rowH - th) / 2.0, tw, th};
             x += tw + cfg.gap;
         }
         y += rowH + cfg.gap;
     }
 
-    // unsort back to input order
     std::vector<LRect> out(n);
     for (int i = 0; i < n; ++i)
         out[order[i]] = outSorted[i];
@@ -155,7 +145,6 @@ std::vector<LRect> layoutNatural(const std::vector<LRect>& w, const LRect& area,
     const int n = static_cast<int>(w.size());
     if (n == 0)
         return {};
-    // bounding box of all naturals
     double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
     for (const auto& r : w) {
         minX = std::min(minX, r.x);
@@ -199,25 +188,8 @@ Engine parseEngine(const char* s) {
     return Engine::Rows;
 }
 
-// Ported from noctalia v5.2's computeWindowSwitcherCarouselLayout
-// (src/shell/switcher/window_switcher_carousel_style.cpp); see the
-// CarouselMetrics comment in layout.hpp for the constant-by-constant mapping.
-//
-// Two deliberate divergences, both because the reference only ever lays out
-// exactly 5 cards and we let the count be anything:
-//   * no slot shedding on a narrow screen (its
-//     windowSwitcherNarrowLayoutThreshold drops cards down to 3) — we scale
-//     the run uniformly instead, since the count is the user's choice.
-//   * the width ladder continues past depth 2 (see cardWidth) instead of
-//     reusing farW.
-// For odd counts up to 5 this is still bit-identical to the reference — see
-// tests/carousel_reference_xcheck.cpp, which diffs every resolved number
-// against an independent transcription of the original.
-// Width of the card `depth` steps out from the center. Depths 0-2 are the
-// reference's three fixed widths verbatim (500/380/280); beyond that the
-// reference simply reuses farW, so a 7-card run ends in two identically sized
-// cards (it only ever shows 5, so it never hit that). Taper geometrically from
-// farW instead — every card out is strictly smaller than the one inside it.
+// Depths 0-2 are fixed widths; past that they taper geometrically, so every
+// card out is strictly smaller than the one inside it.
 static double cardWidth(int depth, const CarouselMetrics& mt) {
     if (depth <= 0)
         return mt.selectedW;
@@ -236,10 +208,8 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.countW = mt.countW;
     L.countH = mt.countH;
 
-    // How many cards the run shows: the configured count, capped by how many
-    // windows there are. ANY count is allowed (even included) — centerSlot
-    // below handles the asymmetry, the selected card just sits one slot off
-    // the exact middle.
+    // Even counts are allowed: centerSlot leaves the selected card one slot off the
+    // exact middle.
     const int want = std::max(1, mt.visibleCards);
     const int shown = std::min(want, count);
     L.visibleCards = shown;
@@ -249,23 +219,16 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     const int leftSlots = centerSlot;
     const int rightSlots = shown - 1 - centerSlot;
 
-    // Run width at nominal card widths: the selected card plus each side card's
-    // contribution (its width less the overlap it tucks under its neighbor).
     double nominal = mt.selectedW;
     for (int d = 1; d <= leftSlots; ++d)
         nominal += cardWidth(d, mt) - mt.overlap;
     for (int d = 1; d <= rightSlots; ++d)
         nominal += cardWidth(d, mt) - mt.overlap;
 
-    // Uniform scale so the whole run fits the width. Depth ratios (and thus the
-    // strict per-step shrink) are preserved by scaling every width by the same
-    // factor.
     const double scale = std::min(1.0, availableW / std::max(1.0, nominal));
     auto width = [&](int depth) { return cardWidth(depth, mt) * scale; };
     const double overlap = mt.overlap * scale;
 
-    // Card height from its width: the preview box is a fixed-aspect rect inset
-    // by frameInset on every side.
     auto frameH = [&](double cardW) {
         const double innerW = std::max(0.0, cardW - mt.frameInset * 2.0);
         return innerW / mt.aspect + mt.frameInset * 2.0;
@@ -279,7 +242,6 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         L.stripW += width(d) - overlap;
     L.stripH = frameH(selW) + mt.captionGap + mt.captionH;
 
-    // Height fit: scale down until the panel (counter + strip) clears the box.
     const double maxPanelH = std::max(1.0, screen.h - mt.screenMargin * 2.0);
     const double hScale =
         std::min(1.0, std::max(1.0, maxPanelH - mt.countH - mt.sectionGap) /
@@ -294,15 +256,10 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.originX = std::round((screen.w - L.panelW) * 0.5);
     L.originY = std::round((screen.h - L.panelH) * 0.5);
 
-    // Lay the run out from the center outward, accumulating each side's
-    // overlaps. `hScale` folds into every width so positions and sizes stay
-    // consistent with the extents above.
     const double selX = (L.stripW - selW * hScale) * 0.5;
     const double selFrameH = frameH(selW * hScale);
     const int sel = ((selected % count) + count) % count;
 
-    // Walk left and right separately: an even run has one more slot on one
-    // side, and each side's cards step out from the center in order.
     auto place = [&](int relSlot) {
         const int idx = ((sel + relSlot) % count + count) % count;
         const int dist = std::abs(relSlot);
@@ -313,7 +270,6 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         c.direction = relSlot < 0 ? -1 : (relSlot > 0 ? 1 : 0);
         c.zIndex = 3 - std::min(dist, 3);
         c.w = width(dist) * hScale;
-        // Each side card's inner edge tucks `overlap` under the previous one's.
         double x = selX;
         const int step = relSlot < 0 ? -1 : 1;
         for (int k = 1; k <= dist; ++k) {
@@ -323,8 +279,8 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                          : x + prevW - overlap * hScale;
         }
         c.x = x;
-        // The centered card is the tall one (it carries the caption), so the
-        // shorter side cards center their preview against ITS preview box.
+        // Side cards center their preview against the SELECTED card's preview box:
+        // the selected card is taller (it carries the caption).
         const double h = frameH(c.w);
         c.h = h + (c.showCaption ? mt.captionGap + mt.captionH : 0.0);
         c.y = (selFrameH - h) * 0.5;

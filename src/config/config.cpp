@@ -107,7 +107,6 @@ struct ColorSpec {
 };
 
 constexpr IntSpec kInts[] = {
-    // grid
     {&grid.gap, "plugin:gloview:gap", 34},
     {&grid.padding, "plugin:gloview:padding", 80},
     {&grid.padding_top, "plugin:gloview:padding_top", 40},
@@ -115,7 +114,6 @@ constexpr IntSpec kInts[] = {
     // carousel (layout == "carousel" only)
     {&carousel.cards, "plugin:gloview:carousel_cards", 5},
     {&carousel.card_width, "plugin:gloview:carousel_card_width", 500},
-    // strip
     {&strip.height, "plugin:gloview:strip_height", 150},
     {&strip.offset, "plugin:gloview:strip_offset", 0},
     {&strip.margin, "plugin:gloview:strip_margin", 22},
@@ -123,24 +121,19 @@ constexpr IntSpec kInts[] = {
     {&strip.card_round, "plugin:gloview:strip_card_round", 10},
     {&strip.all_card, "plugin:gloview:strip_all_card", 0},
     {&strip.wallpaper, "plugin:gloview:strip_wallpaper", 1},
-    // look
     {&look.preview_round, "plugin:gloview:preview_round", 12},
     {&look.show_border, "plugin:gloview:show_border", 0},
     {&look.show_focus_border, "plugin:gloview:show_focus_border", 1},
     {&look.border_size, "plugin:gloview:border_size", 2},
     {&look.hover_border_size, "plugin:gloview:hover_border_size", 3},
     {&look.select_border_size, "plugin:gloview:select_border_size", 3},
-    // blur
     {&blur.passes, "plugin:gloview:blur_passes", 3},
     {&blur.size, "plugin:gloview:blur_size", 8},
     {&blur.resolution, "plugin:gloview:blur_resolution", 4},
     {&blur.fullscreen_background, "plugin:gloview:fullscreen_background", 0},
     {&blur.frost_underlay, "plugin:gloview:frost_underlay", 0}, // DEPRECATED no-op
-    // anim
     {&anim::enabled, "plugin:gloview:animations_enabled", 1},
-    // keys
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
-    // behavior
     {&behavior.focus_follows_mouse, "plugin:gloview:focus_follows_mouse", 1},
     {&behavior.scroll_switches_workspace, "plugin:gloview:scroll_switches_workspace", 1},
     {&behavior.passthrough_keys, "plugin:gloview:passthrough_keys", 1},
@@ -152,10 +145,8 @@ constexpr IntSpec kInts[] = {
     {&behavior.show_all_workspaces, "plugin:gloview:show_all_workspaces", 0},
     {&behavior.show_special, "plugin:gloview:show_special", 0},
     {&behavior.hold_lift_ms, "plugin:gloview:hold_lift_ms", 400},
-    // layer
     {&layer.hide_top, "plugin:gloview:hide_top_layers", 0},
     {&layer.hide_overlay, "plugin:gloview:hide_overlay_layers", 0},
-    // debug
     {&debug.logs, "plugin:gloview:debug_logs", 0},
 };
 
@@ -168,7 +159,6 @@ constexpr FloatSpec kFloats[] = {
 };
 
 constexpr StrSpec kStrs[] = {
-    // grid / strip / look
     {&grid.layout, "plugin:gloview:layout", "rows"},
     {&strip.anchor, "plugin:gloview:anchor", ""},
     {&strip.bar_position, "plugin:gloview:bar_position", "top"}, // deprecated alias
@@ -177,7 +167,6 @@ constexpr StrSpec kStrs[] = {
     {&look.close_button_visibility, "plugin:gloview:close_button_visibility", "shift"},
     {&look.close_trigger, "plugin:gloview:close_trigger", "button"},
     {&look.close_button_icon, "plugin:gloview:close_button_icon", "\xe2\x9c\x95"},
-    // keys
     {&keys.close, "plugin:gloview:key_close", "escape"},
     {&keys.next_workspace, "plugin:gloview:key_next_workspace", "tab"},
     {&keys.prev_workspace, "plugin:gloview:key_prev_workspace", "shift+tab"},
@@ -191,7 +180,6 @@ constexpr StrSpec kStrs[] = {
     {&keys.all_workspaces, "plugin:gloview:key_all_workspaces", "a"},
     {&keys.workspace, "plugin:gloview:key_workspace", "1,2,3,4,5,6,7,8,9,0"},
     {&keys.alt_tab_modifier, "plugin:gloview:alt_tab_modifier", "alt"},
-    // behavior
     {&behavior.preview_mode, "plugin:gloview:preview_mode", "live"},
     {&behavior.tile_layout,  "plugin:gloview:tile_layout",  "none"},
     {&anim::grid_swap_style, "plugin:gloview:grid_swap_style", "horizontal"},
@@ -202,7 +190,6 @@ constexpr StrSpec kStrs[] = {
     {&behavior.cursor_mode, "plugin:gloview:cursor_mode", "auto"},
     {&behavior.workspace_key_mode, "plugin:gloview:key_workspace_mode", "switch"},
     {&behavior.new_workspace_mode, "plugin:gloview:new_workspace_mode", "fill"},
-    // layer
     {&layer.above_namespaces, "plugin:gloview:above_namespaces", ""},
 };
 
@@ -257,7 +244,6 @@ void registerLeaf(HANDLE handle, const LeafSpec &l) {
   auto reg = [](HANDLE h, const char *k, auto v) {
     HyprlandAPI::addConfigValueV2(h, v);
   };
-  // clang-format off
   l.leaf->enabled.v = makeShared<Config::Values::CIntValue>(key("enabled"), "", static_cast<Config::INTEGER>(1));
   l.leaf->enabled.def = 1;
   reg(handle, key("enabled"), l.leaf->enabled.v);
@@ -267,7 +253,6 @@ void registerLeaf(HANDLE handle, const LeafSpec &l) {
   l.leaf->curve.v = makeShared<Config::Values::CStringValue>(key("curve"), "", l.curveDef);
   l.leaf->curve.def = l.curveDef;
   reg(handle, key("curve"), l.leaf->curve.v);
-  // clang-format on
 }
 
 const LeafSpec *animLeaf(const char *name) {

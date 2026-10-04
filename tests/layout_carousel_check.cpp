@@ -1,8 +1,7 @@
-// Self-check for the carousel geometry (src/layout.cpp) — the numbers are
-// ported 1:1 from noctalia v5.2's computeWindowSwitcherCarouselLayout, so they
-// are pinned here against hand-computed values rather than left to "looks
-// right on screen". Layout is pure geometry with no Hyprland dependency, which
-// is what makes this possible.
+// Self-check for the carousel geometry (src/layout.cpp): the numbers are pinned
+// against hand-computed values rather than left to "looks right on screen".
+// Layout is pure geometry with no compositor dependency, which is what makes
+// this possible.
 //
 //   g++ -std=c++23 -Isrc tests/layout_carousel_check.cpp src/layout.cpp
 //   -o /tmp/carousel_check && /tmp/carousel_check
@@ -60,7 +59,7 @@ void yes(bool cond, const char *what) {
 } // namespace
 
 int main() {
-  // ---- 1920x1080, 5 cards: the reference's nominal case -------------------
+  // ---- 1920x1080, 5 cards: the source design's nominal case -------------------
   // Hand-computed with Style's constants (spaceXs 4, spaceMd 12, aspect 1.6,
   // cards 500/380/280, overlap 60, caption 44, count 88x32):
   //   stripWidth  = 500 + (380-60)*2 + (280-60)*2      = 1580
@@ -173,7 +172,7 @@ int main() {
 
   // ---- narrow screen: the whole run scales down, card count is NOT shed ---
   {
-    // The reference sheds slots down to 3 when the screen is tight
+    // The source design sheds slots down to 3 when the screen is tight
     // (windowSwitcherNarrowLayoutThreshold). We don't: the configured card
     // count is the user's explicit choice, so the run scales uniformly to fit
     // instead — a 5-card carousel on a narrow screen is 5 smaller cards, not 3
@@ -198,7 +197,7 @@ int main() {
   }
 
   // ---- the shrink is MONOTONIC at every depth ----------------------------
-  // Regression: the reference has widths only for depths 0/1/2 and reuses farW
+  // Regression: the source design has widths only for depths 0/1/2 and reuses farW
   // beyond, so a 7-card run ended in two identically sized cards. Every card
   // out from the center must be strictly smaller than the one inside it.
   for (const int n : {2, 3, 4, 5, 6, 7, 9, 12, 20}) {
@@ -285,11 +284,11 @@ int main() {
     yes(L.panelH < 415.5, "short: panel shrank");
     yes(L.cards[2].w < 500, "short: selected card shrank");
     yes(L.cards[3].w < 380, "short: near card shrank");
-    // The fit is a fixed TWO passes (the reference's kHeightFitPasses), and it
+    // The fit is a fixed TWO passes (the source design's kHeightFitPasses), and it
     // converges geometrically rather than exactly: shrinking the widths also
     // shrinks the fixed frameInset/caption constants' share, so the residual
     // after pass 2 is a couple of px. Assert it lands CLOSE — not <= — which
-    // is what the reference actually delivers.
+    // is what the source design actually delivers.
     yes(L.panelH <= 336.0 * 1.02, "short: panel within 2% of the limit");
     // Aspect is preserved by the fit (it scales widths, frameH follows).
     const auto pv = carouselPreviewBox(

@@ -18,7 +18,7 @@ namespace {
 double linear(double t) { return t; }
 double easeOut(double t) {
   const double inv = 1.0 - t;
-  return 1.0 - inv * inv * inv; // easeOutCubic — the historical default
+  return 1.0 - inv * inv * inv;
 }
 double easeInOut(double t) {
   return t < 0.5 ? 4.0 * t * t * t
@@ -29,8 +29,7 @@ double back(double t) {
   return 1.0 + c3 * std::pow(t - 1.0, 3.0) + c1 * std::pow(t - 1.0, 2.0);
 }
 
-// CSS-style cubic bezier: P0=(0,0), P3=(1,1), control points from the config.
-// x is monotonic in t, so t is solved numerically for the requested progress.
+// bezier: x is monotonic in t, so t is solved numerically
 struct Bezier {
   double x1, y1, x2, y2;
   double at(double t) const {
@@ -39,7 +38,7 @@ struct Bezier {
            t * t * t;
   }
   double solve(double x) const {
-    double t = x; // good initial guess: control xs are usually near diagonal
+    double t = x; // near-diagonal xs: t = x is a good seed
     for (int i = 0; i < 8; ++i) { // Newton on cx(t) - x
       const double u  = 1.0 - t;
       const double cx = 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t - x;
@@ -51,7 +50,7 @@ struct Bezier {
         break;
     }
     t = std::clamp(t, 0.0, 1.0);
-    // bisection refinement — cheap and always converges
+    // bisection: Newton alone can leave [0,1]
     double lo = 0.0, hi = 1.0;
     for (int i = 0; i < 24; ++i) {
       const double u  = 1.0 - t;
@@ -68,13 +67,11 @@ struct Bezier {
 std::unordered_map<std::string, NativeFn> g_native;
 std::unordered_map<std::string, Bezier> g_beziers;
 
-// Lua-registered curves. g_L is the single persistent Hyprland state,
-// captured on first registration; refs index into its registry table.
+// g_L: the g_lua refs index ITS registry table
 lua_State *g_L = nullptr;
 std::unordered_map<std::string, int> g_lua;
 
-// Fallbacks are logged ONCE per name: a broken curve must not spam the log
-// at frame rate.
+// one log line per name: a broken curve is evaluated every frame
 std::unordered_set<std::string> g_warned;
 void warnOnce(const std::string &id, const std::string &what) {
   if (g_warned.insert(id).second)
@@ -82,7 +79,7 @@ void warnOnce(const std::string &id, const std::string &what) {
                      id, what);
 }
 
-} // namespace
+}
 
 void registerBuiltins() {
   g_native.emplace("linear", linear);
@@ -94,8 +91,7 @@ void registerBuiltins() {
 int luaRegister(lua_State *L) {
   const char *name = luaL_checkstring(L, 1);
   g_L = L;
-  if (lua_istable(L, 2)) { // { type = "bezier", points = {{x,y},{x,y}} }
-                           // or { x1, y1, x2, y2 }
+  if (lua_istable(L, 2)) { // {points={{x,y},{x,y}}} or {x1,y1,x2,y2}
     Bezier b{0.25, 0.1, 0.25, 1.0};
     lua_getfield(L, 2, "points");
     if (lua_istable(L, -1)) {
@@ -110,7 +106,7 @@ int luaRegister(lua_State *L) {
           double *py = i == 0 ? &b.y1 : &b.y2;
           *py        = lua_isnumber(L, -1) ? lua_tonumber(L, -1) : *py;
           lua_pop(L, 1);
-        } else if (lua_isnumber(L, -1)) { // flat list: {x1,y1,x2,y2}
+        } else if (lua_isnumber(L, -1)) {
           const double v = lua_tonumber(L, -1);
           (&b.x1)[i * 2]     = v;
           lua_rawgeti(L, -2, i + 2);
@@ -119,7 +115,7 @@ int luaRegister(lua_State *L) {
         }
         lua_pop(L, 1);
       }
-    } else { // flat numbers in the table itself
+    } else {
       for (int i = 0; i < 4; ++i) {
         lua_rawgeti(L, 2, i + 1);
         if (lua_isnumber(L, -1))
@@ -129,7 +125,7 @@ int luaRegister(lua_State *L) {
     }
     lua_pop(L, 1);
     g_beziers.insert_or_assign(name, b);
-    g_lua.erase(name); // a redefinition replaces the other kind
+    g_lua.erase(name); // redefining as bezier drops the lua ref
     return 0;
   }
   luaL_checktype(L, 2, LUA_TFUNCTION);
@@ -167,4 +163,4 @@ double eval(std::string_view id, double t) {
   return easeOut(t);
 }
 
-} // namespace gloview::curves
+}

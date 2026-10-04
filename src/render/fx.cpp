@@ -22,21 +22,14 @@ using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
 
-// ---- drag visuals (Z3) ------------------------------------------------------
-
 namespace {
-// Cursor offset of the drag preview: it sits down-right of the pointer so the
-// drop zones it is aimed at stay visible.
+// Down-right of the pointer, so the drop zones stay visible under the preview.
 constexpr double offX = 46.0, offY = 64.0;
 double dragScale() {
   return std::clamp(static_cast<double>(cfg::look.drag_size), 0.15, 1.0);
 }
-} // namespace
+}
 
-// The picked-up GRID tile's target box: its content box scaled by
-// plugin:gloview:drag_size and anchored down-right of the cursor. Desktop/
-// canvas mode keeps the true 1:1 grab offset and full size: there a drop
-// PARKS the window at exactly that visual spot.
 LRect Overview::dragBox() const {
   const int dragIdx = draggedTile();
   if (dragIdx < 0)
@@ -50,7 +43,6 @@ LRect Overview::dragBox() const {
   return LRect{m_drag.x + offX, m_drag.y + offY, full.w * k, full.h * k};
 }
 
-// The picked-up strip card's target box: the full card scaled by drag_size.
 LRect Overview::dragStripBox() const {
   if (m_drag.win.expired())
     return LRect{0, 0, 0, 0};
@@ -61,32 +53,24 @@ LRect Overview::dragStripBox() const {
   return LRect{m_drag.x + offX, m_drag.y + offY, ww, ww / std::max(0.1, aspect)};
 }
 
-// Lift animation progress 0..1 — single source of truth for all drag visuals.
 double Overview::dragLiftProgress() const {
   return curves::eval(m_lift.curve, m_dragLiftClock.raw(m_lift.ms));
 }
 
-// Where the grabbed preview IS right now: flying from its source box to the
-// cursor anchor during pickup (the lift leaf shapes time; the destination
-// moves with the cursor, so the flight bends naturally), riding at 1 after.
-// The non-positional half of the lift (scale + raise) is applied unconditionally
-// so that stationary hold is still visibly animated.
 LRect Overview::dragVisualBox() const {
   const LRect to = m_drag.press == model::Drag::Press::Tile ? dragBox()
                                                                : dragStripBox();
   const double p = dragLiftProgress();
   LRect b = (p < 1.0 && m_drag.lifted) ? lerp(m_drag.fromBox, to, p) : to;
 
-  // Non-positional lift: grow around own centre + raise upward.  This is what
-  // makes STATIONARY hold animated (fromBox == to), and for moving hold it
-  // composites naturally with the positional lerp.
+  // Scale/raise apply unconditionally: a stationary hold (fromBox == to) must
+  // still animate.
   const double s  = 1.0 + 0.07 * p;
   const double dy = -5.0 * p;
   const double cx = b.cx(), cy = b.cy();
   return LRect{cx - b.w * s / 2.0, cy - b.h * s / 2.0 + dy, b.w * s, b.h * s};
 }
 
-// Z3: chrome for whichever drag is live (grid tile, strip window, or strip card).
 void Overview::renderDragTile() const {
   const int dragIdx = draggedTile();
   if (dragIdx >= 0) {
@@ -98,8 +82,6 @@ void Overview::renderDragTile() const {
     drawDragStripChrome();
 }
 
-// Chrome for a window dragged straight off the strip — same visual language
-// as a grid-tile drag (drawPreviewChrome), scaled down to match.
 void Overview::drawDragStripChrome() const {
   const auto m = m_monitor.lock();
   const auto w = m_drag.win.lock();
@@ -118,9 +100,8 @@ void Overview::drawDragStripChrome() const {
       static_cast<int>(30.0 * s), Config::CGradientValueData(shadowCol),
       e * 0.18);
 
-  // Real border stroke, not a filled underlay — a filled rect would show
-  // through this window's own transparency as a solid wash instead of a
-  // frame (see the chrome-kernel comment in gl_util.hpp).
+  // A stroke, not a filled underlay: a fill shows through the window's own
+  // transparency as a solid wash instead of a frame.
   const int th = cfg::look.hover_border_size; // 0 = no ring
   const Config::CGradientValueData grad(hoverCol);
   g_pHyprOpenGL->renderBorder(pxb(lb, s), grad,
@@ -134,9 +115,6 @@ void Overview::drawDragStripChrome() const {
                 roundPow);
 }
 
-// Z3: the dragged window's live content, right after its chrome. Grid tile
-// and strip window share one flow: the preview flies from its source box to
-// the cursor anchor on the lift leaf.
 void Overview::renderDragWindow() const {
   const auto m = m_monitor.lock();
   if (!m)
@@ -160,8 +138,6 @@ void Overview::renderDragWindow() const {
                    round, cfg::look.preview_round_power);
 }
 
-// ---- swap pulses (Z1 tail for grid, Z2 tail for strip) ----------------------
-
 void Overview::kickPulse(const PHLWINDOW &w) {
   if (!w || !leaf("pulse").on)
     return;
@@ -169,9 +145,6 @@ void Overview::kickPulse(const PHLWINDOW &w) {
   m_pulses.push_back(model::WinPulse{w, 0.0, std::chrono::steady_clock::now()});
 }
 
-// Active swap pulses. strip=true → ring the window's STRIP slot; false → its
-// GRID tile box. A window present in both gets pulsed on both surfaces.
-// Window-keyed, so rebuilds between kick and render can't orphan it.
 void Overview::renderPulses(bool strip) const {
   if (m_pulses.empty())
     return;
@@ -218,9 +191,6 @@ void Overview::renderPulses(bool strip) const {
   }
 }
 
-// Expanding/fading ring flash around a box at pulse progress p (0..1):
-// easeOutBack pushes the outline slightly past the box, then it settles back
-// while fading out.
 void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
                              const CHyprColor &col, double p) const {
   const double k  = curves::eval("back", p) * 0.10;
@@ -232,13 +202,9 @@ void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
                roundPow);
 }
 
-// ---- landings (Z2.5) --------------------------------------------------------
-
-// Flying windows: content drawn at the box lerped from the release point to
-// the CURRENT slot box (which may itself be gliding — the lerp targets the
-// live slot, so the flight bends toward a moving destination naturally).
-// Regular slot rendering for these windows is suppressed while the flight is
-// live; at t=1 both boxes coincide and normal rendering takes over invisibly.
+// Flying windows, lerped to the CURRENT slot box (which may itself be
+// gliding, so the flight bends toward a moving destination). Slot rendering is
+// suppressed while the flight is live and takes over invisibly at t=1.
 void Overview::renderSwapFX() const {
   if (m_swapfx.empty())
     return;
@@ -254,8 +220,6 @@ void Overview::renderSwapFX() const {
     const auto w = fx.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;
-    // the CURRENT slot box (it may itself be gliding — the FX targets the
-    // live slot and bends toward a moving destination naturally)
     LRect to;
     bool found = false;
     for (size_t i = 0; i < m_tiles.size() && !found; ++i)
@@ -280,17 +244,17 @@ void Overview::renderSwapFX() const {
     const double p   = curves::eval(fx.curve, t);
     double bx = 0, by = 0, bw = 0, bh = 0;
     float alpha = 1.0F;
-    bool ring = false; // the release-point ring: only the direct flight keeps it
+    bool ring = false;
 
     if (fx.style == model::SwapStyle::SlideVert) {
-      constexpr double LIFT = 12.0; // clearance above the zone's top edge
-      if (t < 0.5) { // exit: straight up from the old box
+      constexpr double LIFT = 12.0;
+      if (t < 0.5) {
         const double q = curves::eval(fx.curve, t / 0.5);
         bx = fx.from.x;
         by = fx.from.y - (fx.from.h + LIFT) * q;
         bw = fx.from.w;
         bh = fx.from.h;
-      } else { // enter: drops down from the top edge into the new box
+      } else {
         const double q = curves::eval(fx.curve, (t - 0.5) / 0.5);
         bx = to.x;
         by = to.y - (to.h + LIFT) * (1.0 - q);
@@ -299,18 +263,18 @@ void Overview::renderSwapFX() const {
         alpha = static_cast<float>(std::min(1.0, q * 2.0));
       }
     } else if (fx.style == model::SwapStyle::Fade) {
-      if (t < 0.5) { // fade out where it was
+      if (t < 0.5) {
         bx = fx.from.x; by = fx.from.y; bw = fx.from.w; bh = fx.from.h;
         alpha = static_cast<float>(1.0 - t / 0.5);
-      } else { // fade in where it lands
+      } else {
         bx = to.x; by = to.y; bw = to.w; bh = to.h;
         alpha = static_cast<float>((t - 0.5) / 0.5);
       }
     } else if (fx.style == model::SwapStyle::Pop) {
-      if (t < 0.3) { // quick fade at the old box
+      if (t < 0.3) {
         bx = fx.from.x; by = fx.from.y; bw = fx.from.w; bh = fx.from.h;
         alpha = static_cast<float>(1.0 - t / 0.3);
-      } else { // pop into the new box: scale 0.7 -> 1 with a slight overshoot
+      } else {
         const double q = (t - 0.3) / 0.7;
         const double k = 0.7 + 0.3 * curves::eval(leaf("card").curve, q);
         bx = to.x + to.w * (1.0 - k) / 2.0;
@@ -319,7 +283,7 @@ void Overview::renderSwapFX() const {
         bh = to.h * k;
         alpha = static_cast<float>(std::min(1.0, q * 3.0));
       }
-    } else { // Horizontal: the direct flight, windows travel toward each other
+    } else {
       bx = lerp(fx.from.x, to.x, p);
       by = lerp(fx.from.y, to.y, p);
       bw = lerp(fx.from.w, to.w, p);
@@ -329,22 +293,18 @@ void Overview::renderSwapFX() const {
 
     const CBox px = pxb(LRect{bx, by, bw, bh}, s);
     const int rpx = pxr(clampRound(round, bw, bh), s);
-    // Flight chrome: the drag preview carried a shadow — keep it through the
-    // flight (fading with the window) so the release reads as continuous.
     if (alpha > 0.02F)
       g_pHyprOpenGL->renderRoundedShadow(
           pxb(LRect{bx, by + 6.0, bw, bh}, s), rpx, roundPow,
           static_cast<int>(16.0 * s),
           Config::CGradientValueData(argb(cfg::colors.shadow.get(), 1.0)),
           static_cast<float>(0.18 * alpha));
-    if (ring && t < 0.6) // the release ring fades quickly on the direct flight
+    if (ring && t < 0.6)
       strokeRingPx(px, argb(cfg::colors.hover_border.get(), (1.0F - t / 0.6F) * 0.9F),
                    (1.0F - t / 0.6F) * 0.9F, rpx, roundPow);
     renderWindowLive(w, m, px, px, alpha, when, rpx, roundPow);
   }
 }
-
-// ---- above-layers (Z4) ------------------------------------------------------
 
 bool Overview::isAboveLayer(const std::string &ns) const {
   if (ns.find("aboveoverview") != std::string::npos)
@@ -352,7 +312,6 @@ bool Overview::isAboveLayer(const std::string &ns) const {
   const std::string list = cfg::layer.above_namespaces.get();
   size_t i = 0;
   while (i < list.size()) {
-    // split on commas AND whitespace
     while (i < list.size() &&
            (list[i] == ',' || std::isspace(static_cast<unsigned char>(list[i]))))
       ++i;
@@ -374,10 +333,9 @@ bool Overview::isAboveLayer(const std::string &ns) const {
   return false;
 }
 
-// Z4: re-render opted-in TOP/OVERLAY layer surfaces (live-input HUDs etc.) on
-// top of the overview, via the same immediate leaf as window content —
-// IHyprRenderer::renderLayer is renderer-protected, plugins can't call it
-// (pinned 0.56.2). damageBox forces a composite even with no client damage.
+// renderLayer is renderer-protected, so opted-in TOP/OVERLAY surfaces go
+// through the immediate leaf like window content; damageBox forces a composite
+// when the client itself has no damage.
 void Overview::renderAboveLayers() const {
   const auto m = m_monitor.lock();
   if (!m || !g_pHyprRenderer)
@@ -392,8 +350,7 @@ void Overview::renderAboveLayers() const {
       if (!isAboveLayer(ls->m_namespace))
         continue;
 
-      const auto pos =
-          ls->positionAnimation()->value(); // absolute logical (layout) coords
+      const auto pos = ls->positionAnimation()->value(); // absolute logical
       const auto size = ls->sizeAnimation()->value();
       if (!(size.x > 0 && size.y > 0))
         continue;
@@ -433,4 +390,4 @@ void Overview::renderAboveLayers() const {
   }
 }
 
-} // namespace gloview
+}

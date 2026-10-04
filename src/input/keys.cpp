@@ -19,9 +19,6 @@ using Render::GL::g_pHyprOpenGL;
 namespace gloview {
 
 namespace {
-// The modifier bit a pressed key ITSELF contributes (evdev codes), so bare
-// modifier bindings can mask their own bit out of the held-mods state before
-// matching.
 uint32_t modBitForKeycode(int kc) {
   switch (kc) {
   case 42:
@@ -45,22 +42,9 @@ uint32_t modBitForKeycode(int kc) {
 void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
   if (!m_active)
     return;
-  // Keyboard model: the overview consumes ESC/TAB (dismiss), Enter (focus
-  // selection), arrows (move cursor); everything else passes THROUGH to
-  // Hyprland in passthrough mode so the user's normal keybinds keep working.
-  // With passthrough off it's fully modal — every key swallowed. Keycodes are
-  // evdev (layout-independent).
   const bool passthrough = cfg::behavior.passthrough_keys != 0;
 
   if (e.state != WL_KEYBOARD_KEY_STATE_PRESSED) {
-    // Releasing the configured modifier while an alt-tab cycle is active
-    // commits the current selection — focuses it and dismisses, exactly like
-    // letting go of Alt in a normal alt-tab. Off (alt_tab_commit_on_release=0):
-    // releasing does nothing: the selection just stays put until an explicit
-    // key_activate/click, for people who find release-triggers-action too
-    // eager. modBitForKeycode is used (not keyNameToCodes/ modNameToBit — both
-    // defined further down this file) so this stays a simple keycode→ bit
-    // comparison with no forward-declaration to worry about.
     if (m_altTabbing &&
         cfg::keys.alt_tab_commit_on_release != 0) {
       const std::string modName =
@@ -79,20 +63,12 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
         return;
       }
     }
-    cancel = !passthrough; // balance the release half of any key we let through
-                           // on press
+    cancel = !passthrough;
     return;
   }
 
-  // Each action binds a config list of key NAMES
-  // (esc/tab/enter/left/shift/hjkl/…; bare digit = number-row key), optionally
-  // with modifier prefixes ("shift+tab"). key_* = "" disables the action (key
-  // falls through).
   const int k = e.keycode;
-  // Held modifiers across all keyboards (not just keys pressed since the
-  // overview opened), minus the pressed key's OWN modifier bit — else a bare
-  // modifier name
-  // ("shift", the key_desktop default) could never match its own press.
+  // Held mods minus the pressed key's own bit, or a bare modifier name never matches.
   uint32_t mods = g_pInputManager ? g_pInputManager->getModsFromAllKBs() : 0;
   mods &= ~modBitForKeycode(k);
   bool handled = true;
@@ -100,14 +76,13 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
     close();
   else if (keyMatches(k, mods, cfg::keys.next_workspace.get()))
     stepWorkspace(
-        1); // cycle the displayed workspace card (wraps; committed on close)
+        1);
   else if (keyMatches(k, mods, cfg::keys.prev_workspace.get()))
     stepWorkspace(-1);
   else if (keyMatches(k, mods, cfg::keys.activate.get()))
     activateSelection();
   else if (keyMatches(k, mods, cfg::keys.close_window.get()))
-    closeTileWindow(m_selected); // sendClose the SELECTED tile (keyboard/hover
-                                 // cursor), stay open & reflow
+    closeTileWindow(m_selected);
   else if (keyMatches(k, mods, cfg::keys.left.get()))
     moveSelection(-1, 0);
   else if (keyMatches(k, mods, cfg::keys.right.get()))
@@ -119,21 +94,11 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
   else if (keyMatches(k, mods, cfg::keys.desktop.get()))
     setDesktopMode(!m_desktopMode);
   else if (keyMatches(k, mods, cfg::keys.all_workspaces.get()))
-    toggleAllWorkspaces(); // flip the expo (all-workspaces) main view
-  // Ctrl is masked out of the match here (not treated as a strict combo
-  // requirement): in "jump" mode it's the escape hatch back to the old
-  // stay-open behavior, so a bare digit and Ctrl+digit both need to hit this
-  // branch — see the mode check below.
+    toggleAllWorkspaces();
+  // Ctrl masked out: bare digit and Ctrl+digit both land here.
   else if (const int idx =
                keyIndex(k, mods & ~HL_MODIFIER_CTRL, cfg::keys.workspace.get());
            idx >= 0) {
-    // Key position N (0-based) maps DIRECTLY to workspace N+1 — "0" is always
-    // workspace 10 — independent of what's currently on the strip, and creates
-    // the workspace first if it doesn't exist yet (same as clicking "+").
-    // Previously this walked the (non-+/All) strip cards by POSITION, so it
-    // only ever reached workspaces that already happened to have a card up,
-    // i.e. ones already visited this session — pressing "0" did nothing at all
-    // for a never-opened workspace 10.
     const int id = idx + 1;
     const auto m = m_monitor.lock();
     auto ws = State::workspaceState()->query().id(id).run();
@@ -142,13 +107,11 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
       ws = State::workspaceState()->create(id, m->m_id, "", false);
     if (ws) {
       if (justCreated) {
-        // A brand-new empty workspace is reaped within a frame or two unless
-        // held — same guard addWorkspace() uses for "+". deactivate() releases
-        // it later.
+        // Persistent, or a new empty workspace is reaped within a frame.
         ws->setPersistent(true);
         m_newWorkspaces.push_back(ws);
         m_newCardId =
-            id; // pop-in animation for the freshly created card, like "+"
+            id;
         m_newCard.begin();
         m_newCardAnim = true;
       }
@@ -162,39 +125,8 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
       if (m) {
         if (const auto target = m_workspace.lock();
             target && target != m->m_activeWorkspace) {
-          // Tried internal=true here first to stop Hyprland's animated slide
-          // transition from leaking a fullscreen window's content into our
-          // backdrop for the duration of the switch (repro: fullscreen
-          // client on the target ws, switch to it via THIS digit-key path
-          // only — never via an external `hyprctl dispatch workspace` /
-          // native keybind switch while the overview is up). That stopped
-          // the leak but broke something else: a fullscreen window on the
-          // target workspace stopped rendering at all afterward — bare
-          // desktop/wallpaper, window still alive, only recovering after
-          // toggling the real desktop workspace back and forth via a native
-          // keybind. So `internal` gates more than just the visual
-          // transition.
-          //
-          // Also: per the comment on deactivate()'s own changeWorkspace()
-          // call below, `internal` isn't even the right lever regardless —
-          // changeWorkspace() ALWAYS starts Hyprland's native slide (its
-          // calls into the animation manager hardcode instant=false, not
-          // exposed through changeWorkspace()'s own signature), so
-          // internal=true was never going to stop the transition itself
-          // either.
-          //
-          // Fix, mirroring deactivate()'s own changeWorkspace() call
-          // (same rationale, see its comment): keep internal=false so every
-          // bit of real-switch bookkeeping runs (this is what brought the
-          // fullscreen window back), let the transition start normally, then
-          // instantly finish it by warping both workspaces' m_alpha /
-          // m_renderOffset straight to their already-assigned goals. The
-          // switch still fully happens — nothing here skips it — it just
-          // doesn't visibly slide over the following frames, so there's no
-          // window of time where Hyprland's own transition-render can put
-          // the target workspace's content on screen outside our own render
-          // pass (and outside shouldRenderWindow's reach) while the overview
-          // is still up.
+          // internal=true is not the lever (it stopped a fullscreen window on
+          // the target from rendering); keep it false and warp the slide away below.
           const auto oldWs = m->m_activeWorkspace; // capture BEFORE the switch
           m->changeWorkspace(target, false, true, false);
           if (oldWs && oldWs != target) {
@@ -206,10 +138,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
           m_liveWsAtOpen = m->m_activeWorkspace;
         }
       }
-      // "switch": stay open always.
-      // "jump" + instant: close immediately (slide was muted).
-      // "jump" + slide/fade/…: set pending — close() fires once the
-      //   ws-slide settles (rebuildClock done in updateAnimation).
+      // "switch" stays open; "jump" closes now, or when the ws-slide settles.
       if (doJump) {
         if (instant)
           close();
@@ -223,7 +152,6 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
 }
 
 namespace {
-// Split a config string into key tokens on commas / whitespace.
 std::vector<std::string> keyTokens(const std::string &s) {
   std::vector<std::string> out;
   std::string cur;
@@ -241,9 +169,6 @@ std::vector<std::string> keyTokens(const std::string &s) {
   return out;
 }
 
-// Resolve a key NAME (case-insensitive) to its evdev keycode(s). Bare digit =
-// number-row key; left/right-variant names (shift/ctrl/alt/super) and enter
-// resolve to BOTH codes.
 const std::vector<int> &keyNameToCodes(std::string t) {
   static const std::vector<int> NONE;
   for (auto &c : t)
@@ -306,7 +231,6 @@ const std::vector<int> &keyNameToCodes(std::string t) {
       {"f10", {68}},
       {"f11", {87}},
       {"f12", {88}},
-      // letters (evdev rows; lets users bind hjkl / wasd etc.)
       {"a", {30}},
       {"b", {48}},
       {"c", {46}},
@@ -338,8 +262,6 @@ const std::vector<int> &keyNameToCodes(std::string t) {
   return it != M.end() ? it->second : NONE;
 }
 
-// Modifier NAME (a "+"-prefix in a combo token) → HL_MODIFIER bit; 0 = not a
-// modifier.
 uint32_t modNameToBit(std::string t) {
   for (auto &c : t)
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -354,13 +276,8 @@ uint32_t modNameToBit(std::string t) {
   return 0;
 }
 
-// Match one token ("tab", "shift+tab", "ctrl+shift+k") against the pressed
-// keycode and the currently held modifiers — EXACT on shift/ctrl/alt/super.
-// Unrequested modifiers must NOT be held: a bare "tab" must not swallow
-// shift+tab (its own action) nor super+tab (commonly the user's gloview:toggle
-// bind — with passthrough it falls through to Hyprland's keybind manager, so
-// the same bind that opened the overview closes it). Only lock states
-// (caps/num) are ignored.
+// Extra held modifiers fail the match: a bare "tab" must not swallow
+// shift+tab or the user's own toggle bind.
 bool comboMatches(int keycode, uint32_t heldMods, std::string token) {
   constexpr uint32_t STRICTMODS =
       HL_MODIFIER_SHIFT | HL_MODIFIER_CTRL | HL_MODIFIER_ALT | HL_MODIFIER_META;
@@ -370,7 +287,7 @@ bool comboMatches(int keycode, uint32_t heldMods, std::string token) {
   while ((pos = token.find('+')) != std::string::npos) {
     const uint32_t bit = modNameToBit(token.substr(0, pos));
     if (bit == 0)
-      return false; // unknown modifier name → the token can never match
+      return false;
     need |= bit;
     token.erase(0, pos + 1);
   }
@@ -397,9 +314,6 @@ bool Overview::keyMatches(int keycode, uint32_t mods,
   return false;
 }
 
-// 0-based token position of keycode within the list, else -1. The number row
-// uses it in onKey to map directly to a workspace ID (idx+1) — see the
-// key_workspace handler.
 int Overview::keyIndex(int keycode, uint32_t mods,
                        const std::string &combo) const {
   int idx = 0;
@@ -420,11 +334,8 @@ void Overview::moveSelection(int dx, int dy) {
     damage();
     return;
   }
-  // Carousel: the tiles ARE a row, so there is no direction to search in —
-  // left/right is a circular index step (the reference's cycleSelection), and
-  // up/down has no meaning. dy is deliberately ignored rather than mapped to
-  // something arbitrary. No relayout here: renderStage's relayoutCarousel()
-  // sees the selection change and rotates the run.
+  // Carousel: dx is a circular index step, dy is unused; relayoutCarousel()
+  // reacts to m_selected.
   if (carouselMode()) {
     if (dx != 0) {
       const int n = static_cast<int>(m_tiles.size());
@@ -445,12 +356,12 @@ void Overview::moveSelection(int dx, int dy) {
     const double ddx = b.cx() - cx;
     const double ddy = b.cy() - cy;
     const double along =
-        dx * ddx + dy * ddy; // distance in the requested direction
+        dx * ddx + dy * ddy;
     if (along <= 1.0)
-      continue;                                        // not in that direction
-    const double perp = std::abs(dx * ddy - dy * ddx); // lateral offset
+      continue;
+    const double perp = std::abs(dx * ddy - dy * ddx);
     const double score =
-        along + perp * 2.0; // prefer aligned, penalize sideways drift
+        along + perp * 2.0;
     if (score < bestScore) {
       bestScore = score;
       best = static_cast<int>(i);
@@ -463,10 +374,6 @@ void Overview::moveSelection(int dx, int dy) {
   }
 }
 
-// Advance the Alt-Tab cursor by dir (+1/-1). Only ever called for an
-// ALREADY-active session (the first "tab" of a session is handled directly in
-// altTabInvoke, which lands on tile 0). The visiting order is simply the tile
-// index — no separate order/position bookkeeping needed.
 void Overview::stepAltTab(int dir) {
   const int n = static_cast<int>(m_tiles.size());
   if (n == 0)
@@ -483,16 +390,8 @@ void Overview::activateSelection() {
   focusAndClose(w, Desktop::FOCUS_REASON_KEYBIND);
 }
 
-// Point Hyprland's REAL focus at the selected tile while the overview is up.
-// passthrough keybinds like `killactive` act on the focused window; without
-// this, focus stayed on whatever was focused before open, so a hotkey hit the
-// WRONG window (ring and real focus diverged). Keep focus in lockstep with
-// m_selected.
-//
-// Guarded to the monitor's ACTIVE workspace: a displayed (uncommitted)
-// workspace's tiles are hidden, so focusing one would desync focus from the
-// live desktop without a real switch. fullWindowFocus does NOT change the
-// active workspace, so same-workspace only moves input focus.
+// Real focus must track m_selected: a passthrough `killactive` would hit
+// the pre-open window. Guarded to the ACTIVE ws — a hidden one desyncs it.
 void Overview::syncFocus() const {
   if (!m_active || m_selected < 0 ||
       m_selected >= static_cast<int>(m_tiles.size()))
@@ -502,7 +401,7 @@ void Overview::syncFocus() const {
   if (!m || !w || !w->m_isMapped || w->isHidden())
     return;
   if (w->m_workspace !=
-      m->m_activeWorkspace) // displaying a non-live workspace — don't desync
+      m->m_activeWorkspace)
     return;
   Desktop::focusState()->fullWindowFocus(w, Desktop::FOCUS_REASON_KEYBIND);
 }

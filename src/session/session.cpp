@@ -33,16 +33,12 @@ using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
 
-// shouldRenderWindow trampoline. Anonymous-namespace address is stable, so
-// g_shouldRenderOrig stays private to initialize()/dtor.
 namespace {
 using PSHOULDRENDER = bool (*)(void *, PHLWINDOW, PHLMONITOR);
 PSHOULDRENDER g_shouldRenderOrig = nullptr;
 
 bool hkShouldRenderWindow(void *thisptr, PHLWINDOW window, PHLMONITOR monitor) {
   const bool hide = g_overview && g_overview->shouldHideWindow(window, monitor);
-  // Black-blink diagnostic, gated to the entry animation (CANDIDATES.md) so it
-  // cannot spam a long session. Line up with the "F t=+" trace via frameTick().
   if (g_overview && g_overview->opening()) {
     debug::dbg("SRW tick=" + std::to_string(g_overview->frameTick()) +
                " win=" + std::to_string(reinterpret_cast<std::uintptr_t>(window.get())) +
@@ -55,11 +51,8 @@ bool hkShouldRenderWindow(void *thisptr, PHLWINDOW window, PHLMONITOR monitor) {
   return g_shouldRenderOrig ? g_shouldRenderOrig(thisptr, window, monitor) : true;
 }
 
-// damageSurface trampoline. commitWindow() calls damageSurface() for every
-// !isHidden() window on buffer commit — "visible" there does NOT mean
-// shouldRenderWindow, so an overview-hidden window keeps scheduling frames (a
-// playing video pins the compositor). The client keeps producing buffers; it
-// just stops driving the compositor, exactly like a hidden window.
+// commitWindow's "visible" is !isHidden, NOT shouldRenderWindow: a hidden
+  // window would still pin the compositor
 using PDAMAGESURFACE = void (*)(void *, SP<CWLSurfaceResource>, double, double,
                                 double);
 PDAMAGESURFACE g_damageSurfaceOrig = nullptr;
@@ -75,11 +68,7 @@ void hkDamageSurface(void *thisptr, SP<CWLSurfaceResource> pSurface, double x,
         if (w) {
           const auto mon = g_overview->monitor();
           if (g_overview->shouldHideWindow(w, mon)) {
-            // shouldHideWindow covers a tile preview and a non-tile window
-            // behind the opaque backdrop. A LIVE tile preview must keep
-            // propagating damage (video/animations); everything else is
-            // invisible to the user, and non-tile damage is the dominant idle
-            // GPU cost while the overview sits up.
+            // live tile previews MUST keep damage (video)
             if (g_overview->snapshotMode() || !g_overview->isTileWindow(w))
               return;
           }
@@ -95,12 +84,10 @@ void hkDamageSurface(void *thisptr, SP<CWLSurfaceResource> pSurface, double x,
 Overview::Overview(HANDLE handle) : m_handle(handle) {}
 
 Overview::~Overview() {
-  // Stop rendering before state/hooks tear down, so an in-flight frame sees an
-  // inactive overview and no dangling refs.
   m_active = false;
   m_opening = false;
-  restoreLayers(); // never leave a bar at alpha 0 if torn down mid-hide
-  restoreFill();   // never leave a surface stretching its small buffer
+  restoreLayers();
+  restoreFill();
   releaseNewWorkspaces();
   if (m_animPump) { m_animPump->cancel(); m_animPump.reset(); }
   m_tiles.clear();
@@ -148,8 +135,7 @@ bool Overview::initialize() {
       HyprlandAPI::findFunctionsByName(m_handle, "shouldRenderWindow");
   void *addr = nullptr;
   for (const auto &mt : matches) {
-    // The match string names the real type (Monitor::CMonitor), not the
-    // PHLMONITOR alias, so it must track upstream's namespaces.
+    // the demangled match names the REAL type, not PHLMONITOR
     if (mt.demangled.find("shouldRenderWindow(Hyprutils::Memory::"
                           "CSharedPointer<Desktop::View::CWindow>, "
                           "Hyprutils::Memory::CSharedPointer<Monitor::"
@@ -167,9 +153,6 @@ bool Overview::initialize() {
   m_shouldRenderHook = HyprlandAPI::createFunctionHook(
       m_handle, addr, reinterpret_cast<void *>(&hkShouldRenderWindow));
   if (!m_shouldRenderHook || !m_shouldRenderHook->hook()) {
-    // Usually another gloview instance already holds this hook (an installed copy
-    // autoloaded at session start plus the dev build path) — Hyprland cannot
-    // trampoline an already-hooked prologue.
     HyprlandAPI::addNotification(
         m_handle,
         "[gloview] failed to hook shouldRenderWindow — is another gloview "
@@ -180,8 +163,6 @@ bool Overview::initialize() {
   g_shouldRenderOrig =
       reinterpret_cast<PSHOULDRENDER>(m_shouldRenderHook->m_original);
 
-  // Stops a hidden window (a playing video under the overview) from driving a
-  // full recomposite every frame — see hkDamageSurface.
   const auto matchesDamage =
       HyprlandAPI::findFunctionsByName(m_handle, "damageSurface");
   void *addrDamage = nullptr;
@@ -213,34 +194,15 @@ bool Overview::initialize() {
   return true;
 }
 
-// ---- config -----------------------------------------------------------------
-
-// Read through the V2 value() accessor: the
-// deprecated getConfigValue() ignored Lua-config values, so they had no effect.
+// config via value(): getConfigValue() ignores Lua config
 std::string Overview::cursorMode() const {
     return cfg::behavior.cursor_mode.get();
 }
 
 namespace {
-// Accepts gloview's long-established "0xAARRGGBB" convention, plus the
-// shorter "0xRRGGBB" (alpha assumed FF), "#AARRGGBB"/"#RRGGBB", and bare 6/8
-// hex digits with no prefix at all — whatever's easiest to paste out of a
-// palette generator's own output or an existing hyprland.conf. Single byte
-// order throughout (AARRGGBB, matching argb()/the rest of this codebase) —
-// deliberately NOT Hyprland's own rgba(RRGGBBAA)/rgb(RRGGBB) forms, since
-// those use the OPPOSITE alpha position and would silently produce a wrong
-// color if guessed at; since these fields are no longer Hyprlang's native
-// COLOR type (colors are STRING hex literals — see config/config.hpp), that
-// parsing was never inherited for free and re-implementing its exact
-// ambiguity isn't worth it when gloview's own docs only ever taught 0xAARRGGBB
-// anyway. Returns `fallback` (parsed the same way) on anything unparseable.
+// Alpha FIRST (0xAARRGGBB), NOT rgba(RRGGBBAA)
 } // namespace
 
-// ONE accessor for every color option. The value is a plain string: a hex
-// literal in any accepted form, or the RESOLVED hex a Lua palette module
-// produced — the plugin never sees role names, so it has zero coupling to any
-// theme engine. A value that parses as nothing falls through to `fallback`, so
-// a typo degrades to the documented default instead of black.
 SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
                                            const CHyprColor &col,
                                            int size) const {
@@ -251,13 +213,9 @@ SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
   return c.tex;
 }
 
-// ---- animation registry (AN1) ----------------------------------------------
-
-
-
 Overview::Anchor Overview::stripAnchor() const {
   std::string a = cfg::strip.anchor.get();
-  if (a.empty()) // back-compat: the old top|bottom knob
+  if (a.empty()) // back-compat knob
     a = cfg::strip.bar_position.get();
   if (a == "bottom")
     return Anchor::Bottom;
@@ -277,8 +235,6 @@ double Overview::stripThickness() const {
   const auto m = m_monitor.lock();
   if (!m)
     return 150.0;
-  // clamp against the axis perpendicular to the band: height for a horizontal
-  // strip, width for a vertical one.
   const double cross = stripHorizontal() ? m->m_size.y : m->m_size.x;
   return std::clamp(
       static_cast<double>(cfg::strip.height), 100.0,
@@ -289,8 +245,6 @@ double Overview::stripOffset() const {
   const auto m = m_monitor.lock();
   if (!m)
     return 0.0;
-  // distance from the anchored edge. 0 = flush (no auto bar gap); purely
-  // cosmetic.
   const double cross = stripHorizontal() ? m->m_size.y : m->m_size.x;
   return std::clamp(
       static_cast<double>(cfg::strip.offset), 0.0,
@@ -319,8 +273,6 @@ LRect Overview::stripBand() const {
 }
 
 Vector2D Overview::stripSlide(double e) const {
-  // slide the strip in from its own edge as it fades (distance ∝ band
-  // thickness).
   const double d = (1.0 - e) * stripThickness() * 0.55;
   switch (stripAnchor()) {
   case Anchor::Bottom:
@@ -337,8 +289,6 @@ Vector2D Overview::stripSlide(double e) const {
 
 bool Overview::blurEnabled() const { return blurStrength() > 0.0F; }
 
-// plugin:gloview:blur is a float: 0 = off, 1 = full, between scales blur
-// strength via the pass alpha. Clamped 0..1.
 float Overview::blurStrength() const {
   return std::clamp(cfg::blur.strength.get(), 0.0F, 1.0F);
 }
@@ -355,75 +305,44 @@ int Overview::blurResolution() const {
   return std::clamp(cfg::blur.resolution.get(), 1, 32);
 }
 
-// ---- open / close -----------------------------------------------------------
-
 void Overview::toggle() {
-  // Black-blink diagnostic (CANDIDATES.md): stamps the exact renderStage tick
-  // this keybind-dispatch call landed on. If Hyprland's own render/keybind
-  // logging is enabled and shares this same log sink (it does — see
-  // debug::dbg mirroring to Log::logger), the frame that was ALREADY being
-  // built when the physical key event arrived vs. this line's tick= tells us
-  // whether there's a real dispatch-side gap before open() runs at all, as
-  // opposed to the gap being purely open()-to-screen presentation latency.
   debug::dbg("TOGGLE tick=" + std::to_string(m_frameTick) +
              " active=" + std::to_string(m_active) +
              " opening=" + std::to_string(m_opening));
   if (m_active && m_opening)
     close();
   else
-    open(); // opens into the tidy grid; Shift / gloview:desktop flips to the
-            // canvas
+    open();
 }
 
-// gloview:allworkspaces — toggle the "expo" view (every window on the monitor).
-// OPENS the overview if closed (so it works as a single-key bind); while open
-// flips expo on/off and glides tiles. m_allOverride overrides
-// show_all_workspaces until close (deactivate → -1).
 void Overview::toggleAllWorkspaces() {
   if (!(m_active && m_opening)) {
     m_allOverride =
-        1; // open directly into expo (set BEFORE open() so buildTiles sees it)
+        1; // BEFORE open(), so buildTiles sees it
     open();
-    if (!m_active) // open declined (no monitor / nothing to show) — don't leave
-                   // it armed
+    if (!m_active)
       m_allOverride = -1;
     return;
   }
   const bool wasAll = showAllWorkspaces();
   m_allOverride = wasAll ? 0 : 1;
-  // The all<->one collapse/expansion slides horizontally (new content from
-  // the right, the displaced tiles exit left) — the ws-switch slide with a
-  // fixed direction: an all<->one flip has no natural left/right ws order.
-  m_wsSlideDir = 1;
-  // The flip's own animation halves (expo_in = spreading, expo_out =
-  // collapsing) drive the glide, newcomers and ghosts for this transition.
+  m_wsSlideDir = 1; // all<->one slides horizontally (no ws order)
   m_expoFlip = wasAll ? -1 : 1;
-  // rebuild from the new membership and glide tiles into place (chrome settled
-  // at progress 1).
   auto oldBoxes = captureCurrentBoxes();
   replayReflow(oldBoxes);
 }
 
-// gloview:alttab / gloview:alttabback — bind these to the SAME modifier+key
-// you'd otherwise bind gloview:allworkspaces to (e.g. "SUPER, TAB,
-// gloview:alttab"). Closed → opens straight into the all-workspaces view with
-// the selection on the first tile; already open → advances the cycle one step
-// (repeated physical taps while the modifier stays held — Hyprland re-invokes
-// the dispatcher on every press). Whether releasing the modifier commits
-// (focuses the selection & closes) is separate — see alt_tab_commit_on_release
-// and the modifier-release handling in onKey.
 void Overview::altTabInvoke(bool reverse) {
   if (!(m_active && m_opening)) {
-    m_allOverride = 1; // open directly into expo
+    m_allOverride = 1;
     open();
-    if (!m_active) { // open declined (no monitor / nothing to show)
+    if (!m_active) {
       m_allOverride = -1;
       return;
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
     m_selected = m_tiles.empty() ? -1 : 0;
-    // Carousel: slots are built around the selection, and open() centered the
-    // run on the focused window — re-centering on tile 0 IS a relayout.
+    // carousel slots build around m_selected
     if (carouselMode() && !m_tiles.empty())
       layoutTiles();
     syncFocus();
@@ -438,33 +357,17 @@ void Overview::toggleDesktop() {
     setDesktopMode(!m_desktopMode);
 }
 
-// Flip grid <-> canvas while open, gliding previews into the new layout. Canvas
-// is purely visual — NO real window is floated/moved/resized.
+// canvas never moves or resizes a real window
 void Overview::setDesktopMode(bool on) {
-  // Canvas mode parks every preview at its window's real on-screen position —
-  // that is a different layout engine entirely, and it wins over `layout`
-  // (the same precedence it has for rows/grid/natural: layoutTiles checks
-  // m_desktopMode first). Deliberately NOT special-cased for carousel.
-  m_desktopMode = on; // each entry into the canvas starts from fresh targets
+  m_desktopMode = on;
 
   auto oldBoxes = captureCurrentBoxes();
   m_hovered = m_hoveredStrip = -1;
   m_selected = -1;
-  // Canvas is PURELY VISUAL — never floats/moves/resizes a real window.
-  // Survivors don't shuffle on add/remove: their targets stay parked on the Tile
-  // (frozen slot) + frozen aspect, so only the newcomer flows (residual: a
-  // re-tiled survivor's live content is over-covered to fill its slot).
-  replayReflow(
-      oldBoxes); // rebuild + glide previews grid<->canvas, chrome pinned at 1
+  replayReflow(oldBoxes);
 }
 
 void Overview::open() {
-  // Black-blink diagnostic (CANDIDATES.md, "куда копать дальше" #1): capture
-  // entry time BEFORE any early return, diff it against the moment m_active
-  // actually flips true below. open() is one straight-line synchronous call
-  // stack with no awaits/yields, so this is expected to come back near-zero
-  // (microseconds) — logging it anyway turns that expectation into a
-  // verified fact instead of an assumption, and costs nothing.
   const auto openEntryStamp = std::chrono::steady_clock::now();
   if (m_active && m_opening)
     return;
@@ -479,69 +382,31 @@ void Overview::open() {
   m_monitor = m;
   m_workspace = m->m_activeWorkspace;
   m_liveWsAtOpen =
-      m->m_activeWorkspace; // exit_on_switch watches this for external changes
+      m->m_activeWorkspace;
   m_hovered = m_hoveredStrip = -1;
 
-  // Force-rebuild the pre-blurred bg cache (m_blurFB): built once at boot from
-  // a stale pre-window scene and only re-dirtied on bg damage, so the first
-  // overview's band else samples the cold cache and renders see-through
-  // ("transparent strip").
+  // force-rebuild the bg blur cache (boot-built, cold)
   m->m_blurFBDirty = true;
 
-  // Force 3 consecutive full-monitor-damage frames, the same public knob
-  // Hyprland itself sets on every other "swapchain buffer-age tracking can no
-  // longer be trusted" transition (CMonitor::onConnect, prop-refresh/config
-  // reload, cursor-theme change — grep m_forceFullFrames across Hyprland src).
-  // A single damage() call (below) only guarantees a correct repaint for
-  // whichever ONE swapchain image consumes it before CDamageRing::rotate()
-  // clears m_current; with a 2-3 image swapchain the OTHER image(s) fall back
-  // to CDamageRing::getBufferDamage(bufferAge), which only reconstructs
-  // history via a 3-deep ring — anything beyond that returns full damage, but
-  // anything within it can render a genuinely stale (in the worst case,
-  // never-composited-into) buffer for as many frames as it takes the rotation
-  // to cycle back through it. Bounded, one-shot (never re-armed while
-  // active), and harmless if the theory is wrong — costs nothing beyond a few
-  // needless full-frame paints right at open.
-  //
-  // EXPERIMENT (black-blink debugging, unverified — see CANDIDATES.md "куда
-  // копать дальше" #3): the value 3 assumes a swapchain depth of at most 3
-  // images, matching Hyprland's own onConnect/reload usage elsewhere. If the
-  // actual runtime swapchain is deeper (or if some force-full-frame "ticks"
-  // get consumed by iterations that never reach scanout — e.g. a skipped/
-  // throttled frame under load — the counter could hit 0 before every image
-  // in rotation was ever forced), the STALE/never-composited-into background
-  // theory this mechanism exists to cover would still leave the black blink
-  // uncovered on whichever image(s) rotation hadn't reached yet. Raised 3->8
-  // as a cheap, bounded (still one-shot, still harmless per the comment
-  // above) test: if the blink duration/frame-count shrinks or disappears
-  // with this bump, that's strong evidence for the swapchain-depth theory;
-  // if unchanged, revert this one line — it isn't a confirmed fix.
+  // force several full-damage frames: one damage() = one image
   m->m_forceFullFrames = 8;
 
-  // Clear drag/press state: a mid-drag dismiss (ESC/TAB/click) skips the
-  // release handler, so the next open would inherit a half-armed drag (a tile
-  // floats at cursor). One reset covers every field.
+  // clear drag state: mid-drag dismiss skips release
   m_drag = {};
-  m_pendingFocus.reset(); // no stale carry-over from a previous session
-  cancelPendingClick();   // ditto for any close_trigger=doubleclick timer
-  m_altTabbing = false;   // altTabInvoke re-arms it after we return
-  m_desktopMode = false; // open into the tidy grid; Shift / gloview:desktop
-                         // flips to the canvas
+  m_pendingFocus.reset();
+  cancelPendingClick();
+  m_altTabbing = false;
+  m_desktopMode = false;
   m_newCardAnim = false;
   m_newCardId = 0;
-  releaseNewWorkspaces(); // defensive: shouldn't still hold anything here, but
-                          // don't leak if it does
+  releaseNewWorkspaces();
 
   buildTiles();
   buildStrip();
-  if (m_tiles.empty() && m_strip.size() <= 1) // nothing to show
+  if (m_tiles.empty() && m_strip.size() <= 1)
     return;
 
-  // Seed the keyboard selection on the focused window (else the first tile)
-  // BEFORE laying out: the carousel builds its card slots AROUND m_selected, so
-  // laying out first would center the run on tile 0 and leave the focused
-  // window off-center. Every other engine ignores m_selected in layoutTiles,
-  // so the reorder is a no-op for them.
+  // seed selection BEFORE layoutTiles
   m_selected = m_tiles.empty() ? -1 : 0;
   if (const auto fw = Desktop::focusState()->window()) {
     for (size_t i = 0; i < m_tiles.size(); ++i)
@@ -565,67 +430,18 @@ void Overview::open() {
                                  .count()));
   m_pendingDeactivate = false;
   m_progress = 0.0;
-  m_timeline.begin();   // chrome reveal
-  m_tileClock.begin();  // tiles glide real boxes -> grid slots
-  m_lastAnimTick = {}; // fresh animation cycle: no stale gap measurement
-  hideLayers(); // fade bars out (no-op unless hide_top/overlay_layers set)
+  m_timeline.begin();
+  m_tileClock.begin();
+  m_lastAnimTick = {};
+  hideLayers();
   m_cursor.onOpen(m, cursorMode());
-  // Only force a fresh wallpaper-layers capture + Gaussian blur pass when the
-  // cache is older than kBackdropCacheTTL — both are real GL work (raw
-  // wallpaper/layer-shell capture, then a full-monitor Gaussian blur) that
-  // used to run unconditionally inside open()'s very first rendered frame on
-  // EVERY toggle; expensive enough to miss vblank and show as a black blink
-  // (see CANDIDATES.md, black-blink 2026-09 updates) — upstream never had
-  // this because it re-blurs every frame from Hyprland's own continuously-
-  // warm cache instead of caching its own, at ~15x the steady-state GPU
-  // cost. A stale cache within the TTL window (wallpaper daemon updates
-  // content while overview is closed, then reopened inside a few seconds)
-  // shows one animation's worth of a slightly-outdated snapshot instead — a
-  // live/video wallpaper is unaffected, it bypasses this cache every frame
-  // regardless (see liveSrc in backdrop.cpp).
-  //
-  // Deliberately NOT also gating on m->m_blurFBDirty here (tried it, see
-  // CANDIDATES.md): we're the only writer of that field anywhere in this
-  // codebase (grep m_blurFBDirty), and it stayed true across a live-tested
-  // ~1s reopen, well inside the TTL — meaning either Hyprland doesn't
-  // reliably reset it back to false in between our own opens, or not fast
-  // enough to trust, at least for setups without native per-window
-  // decoration:blur actually rendering every frame to consume it. Reading it
-  // back would just mean reading our own prior write, permanently pinning
-  // this to "always dirty" and defeating the TTL entirely. TTL alone is
-  // fully within our control and is what's actually verified to work.
-  // TEMP DIAGNOSTIC (revert to 3 once confirmed): bumped 3s -> 30s so a
-  // normal manual test cadence (press bind, read terminal, grep log, paste
-  // here — comfortably >3s) can't accidentally always land outside the TTL
-  // and look identical to the old unconditional-reset bug for an unrelated
-  // reason. Test with the bind pressed twice in quick, deliberate succession
-  // (well under a second apart) instead of the usual clear-log/grep loop
-  // between each toggle.
-  //
-  // CONFIRMED 2026-09-06: with this at 30s, a same-tick reopen (close on
-  // tick N, reopen tick N+1) showed bdDrawn=1/blurOK=1 on the very FIRST
-  // frame after the second OPEN — the TTL-gated cache genuinely works,
-  // reopening fast skips the redundant recapture+reblur. BUT the user
-  // confirms the visible black blink is UNCHANGED regardless of timing
-  // (repeats identically pressed every 200ms or every 5s) — meaning this
-  // cache invalidation was NEVER the cause of the visible blink. It was a
-  // real, worth-keeping optimization (verified working) that happened to
-  // correlate with open() in the logs, not the mechanism. Back to 3s: the
-  // TTL logic itself is validated, this just isn't Bug A's answer. Bug A
-  // needs a synced screen recording (wf-recorder), like the Bug B protocol
-  // this file's 2026-08-22 update describes — log inference alone has now
-  // pointed at three different wrong mechanisms in a row.
   static constexpr auto kBackdropCacheTTL = std::chrono::seconds(3);
   const bool backdropStale =
       (std::chrono::steady_clock::now() - m_lastBackdropCapture) >
       kBackdropCacheTTL;
   if (backdropStale) {
-    m_backdropDrawn = false; // draw fresh wallpaper into backdrop source FBO
-    // Invalidate but do NOT free the blur cache: its texture doubles as the
-    // frosted backing under translucent tiles from the FIRST overview frame
-    // (see drawPreviewTile) — freeing it would reintroduce the entry blink
-    // for exactly the windows that have blur-behind. The srcId+recipe key
-    // forces one fresh blur on the first backdrop-visible frame anyway.
+    m_backdropDrawn = false;
+    // do NOT free the blur cache (it backs translucent tiles)
     m_blur.valid = false;
   }
   debug::dbg("=== OPEN ===");
@@ -636,19 +452,12 @@ void Overview::close() {
   if (!m_active)
     return;
   m_opening = false;
-  m_pendingJumpClose = false; // Escape or any manual close cancels deferred jump
+  m_pendingJumpClose = false;
 
-  // Once ANYTHING starts a close (this one included — the doubleclick timer's
-  // own callback routes back through here), a still-pending single-click
-  // timer is stale: the tile it targeted is about to stop existing in the
-  // overview one way or another, so let it fire later would either be
-  // redundant or act on gone state.
+  // ANY close makes a pending click timer stale
   cancelPendingClick();
 
-  // Close rides m_progress down (see tileProgress): target = where the tile
-  // is shown RIGHT NOW, natural = the window's REAL settled geometry. The
-  // descending eased progress then glides shown -> real pixel-perfect,
-  // whatever any earlier glide was doing.
+  // close: target = shown, natural = real geometry
   if (const auto m = m_monitor.lock()) {
     for (auto &t : m_tiles) {
       t.target = currentBox(t, static_cast<int>(&t - m_tiles.data()));
@@ -661,46 +470,25 @@ void Overview::close() {
     }
   }
 
-  restoreLayers(); // bars fade back in over the close animation, not in a pop
-                   // at the end
+  restoreLayers();
   m_cursor.onClose();
-  // Continue the close glide from the CURRENT progress (not from 1): a close
-  // during the open animation (or mid-reflow) must not jump. While closing,
-  // updateAnimation reads m_progress as 1 - timeline.raw(), so resuming from
-  // progress p means seeking the timeline to (1 - p).
+  // resume from CURRENT progress (1 - raw())
   m_timeline.seek(1.0 - m_progress, animDuration());
-  // Fresh animation cycle: the overview may have sat IDLE since the last
-  // animated frame (pump off), so the next updateAnimation would measure a
-  // huge phantom gap and rewind every clock to its pre-close anchor — the
-  // tiles' fresh glide included. open() does the same.
-  m_lastAnimTick = {};
+  m_lastAnimTick = {}; // else a phantom gap rewinds the clocks
   debug::dbg("=== CLOSE from progress " + std::to_string(m_progress).substr(0, 5) + " ===");
   damage();
 }
 
-// Immediate, animation-free teardown for the UNLOAD path (`hyprctl
-// gloviewunload`, run before unloading). close() only *starts* the close anim;
-// unloading the .so before it finishes can yank the library while an overlay
-// PainterPass element or a pending recapture timer — both holding callbacks in
-// this .so — is still referenced → SEGV / IPC-dead spin. hardClose drops all
-// that state synchronously + damages, so the next frame is plugin-free ("flush
-// frame") and dlclose is safe. Hooks stay installed (harmless at
-// m_active=false; dtor removes them). Unlike deactivate it does NOT commit the
-// displayed workspace — unload snaps back to the live one.
+// sync teardown for unload: close() only STARTS it; unload first -> SEGV
 void Overview::hardClose() {
-  // Same hazard the old recapture-timer cleanup here used to guard against
-  // (a fire lambda capturing `this` in this .so, still pending at unload):
-  // the click timer is the only one of those left now.
   cancelPendingClick();
   if (m_animPump) {
     m_animPump->cancel();
     m_animPump.reset();
   }
 
-  restoreLayers(); // never leave a bar stuck at alpha 0 if we tear down
-                   // mid-hide
-  restoreFill();   // never leave a window's surface stuck stretching its small
-                   // buffer
+  restoreLayers();
+  restoreFill();
   releaseNewWorkspaces();
 
   m_active = false;
@@ -717,22 +505,16 @@ void Overview::hardClose() {
   m_hovered = m_hoveredStrip = -1;
   m_selected = -1;
 
-  damage(); // schedule the plugin-free flush frame
+  damage();
 }
 
-// ---- collection -------------------------------------------------------------
-
-// Effective expo state. Runtime m_allOverride wins over the show_all_workspaces
-// config; -1 means "follow config".
 bool Overview::showAllWorkspaces() const {
   return m_allOverride < 0
              ? (cfg::behavior.show_all_workspaces != 0)
              : (m_allOverride != 0);
 }
 
-// Shared membership predicate for main-area tiles. buildTiles (full rebuild)
-// and syncTiles (per-frame add/remove detector) MUST agree, else syncTiles sees
-// a phantom diff every frame and reflow-churns.
+// buildTiles() and syncTiles() MUST share this
 bool Overview::tileBelongs(const PHLWINDOW &w, const PHLMONITOR &m,
                            const PHLWORKSPACE &ws) const {
   if (!w || !w->m_isMapped || w->isHidden())
@@ -740,14 +522,13 @@ bool Overview::tileBelongs(const PHLWINDOW &w, const PHLMONITOR &m,
   const auto wws = w->m_workspace;
   if (!wws)
     return false;
-  if (showAllWorkspaces()) { // expo: every window living on this monitor, any
-                             // workspace
+  if (showAllWorkspaces()) {
     if (wws->m_isSpecialWorkspace &&
         cfg::behavior.show_special == 0)
       return false;
     return wws->m_monitor.lock() == m;
   }
-  return wws == ws; // single displayed workspace (may be inactive; fine)
+  return wws == ws;
 }
 
 bool Overview::shouldHideWindow(const PHLWINDOW &w,
@@ -755,25 +536,12 @@ bool Overview::shouldHideWindow(const PHLWINDOW &w,
   const auto m = m_monitor.lock();
   if (!m_active || !w || mon != m)
     return false;
-  // Fullscreen windows are hidden wholesale while the overview is up. Without
-  // this, a workspace-transition force-render of an off-display fullscreen
-  // window (Hyprland's renderWorkspaceWindowsFullscreen "pass sucks" loop
-  // force-renders fullscreen windows whose workspace is animating/forced)
-  // leaks it into currentFB, and the once-cached backdrop blur then keeps
-  // showing it even after the transition settles — "a fullscreen terminal
-  // instead of the wallpaper". The fullscreen_background feature does NOT
-  // re-enable rendering here: the featured window (a fullscreen mpv on the
-  // displayed workspace) is sourced directly from its live surface texture by
-  // backdropSource(), so no fullscreen window ever needs to draw into the
-  // scene.
+  // fullscreen hidden: a transition force-render leaks it
   if (Fullscreen::controller()->isFullscreen(w))
     return true;
-  // hide the windows we draw previews for
   for (const auto &t : m_tiles)
     if (t.win.lock() == w)
       return true;
-  // also hide the monitor's active workspace, so displaying a different desktop
-  // doesn't bleed the current one through the translucent backdrop.
   if (const auto aw = m->m_activeWorkspace; aw && w->m_workspace == aw)
     return true;
   return false;
@@ -789,44 +557,17 @@ bool Overview::isTileWindow(const PHLWINDOW &w) const {
 }
 
 void Overview::deactivate() {
-  // Hand the monitor blur FB back to Hyprland: mark dirty so preRender
-  // rebuilds it from the real desktop on the first post-overview frame
-  // (otherwise settled translucent windows would sample our stale capture).
+  // hand the blur FB back: dirty, so preRender rebuilds it
   if (const auto mm = m_monitor.lock())
     mm->m_blurFBDirty = true;
-  restoreLayers(); // safety net: normally close() already restored; harmless if
-                   // empty
-  restoreFill(); // drop the fill-small override so real windows render normally
-                 // again
+  restoreLayers();
+  restoreFill();
 
   if (const auto m = m_monitor.lock()) {
     if (const auto ws = m_workspace.lock(); ws && ws != m->m_activeWorkspace) {
-      const auto oldWs = m->m_activeWorkspace; // capture BEFORE the switch —
-                                               // this is what animates OUT
+      const auto oldWs = m->m_activeWorkspace; // capture BEFORE the switch
       m->changeWorkspace(ws, false, true, false);
-      // changeWorkspace() ALWAYS starts Hyprland's own native workspace-switch
-      // slide — verified against the pinned source (Monitor.cpp): its calls to
-      // CDesktopAnimationManager::startAnimation() for both the outgoing and
-      // incoming workspace hardcode instant=false, and that parameter isn't
-      // exposed through changeWorkspace()'s own signature, so there's no way
-      // to ask it not to. We still want everything ELSE this call does (IPC
-      // workspace events, pinned-window handling, mouse-move sim, layout
-      // recalculate, focus fallback) — only the visible slide is unwanted
-      // here: gloview's own close glide (m_progress) JUST finished playing
-      // its own "arriving at this window" motion, so Hyprland's native one
-      // starting immediately after reads as a jarring extra hop tacked onto
-      // the end, not a continuation of it.
-      //
-      // Fix: let it start normally, then instantly finish it. startAnimation()
-      // animates exactly two properties per workspace — m_alpha and
-      // m_renderOffset (DesktopAnimationManager.cpp) — by assigning each a
-      // GOAL and letting them interpolate there over their configured
-      // duration. Warping straight to that already-assigned goal
-      // (setValueAndWarp keeps the goal, skips the interpolation) finishes
-      // the animation in this same frame instead of over its duration — the
-      // switch still visibly happens (nothing here skips it, unlike
-      // internal=true, which would also silently drop the IPC events and
-      // recalc), it just doesn't visibly slide.
+      // changeWorkspace always starts the native slide; warp to goal
       if (oldWs && oldWs != ws) {
         oldWs->m_alpha->setValueAndWarp(oldWs->m_alpha->goal());
         oldWs->m_renderOffset->setValueAndWarp(oldWs->m_renderOffset->goal());
@@ -836,28 +577,12 @@ void Overview::deactivate() {
     }
   }
 
-  // Re-assert the explicitly committed focus (see m_pendingFocus's comment in
-  // overview.hpp) as the very last real-desktop action of this session.
-  // For a cross-workspace commit, focusAndClose() deliberately skipped its own
-  // fullWindowFocus() call (see its comment) so this changeWorkspace() above
-  // is the FIRST time the real desktop actually switches — keeping Hyprland's
-  // native workspace-switch animation from playing until our own close glide
-  // is fully done. That changeWorkspace() call's own auto-focus resolves via
-  // CWorkspace::getLastFocusedWindow(), which can still land on whatever was
-  // actually focused there before this session rather than the window we just
-  // committed to — re-focusing it one more time right here guarantees the
-  // committed choice wins over stale history. For a same-workspace commit,
-  // focusAndClose() already focused it immediately; this is just a harmless
-  // backstop that re-confirms the same thing.
+  // re-assert committed focus LAST (stale auto-focus)
   if (const auto pw = m_pendingFocus.lock(); pw && pw->m_isMapped && !pw->isHidden())
     Desktop::focusState()->fullWindowFocus(pw, Desktop::FOCUS_REASON_KEYBIND);
   m_pendingFocus.reset();
 
-  // Drop the hold on every "+"/number-key-created workspace this session: each
-  // stays if active or a window landed there, otherwise reaps like any empty
-  // one. (Used to be a single slot that only released the LAST one created —
-  // creating several in one session silently leaked the rest as permanent
-  // phantom persistent workspaces — task/bug #4.)
+  // release EVERY created workspace
   debug::dbg("deactivate (natural close end)");
   if (m_animPump) {
     m_animPump->cancel();
@@ -869,8 +594,7 @@ void Overview::deactivate() {
   m_opening = false;
   m_pendingDeactivate = false;
   m_desktopMode = false;
-  m_allOverride =
-      -1; // next open follows plugin:gloview:show_all_workspaces again
+  m_allOverride = -1;
   m_altTabbing = false;
   m_newCardAnim = false;
   m_newCardId = 0;
@@ -884,8 +608,6 @@ void Overview::deactivate() {
 }
 
 void Overview::releaseNewWorkspaces() {
-  // "+"-created workspaces are held (persistent) until session end so none of
-  // them get reaped while empty; this releases every one of them.
   for (const auto &wref : m_newWorkspaces)
     if (const auto ws = wref.lock())
       ws->setPersistent(false);
@@ -897,15 +619,7 @@ void Overview::damage() const {
     g_pHyprRenderer->damageMonitor(m);
 }
 
-// Close-completion teardown, called from the painter's EXECUTION tail
-// (Phase::Front). The queue-era placement — right after the pass was BUILT —
-// erased m_tiles/m_strip before the pass executed, which the queue route
-// survived (queued surface elements carry copied data) but the immediate
-// route cannot: the landing frame's content simply wasn't drawn and the real
-// desktop flashed through opaque tiles. Here the whole frame has already
-// painted with an intact Model; m_active=false still lands before the NEXT
-// frame's shouldRenderWindow decision, so the handoff semantics are
-// unchanged.
+// EXECUTION tail: m_tiles must survive the frame
 void Overview::finishPendingDeactivate() {
   if (!m_pendingDeactivate)
     return;
@@ -932,9 +646,7 @@ void Overview::ensureAnimPump() {
   if (m_animPump && m_animPump->armed())
     return;
 
-  // Ticks strictly BETWEEN frames on the event loop, so the full-monitor
-  // damage it issues can never be consumed by an in-flight commit — the race
-  // that let 2-3 partial-damage frames present unrendered buffers.
+  // tick BETWEEN frames, not during a commit
   m_animPump = makeShared<CEventLoopTimer>(
       std::chrono::milliseconds(8),
       [this](SP<CEventLoopTimer> self, void *) {
@@ -952,15 +664,7 @@ void Overview::ensureAnimPump() {
     g_pEventLoopManager->addTimer(m_animPump);
 }
 
-// snapshot preview mode (plugin:gloview:preview_mode == "snapshot"): grab each
-// tile/strip window's main surface texture into m_snapshots so
-// renderWindowLive() can draw it statically. The window's LAST COMMITTED
-// texture (m_current.texture) — windows are hidden while the overview is up,
-// so this is the freshest frame they'll ever hand us; it stays valid as long
-// as we hold the SP. Only ADDS missing entries (keys already captured stay
-// frozen — that's the point of snapshot mode), so a window that appears
-// mid-session gets one grab and then holds that exact frame; the map is
-// cleared wholesale on teardown (deactivate/hardClose).
+// snapshot mode: per-window last committed texture, frozen
 bool Overview::snapshotMode() const {
   return cfg::behavior.preview_mode.get() == "snapshot";
 }
@@ -972,15 +676,11 @@ void Overview::updateSnapshots() {
     if (!w || !w->wlSurface() || !w->wlSurface()->resource())
       return;
     if (m_snapshots.contains(w.get()))
-      return; // already captured → keep it static
+      return;
     const auto tex = w->wlSurface()->resource()->m_current.texture;
     if (!tex || !tex->ok())
       return;
-    // Real pixel copy: the live texture (m_current.texture) is re-uploaded on
-    // every client commit (SHM → glTexSubImage2D into the same GL object) or
-    // re-imported from a recycled buffer (DMA-BUF → black preview), so holding
-    // the SP is NOT a freeze. Render it 1:1 into a private FB instead — the FB
-    // texture stays as-is no matter what the client does afterwards.
+    // live texture is re-uploaded per commit: copy to a private FB
     const int W = tex->m_size.x;
     const int H = tex->m_size.y;
     if (W <= 0 || H <= 0)

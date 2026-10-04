@@ -11,18 +11,15 @@ namespace gloview::debug {
 bool enabled() { return cfg::debug.logs != 0; }
 
 void dbg(const std::string &msg) {
-  // Free lines before the flag starts gating: a dead config path otherwise
-  // yields an empty log while the option insists it is 1.
+  // free lines: a dead config path logs nothing
   static int bootstrap = 200000;
   const int gate = cfg::debug.logs;
   if (gate != 0)
-    bootstrap = -1; // flag works — stop spending the free lines
+    bootstrap = -1;
   else if (bootstrap <= 0 || --bootstrap < 0)
     return;
   if (Log::logger)
     Log::logger->log(Log::INFO, "[gloview] {}", msg);
-  // Append, never truncate: a crash must keep its own evidence across the
-  // restarted session's plugin load.
   static FILE *f = nullptr;
   if (!f) {
     f = fopen("/tmp/gloview.log", "a");
@@ -40,4 +37,4 @@ void dbg(const std::string &msg) {
   }
 }
 
-} // namespace gloview::debug
+}

@@ -21,26 +21,12 @@ using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
 
-// ---- backdrop: source resolution, capture, cached blur, dim -----------------
-//
-// The backdrop is the ONE thing in the overlay that must never read currentFB
-// as a source: a fullscreen window on the active workspace renders through
-// Hyprland's "solitary client" fast path (renderMonitor calls renderWindow
-// DIRECTLY, bypassing shouldRenderWindow entirely), and a workspace that
-// never re-renders leaves currentFB holding a stale pre-overview frame. The
-// source is therefore resolved from first principles every frame:
-//   1. a fullscreen mpv on the displayed workspace (fullscreen_background),
-//      live — re-blurred every frame, never cached;
-//   2. the monitor's own wallpaper texture;
-//   3. a private FBO with every BACKGROUND/BOTTOM layer-shell surface
-//      (wallpaper engines) captured ONCE per session — a re-draw could pick
-//      up transient window content captured by engines that screen-capture
-//      the composited desktop.
-// Source IDENTITY is checked EVERY frame (outside any dirty-guard): that is
-// what carries the cache across plain workspace switches (same wallpaper ⇒
-// no re-blur, no brightness shift) while invalidating on genuine changes.
-// The cached blur is PURE — no dim, no animation factor; the dim rect and
-// the fade live at the draw site.
+// Never sample currentFB as the backdrop source: a fullscreen window on the
+// active workspace renders through the "solitary client" fast path, and an
+// idle workspace leaves currentFB stale. Source: a fullscreen video client
+// (live, never cached), the monitor wallpaper, or a private FBO of
+// BACKGROUND/BOTTOM layer-shell surfaces; identity is checked EVERY frame,
+// outside any dirty-guard. The blur cache is PURE: no dim, no fade.
 
 SP<Render::ITexture> Overview::backdropSource(bool &live) const {
   live = false;
@@ -61,7 +47,7 @@ SP<Render::ITexture> Overview::backdropSource(bool &live) const {
                                        : SP<CWLSurfaceResource>{};
       if (surf && surf->m_current.texture && surf->m_current.texture->ok() &&
           surf->m_current.size.x > 0 && surf->m_current.size.y > 0) {
-        live = true; // a playing video: re-blur every frame, don't cache
+        live = true;
         return surf->m_current.texture;
       }
     }
@@ -76,7 +62,6 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
   if (!m || !g_pHyprOpenGL || !g_pHyprRenderer)
     return nullptr;
 
-  // (Re)allocate the source FBO at the monitor's pixel size.
   bool needRedraw = false;
   if (!m_backdropSrcFB) {
     m_backdropSrcFB = g_pHyprRenderer->createFB("gloview backdrop");
@@ -89,14 +74,9 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
     m_backdropDrawn = false;
   }
 
-  // Once drawn for this overview session, just return the cached FBO texture
-  // (see the file comment: a re-draw could capture window content).
   if (m_backdropDrawn && !needRedraw)
     return m_backdropSrcFB->getTexture();
 
-  // Bind the FBO as both the GL target AND the renderer's currentFB (the
-  // immediate-mode renderRect/renderTexture draw into currentFB), then
-  // restore both plus the GL viewport on exit.
   const auto oldFB = g_pHyprRenderer->m_renderData.currentFB;
   GLint oldVp[4];
   glGetIntegerv(GL_VIEWPORT, oldVp);
@@ -110,11 +90,9 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
     g_pHyprOpenGL->setViewport(oldVp[0], oldVp[1], oldVp[2], oldVp[3]);
   });
 
-  // 1. Solid background color under everything.
   static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
   g_pHyprOpenGL->renderRect(CBox(0, 0, W, H), argb(*PBG, 1.0), {});
 
-  // 2. Hyprland's own wallpaper texture, cover-fit like renderBackground.
   if (m->m_background && m->m_background->ok()) {
     const double MONRATIO = static_cast<double>(W) / H;
     const double WPRATIO =
@@ -135,8 +113,6 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
                                  {.a = 1.0F});
   }
 
-  // 3. Every wallpaper engine's background/bottom layer-shell surface
-  // (noctalia, swaybg, swww, hyprpaper, ...).
   const double s = m->m_scale;
   for (const int li : {0, 1}) { // LAYER_BACKGROUND, LAYER_BOTTOM
     for (const auto &lr : m->m_layerSurfaceLayers[li]) {
@@ -177,68 +153,20 @@ void Overview::renderBackdrop() const {
   const double e      = eased();
   const auto baseCol  = cfg::blur.backdrop.get();
 
-  // Crossfade factor. Deliberately just `e` — blur_strength keeps meaning
-  // "filter radius", never a blend amount.
-  //
-  // There is deliberately NO snapshot of the pre-open FRAME under this fade:
-  // a frozen copy containing windows ghosted full-size window copies under
-  // the already-departing preview tiles. Window-content continuity needs no
-  // snapshot anyway: frame 1 of the animation draws each preview at its
-  // natural box — pixel-identical to the just-hidden real window.
-  //
-  // What CAN flicker is the desktop UNDER the fade: at low k the blend target
-  // is whatever currentFB holds, and a transiently missing/dark wallpaper
-  // shows through as a dark blink. So during the ENTRY fade an OPAQUE BASE
-  // built purely from the backdrop SOURCES is drawn under everything —
-  // window-free, hence ghost-free, pixel-defined from frame 0. On EXIT no
-  // base: blur decays over live currentFB straight into the real desktop the
-  // previews are landing on.
   const float k = static_cast<float>(e);
   debug::dbg(std::string("backdrop e=") + std::to_string(e).substr(0, 5) +
       " opening=" + std::to_string(m_opening) +
       " k=" + std::to_string(k).substr(0, 5));
 
-  // The "OPAQUE BASE ... pixel-defined from frame 0" described above was
-  // never actually drawn as an unconditional step — every path below only
-  // draws content scaled by k (or exits early at k<=0), so frame 0 of
-  // OPENING (k≈0 exactly, since m_progress starts at 0.0) drew NOTHING,
-  // leaving currentFB's raw contents on screen — a black flash whenever
-  // currentFB held a stale/uncomposited buffer (e.g. after the "solitary
-  // client" fullscreen fast path bypassed normal compositing). Draw the
-  // wallpaper (sharp, unblurred — cheap, no blur-filter pass needed) at
-  // FULL alpha HERE, unconditionally, only while opening: this is the
-  // actual "pixel-defined from frame 0" guarantee the design intended.
-  // The k-scaled blur below then crossfades in ON TOP of this, and the
-  // no-blur/fallback paths still layer correctly since this is fully
-  // opaque underneath them. On EXIT this is skipped, matching "no base:
-  // blur decays over live currentFB straight into the real desktop."
+  // Entry fade needs an OPAQUE base built from the backdrop SOURCES: at low k
+  // the blend target is currentFB, whose stale wallpaper blinks dark on frame 0.
   if (m_opening) {
     const bool hasWallpaper = m->m_background && m->m_background->ok();
     debug::dbg("[baseDiag] hasWallpaper=" + std::to_string(hasWallpaper) +
                " fullPx=" + std::to_string(fullPx.w) + "x" + std::to_string(fullPx.h) +
                " W=" + std::to_string(W) + " H=" + std::to_string(H));
-    // Prefer an already-valid CACHED BLUR as the base over either fallback
-    // below: it's the exact same texture the k-scaled blit further down
-    // draws, so blending kk% of it over 100% of itself is a no-op visually
-    // (standard "over" blend of a texture onto itself reproduces the same
-    // pixels regardless of alpha) — frame 0 shows the real backdrop
-    // immediately instead of a flat fill color or the sharp/unblurred
-    // wallpaper. Confirmed via wf-recorder pixel sampling (2026-09-06,
-    // CANDIDATES.md): the flat fallback was pixel-perfect misc:background_
-    // color (verified black by changing it to red and re-recording), not a
-    // presentation-latency gap — this was never a rendering bug, just an
-    // avoidable few frames of the wrong (and, by default, black) fill under
-    // a crossfade that had a valid replacement sitting right there already.
-    //
-    // Deliberately NOT checking m_blur.valid here (see CANDIDATES.md,
-    // sessions 4/5): that flag means "fresh enough to skip a recapture,"
-    // which open()'s TTL clears every few seconds on purpose — but the FBO
-    // and its texture aren't freed when the flag drops, just marked for a
-    // refresh a few lines below in this same function. Gating on isAllocated
-    // + correct size only means every TTL-triggered refresh reused the old
-    // (still-correct, one-frame-stale at worst) pixels as this frame's base
-    // while the recapture ran, instead of falling back to the flat fill —
-    // which is exactly what was still visibly flashing every 3-5s.
+    // Prefer an already-valid cached blur as that base (k% of a texture over
+    // 100% of itself is a no-op); gate on isAllocated + size, not on valid.
     const bool blurCacheReady = m_blur.fb &&
         m_blur.fb->isAllocated() && m_blur.fb->m_size == Vector2D(W, H);
     const auto cachedTex = blurCacheReady ? m_blur.fb->getTexture() : nullptr;
@@ -275,7 +203,6 @@ void Overview::renderBackdrop() const {
   }
 
   if (!blurEnabled()) {
-    // ---- No-blur backdrop ----
     const auto col = argb(baseCol, e);
     if (col.a <= 0.0)
       return;
@@ -286,8 +213,6 @@ void Overview::renderBackdrop() const {
   bool liveSrc = false;
   auto src = backdropSource(liveSrc);
   if (!src) {
-    // Wallpaper layers → private FBO; its immediate draws want pixel coords,
-    // i.e. export projection + fbSize around the call.
     const auto oldProj = g_pHyprRenderer->m_renderData.projectionType;
     const auto oldFbSz = g_pHyprRenderer->m_renderData.fbSize;
     g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
@@ -297,16 +222,10 @@ void Overview::renderBackdrop() const {
     g_pHyprRenderer->setProjectionType(oldProj);
   }
 
-  // Nothing to draw at zero; the real desktop in currentFB shows through.
   if (k <= 0.0F)
     return;
 
-  // ---- Cached-blur backdrop ----
   const void *srcId = src ? src.get() : nullptr;
-  // Full cache key: source identity + live filter recipe (config changes must
-  // apply without reopening the overview). liveSrc bypasses the key entirely:
-  // a playing video must re-blur EVERY frame even if the driver hands us the
-  // same buffer texture twice in a row.
   const int   cPasses  = blurPasses();
   const int   cSize    = blurSize();
   const int   cRes     = blurResolution();
@@ -326,10 +245,6 @@ void Overview::renderBackdrop() const {
     if (!m_blur.fb->isAllocated() || m_blur.fb->m_size != Vector2D(W, H))
       m_blur.fb->alloc(W, H);
 
-    // The blur filter manages projection/fbSize/viewport for its intermediate
-    // FBOs; hold the surrounding state so the rest of the frame is intact.
-    // RPT_EXPORT + fbSize=(W,H) is also what the backdrop source render and
-    // the blur itself need for pixel coords.
     const auto oldProjType = g_pHyprRenderer->m_renderData.projectionType;
     const auto oldFbSize   = g_pHyprRenderer->m_renderData.fbSize;
     g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
@@ -345,9 +260,7 @@ void Overview::renderBackdrop() const {
                                PMON ? (int)PMON->m_pixelSize.y : H);
 
     if (!ok) {
-      // No source at all, or blur unavailable — never leave currentFB
-      // exposed (it can hold a solitary fullscreen window): cover everything
-      // with an OPAQUE background rect + dim overlay, and retry next frame.
+      // Never leave currentFB exposed: it can hold a solitary fullscreen window.
       m_blur.valid = false;
       debug::dbg("backdrop FALLBACK: blur unavailable / no source");
       static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
@@ -356,31 +269,18 @@ void Overview::renderBackdrop() const {
       return;
     }
     m_blur.valid = true;
-    // Cache successfully rebuilt — stamps the TTL open() checks (see
-    // kBackdropCacheTTL there) so the NEXT open() doesn't force a redundant
-    // capture+blur if it lands within a few seconds of this one.
     m_lastBackdropCapture = std::chrono::steady_clock::now();
   }
 
-  // Cheap path: blit the cached blurred backdrop, faded by the animation
-  // curve, then the dim rect on top.
   const auto tex = m_blur.fb ? m_blur.fb->getTexture() : nullptr;
-  // EXIT uses a slower tail (pow < 1 lifts small alphas): a linear decay is
-  // perceptually "gone" for the last ~30% of the travel while the big tiles
-  // are still shrinking home, which read as a blur gap right before landing.
   const float kk = m_opening ? k : std::pow(k, 0.45F);
   if (tex && tex->ok()) {
     g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = kk});
   } else {
     m_blur.valid = false;
-    // Cache unavailable — never leave the base/currentFB exposed (see the
-    // blur-fail path above). Draw an opaque background rect instead.
     static auto PBG2 = CConfigValue<Config::INTEGER>("misc:background_color");
     g_pHyprOpenGL->renderRect(fullPx, argb(*PBG2, 1.0), {});
   }
-  // Dim rides ON TOP of the blur (not baked into the cache): its alpha
-  // follows the same curve, and backdrop_color changes apply live without
-  // invalidating the cached blur.
   const auto dimCol = argb(baseCol, e);
   if (dimCol.a > 0.0)
     g_pHyprOpenGL->renderRect(fullPx, dimCol, {});

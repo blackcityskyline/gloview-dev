@@ -1,10 +1,5 @@
 #pragma once
 
-// Curve registry: resolves a curve NAME (the <leaf>_curve config value) to an
-// evaluator. Clocks produce linear progress; every consumer shapes it here.
-// Return value is unclamped (back-style overshoot is legal). Unknown names and
-// Lua errors fall back to "easeout", logging once per name.
-
 #include <string_view>
 
 struct lua_State;

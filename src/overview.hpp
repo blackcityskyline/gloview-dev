@@ -66,8 +66,7 @@ public:
   void toggleAllWorkspaces(); // open, or toggle the all-workspaces view
   void altTabInvoke(bool reverse); // opens+seeds if closed, else advances
 
-  // renderStage is the frame entry (BUILD); paint is the painter it schedules
-  // (EXECUTION) and mutates nothing.
+  // renderStage is the frame entry (BUILD); paint is the painter it schedules.
   void renderStage(eRenderStage stage);
   void paint();
 
@@ -81,20 +80,17 @@ public:
   void renderStripButtons() const;
   void renderPulses(bool strip) const;
   void renderPreviews() const;
-  // Carousel draws its run in ONE pass: cards overlap, so a card's content must
-  // land between its own frame and the next card's, which the grid's split Z1
-  // stages cannot express. Replaces those stages, never the strip.
+  // Carousel draws its run in ONE pass: cards overlap, so content must land
+  // between its own frame and the next card's — split stages can't express it.
   void renderCarousel() const;
   bool carouselMode() const;
-  // The metrics layoutTiles actually used: hit-testing must use the SAME box
-  // the renderer drew.
+  // The metrics layoutTiles used: hit-test the SAME box the renderer drew.
   CarouselMetrics carouselMetrics() const { return m_carouselMetrics; }
   void stepCarousel(int dir); // center the next/previous card, circular
   CarouselLayout m_carousel;     // written by layoutTiles
   CarouselMetrics m_carouselMetrics;
-  // The selection m_carousel was built for. Slots are laid out AROUND the
-  // selection, so any change needs a relayout; renderStage checks this once, so
-  // every existing selection path works here unchanged.
+  // The selection m_carousel was built for. Slots are laid out AROUND it, so any
+  // change needs a relayout; renderStage checks once for all paths.
   int m_carouselFor = -1;
   void relayoutCarousel();
   void renderMainWindows() const;
@@ -104,16 +100,12 @@ public:
   void renderDragWindow() const;
   void renderCursorOnTop() const;
 
-  // An EVENT-LOOP timer, not build-time damage+scheduleFrame: the latter raced
-  // Hyprland's damage snapshot and produced partial frames, while a timer ticks
-  // BETWEEN frames where a fresh full-monitor damage cannot be consumed by an
-  // in-flight commit.
+  // An EVENT-LOOP timer, not build-time damage: that raced the damage snapshot.
   void rearmanim() const;
   void ensureAnimPump();
   SP<CEventLoopTimer> m_animPump; // null when no animation is running
 
-  // Runs from the painter's tail: the immediate route reads m_tiles/m_strip
-  // while the pass draws, so the Model must survive until everything painted.
+  // From the painter's tail: the immediate route reads m_tiles/m_strip mid-draw.
   void finishPendingDeactivate();
 
   bool isAboveLayer(const std::string &ns) const;
@@ -129,8 +121,8 @@ public:
 
   [[nodiscard]] bool active() const { return m_active; }
   [[nodiscard]] bool opening() const { return m_opening; } // entry anim only
-  // Monotonic RENDER_LAST_MOMENT count, ticked whether or not m_active: lets
-  // the frame-correlated debug traces line up.
+  // Monotonic RENDER_LAST_MOMENT count, ticked even when inactive, so the
+  // frame-correlated debug traces line up.
   [[nodiscard]] std::uint64_t frameTick() const { return m_frameTick; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool blurEnabled() const;
@@ -151,9 +143,8 @@ private:
   std::chrono::steady_clock::time_point m_openStamp{}; // frame-trace t=0
   std::uint64_t m_frameTick = 0;
 
-  // Close anim hit progress 0 THIS frame. shouldRenderWindow runs before our
-  // pass, so flipping m_active off mid-frame skips the overlay on a frame whose
-  // real windows were already suppressed: one transparent frame.
+  // Close anim hit 0 THIS frame; shouldRenderWindow ran first, so flipping
+  // m_active off mid-frame skips the overlay: one blank frame.
   bool m_pendingDeactivate = false;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
   double m_progress = 0.0;
@@ -161,8 +152,8 @@ private:
   mutable std::chrono::steady_clock::time_point m_lastAnimTick{};
   // Tiles ride their own clock: any layout change is "retarget + restart".
   anim::Tween m_tileClock;
-  // Freeze every tile at the box it is shown at NOW (oldBoxes, captured before a
-  // rebuild) and restart. Empty oldBoxes = start from the fresh naturals.
+  // Freeze every tile at the box it is shown at NOW (oldBoxes, captured before
+  // the rebuild); empty = start from the fresh naturals.
   void startTileGlide(
       const std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);
   PHLMONITORREF m_monitor;
@@ -170,38 +161,35 @@ private:
   PHLWORKSPACEREF m_liveWsAtOpen; // for exit_on_switch
   std::vector<model::Tile> m_tiles;
   std::vector<model::StripItem> m_strip;
-  // Text->texture cache by window/workspace pointer. mutable: cachedLabel() is
-  // const-callable and caching is its whole job.
+  // mutable: cachedLabel() is const-callable and caching is its whole job.
   mutable std::unordered_map<void *, model::LabelTex> m_labelCache;
   SP<Render::ITexture> cachedLabel(void *key, const std::string &text,
                                    const CHyprColor &col, int size) const;
   std::vector<std::pair<PHLLSREF, float>> m_hiddenLayers; // + pre-hide alpha
   int m_hovered = -1;      // index into m_tiles
-  int m_hoveredStrip = -1; // index into m_strip
+  int m_hoveredStrip = -1;
   int m_selected = -1;     // keyboard-nav cursor into m_tiles
-  // Committed focus target: a workspace change re-asserts focus from its own
-  // history, which can still name the previously active window.
+  // Committed focus target: a ws change re-asserts focus from its own history,
+  // which can still name the previously active window.
   PHLWINDOWREF m_pendingFocus;
 
-  // free-arrange mode: tiles at the windows' real positions, drag floats the
-  // real window instead of snapping to a grid.
+  // free-arrange: tiles at the real positions, drag floats the real window.
   bool m_desktopMode = false;
   int m_allOverride = -1; // -1 follow config, 0 off, 1 on
   double m_desktopS = 1.0;  // monitor->preview scale (inverse for drops)
-  double m_desktopOx = 0.0; // monitor-local preview origin x
-  double m_desktopOy = 0.0; // monitor-local preview origin y
+  double m_desktopOx = 0.0;
+  double m_desktopOy = 0.0;
   std::unordered_map<void *, SP<Render::ITexture>> m_snapshots;
   mutable SP<Render::ITexture> m_closeGlyph;
   mutable std::string m_closeGlyphIcon;
 
-  int m_newCardId = 0; // "+" card animating (0 = none)
+  int m_newCardId = 0;
   bool m_newCardAnim = false;
   anim::Tween m_newCard;
-  // Held until close so a still-empty new workspace is not reaped (a single slot
-  // leaked all but the last).
+  // Held until close so an empty new workspace is not reaped.
   std::vector<PHLWORKSPACEREF> m_newWorkspaces;
   double m_stripScroll = 0.0;    // animated card-group offset on its main axis
-  double m_stripScrollMax = 0.0; // 0 when the cards fit
+  double m_stripScrollMax = 0.0;
   double m_stripScrollTarget = 0.0;
   double m_stripScrollFrom = 0.0;
   anim::Tween m_stripTween;
@@ -213,9 +201,8 @@ private:
   std::string m_enterStyle, m_exitStyle;
   bool animBusy() const;
   // Secondary clocks belong in the pump predicates: after a card/digit switch
-  // the master timeline is pinned at 1 and tiles' clock is done, so without
-  // these terms the pump never arms and later frames commit with EMPTY damage
-  // over stale buffers — the transition visibly shakes.
+  // the master clock is done, so without them the pump never arms and later
+  // frames commit EMPTY damage over stale buffers.
   bool secondaryAnimsActive() const {
     return !m_rebuildClock.done(leaf(entryLeaf()).ms) ||
            !m_rebuildClock.done(leaf(ghostLeaf()).ms) ||
@@ -237,8 +224,8 @@ private:
   void renderSwapFX() const;
 
   // close_trigger == "doubleclick": the single click is deferred behind a timer.
-  // An armed timer with m_pendingClickWin == w IS the "first click just
-  // happened" record; a second click before it fires closes the window instead.
+  // An armed timer with m_pendingClickWin == w IS the "first click" record; a
+  // second click before it fires closes the window instead.
   PHLWINDOWREF m_pendingClickWin;
   SP<CEventLoopTimer> m_clickTimer;
 
@@ -256,15 +243,12 @@ private:
 
   CCursorModule m_cursor; // KMS plane preferred, software erases-and-redraws
 
-  // Backdrop cache: frame one's blur result lives in a persistent FBO, later
-  // frames blit it (the background cannot change while up). srcId + recipe are
-  // the key, compared EVERY frame, which carries the cache across workspace
-  // switches but catches genuine source/recipe changes. A live video source
-  // skips the cache by design.
+  // Backdrop cache: frame one's blur lives in a persistent FBO, later frames
+  // blit it. srcId + recipe are the key, compared EVERY frame, so the cache
+  // survives a ws switch but catches a real recipe change.
   mutable render::BlurCache m_blur;
   // Full-res FBO holding a rendered desktop background when there is no direct
-  // texture to blur. Drawn once per session so a wallpaper engine that
-  // screen-captures the desktop cannot pull window content into the re-blur.
+  // texture to blur; drawn once per session.
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false;
   mutable std::chrono::steady_clock::time_point m_lastBackdropCapture{};
@@ -279,8 +263,8 @@ private:
   Anchor stripAnchor() const; // falls back to bar_position
   bool stripHorizontal() const;
   double stripThickness() const; // perpendicular to the anchored edge
-  double stripOffset() const;    // inset from it (0 default)
-  LRect stripBand() const;             // monitor-local logical
+  double stripOffset() const;
+  LRect stripBand() const;
   Vector2D stripSlide(double e) const; // reveal slide-in at progress e
   Vector2D stripScroll() const;
   LRect stripCardAt(size_t i) const;   // card shifted by the scroll
@@ -294,11 +278,10 @@ private:
   void layoutTiles();
   void updateAnimation();
   void deactivate();
-  // Boundary policy (user-specified): real windows hard-switch at BOTH
-  // transition edges — hidden on the first open frame, restored only after the
-  // close animation completes. NO per-window fades: during the glide the window
-  // resizes and moves, so a fading original under the moving preview reads as
-  // double vision. The fade belongs to the BLUR.
+  // Boundary policy (user-specified): real windows hard-switch at BOTH edges,
+  // hidden on the first open frame and restored only after the close completes.
+  // NO per-window fades: the window resizes mid-glide, so a fading original
+  // under the moving preview reads as double vision. The fade is the BLUR's.
   double eased() const; // chrome opacity / backdrop progress
   double animDuration() const; // read LIVE, so config applies in-flight
   double glideDur() const { return m_tileClockMs > 0 ? m_tileClockMs : leaf(glideLeaf()).ms; }
@@ -313,12 +296,11 @@ private:
   int draggedTile() const;
   void drawPreviewTile(size_t i, const LRect &slot, bool lift) const;
   void drawPreviewChrome(size_t i, const LRect &lb, bool lift) const;
-  // instant=true: collapse to the target workspace with no ws-slide, so close()
-  // starts from a clean settled state.
+  // instant=true: collapse with no ws-slide, so close() starts settled.
   void switchToWorkspace(const model::StripItem &it, bool instant = false);
   void dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
   // Shared tail of both drag-release paths: a point on another card moves w
-  // there, or swaps with that card's last-focused window (RMB). True if consumed.
+  // there, or swaps with its last-focused window (RMB). True if consumed.
   bool dropOnStripCard(const PHLWINDOW &w, double lx, double ly, int skipItem);
   model::StripItem *homeStripCardFor(const PHLWINDOW &w);
   void swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
@@ -353,9 +335,9 @@ private:
   int keyIndex(int keycode, uint32_t mods, const std::string &combo) const;
   void moveSelection(int dx, int dy);
   void activateSelection();
-  // A target not on the DISPLAYED workspace (expo, cross-workspace click)
-  // collapses onto just that workspace and rebuilds BEFORE the close glide, so
-  // the glide aims at the real final position instead of a stale grid.
+  // A target not on the DISPLAYED workspace (expo, cross-ws click) collapses onto
+  // it and rebuilds BEFORE the close glide, so the glide aims at the real final
+  // position instead of a stale grid.
   void focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason);
   bool crossesRealWorkspace(const PHLWINDOW &w) const;
   void syncFocus() const;
