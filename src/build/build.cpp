@@ -522,11 +522,10 @@ void Overview::syncTiles() {
 
   auto oldBoxes = captureCurrentBoxes();
 
-  // Desktop mode: survivors must NOT shuffle; parked targets carry across.
-  if (m_desktopMode)
-    for (auto &t : m_tiles)
-      t.parked = true;
-
+  // NOT parking here. `parked` means "the user dropped this window here, keep it",
+  // and only the drop path may set it: parking every survivor made
+  // layoutTiles' desktop branch skip the whole set, so free-arrange froze after
+  // the first sync and the windows stayed wherever the previous layout left them.
   replayReflow(oldBoxes);
 }
 

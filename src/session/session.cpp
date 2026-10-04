@@ -363,7 +363,9 @@ void Overview::setDesktopMode(bool on) {
 
   auto oldBoxes = captureCurrentBoxes();
   m_hovered = m_hoveredStrip = -1;
-  m_selected = -1;
+  // The selection survives: free-arrange ignores it, and dropping it left the
+  // carousel's relayout refusing to fire on the way back, so the run came back
+  // with no centered card and a "0 / N" counter.
   replayReflow(oldBoxes);
 }
 
