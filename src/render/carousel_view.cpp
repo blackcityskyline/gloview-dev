@@ -85,12 +85,18 @@ void Overview::renderCarousel() const {
                   std::pow(kDepthTaper, static_cast<double>(card.depth - 1))
             : 0.0;
     look.button = tileCloseButtons();
-    // Only the focused card lands: it grows into the real window and must stay
-    // whole for the handoff. Every other card rides the close curve out, so the
-    // run dissolves while it travels instead of the focused window's landing
-    // blanketing it a frame later.
-    if (!m_opening && card.depth != 0)
-      look.fade = eased();
+    // Only the focused card lands: it grows into the real window and stays whole
+    // for the handoff. Every other one shrinks toward its own centre and fades,
+    // the exit the ghosts already use, so the run is seen leaving instead of
+    // being blanketed by the landing.
+    if (!m_opening && card.depth != 0) {
+      const double out = 1.0 - eased();
+      const double k   = 1.0 - 0.3 * out;
+      const double cx  = look.box.cx(), cy = look.box.cy();
+      look.box = LRect{cx - look.box.w * k * 0.5, cy - look.box.h * k * 0.5,
+                       look.box.w * k, look.box.h * k};
+      look.fade = 1.0 - out;
+    }
     drawTile(static_cast<size_t>(i), look);
   }
 

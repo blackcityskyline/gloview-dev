@@ -306,10 +306,11 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 - **The ladder is symmetric top and bottom.** Cards are centred on the focused
   card vertically, not lined up by their top edges — a run that only steps
   downwards reads as cards hanging off one.
-- **Only the focused card lands on close.** It grows into the real window and
-  stays whole for the handoff; every other card rides the close curve out, so the
-  run dissolves while it travels instead of the focused window's landing blanketing
-  it a frame later.
+- **On close the run leaves as a deck.** The focused card flies home and grows
+  into the real window, staying whole for the handoff; every other card shrinks
+  toward its own centre and fades on the close curve, where it stands. Flying them
+  to their real boxes instead put them all under the focused card's landing a
+  frame later, which read as the rest of the run vanishing without an animation.
 - **Preview windows are always opaque.** Every preview goes through one render
   path that pins the surface alpha to 1, so the desktop's own `active_opacity` /
   `inactive_opacity` rules never make a preview see-through; depth is carried by
