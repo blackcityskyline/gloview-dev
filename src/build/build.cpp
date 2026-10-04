@@ -395,7 +395,6 @@ void Overview::layoutTiles() {
       mt.boxW = std::min(static_cast<double>(w), m->m_size.x);
       mt.boxH = mt.boxW * m->m_size.y / m->m_size.x;
     }
-    mt.overlap = std::min(mt.boxW * 0.12, 60.0);
     m_carousel = computeCarousel(static_cast<int>(m_tiles.size()), sel, usable,
                                  mt);
     m_carouselFor = sel;

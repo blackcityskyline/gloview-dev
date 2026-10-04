@@ -292,6 +292,12 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   holds it. A window smaller than the box is fitted whole inside it; neither the
   box nor the window is deformed. Because the box never depends on the window,
   the run's geometry cannot shift with the selection: only the content moves.
+- **The focused card sits on the centre of the FREE SPACE, not of the screen.**
+  The strip's band is part of the layout's padding on whichever edge it is
+  anchored to, so the centre follows it: a top or bottom strip leaves the centre
+  where it is, a left or right one shifts it. Cards sit one gap apart from the
+  focused one in each direction — a gap, never an overlap — so the run's extent
+  does not have to be symmetric about it.
 - **Only the centred card is framed.** The rest carry no ring, and the ring is
   one fixed size everywhere rather than scaled down to suit a smaller card.
 - **Card count is yours.** `carousel_cards` sets how many cards the run shows —

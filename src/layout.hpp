@@ -59,7 +59,7 @@ Engine parseEngine(const char* s);
 struct CarouselMetrics {
     double boxW          = 0.0; // standard card width; 0 = fill the usable area
     double boxH          = 0.0; // standard card height; 0 = follow boxW
-    double overlap       = 60.0;
+    double gapK          = 0.03; // gap between cards, as a fraction of boxW
     double captionH      = 44.0;
     double captionGap    = 12.0;
     double countH        = 32.0;

@@ -50,14 +50,14 @@ constexpr double kScreenH = 768.0;
 constexpr double kUsableW = 1206.0;
 constexpr double kUsableH = 493.0;
 constexpr double kMargin = 32.0;
-constexpr double kOverlap = 60.0;
+constexpr double kGapK = 0.03; // gap between cards as a fraction of boxW
 constexpr double kCaption = 44.0 + 12.0;
 
 CarouselMetrics defaults() {
   CarouselMetrics mt;
   mt.boxW = kScreenW;
   mt.boxH = kScreenH;
-  mt.overlap = kOverlap;
+  mt.gapK = kGapK;
   mt.visibleCards = 5;
   return mt;
 }
@@ -67,9 +67,11 @@ void sectionA_oneStandardBox() {
   auto mt = defaults();
   const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
 
-  // 5 cards: stripW = 5*1366 - 4*60 = 6830 - 240 = 6590, which does NOT fit
-  // availW = 1206 - 64 = 1142, so k = 1142/6590 and every card shrinks by it.
-  const double k = 1142.0 / 6590.0;
+  // 5 cards -> slots -2..2, reach 2: stripW = 5*1366 + 4*(0.03*1366) = 6830 +
+  // 163.9 = 6993.9, which does NOT fit availW = 1142, so k = 1142/6993.9.
+  const double gap = kGapK * kScreenW;
+  const double stripW = 5.0 * kScreenW + 4.0 * gap;
+  const double k = 1142.0 / stripW;
   for (const auto &c : L.cards) {
     if (!c.visible)
       continue;
@@ -93,30 +95,34 @@ void sectionA_oneStandardBox() {
 void sectionB_placementAndCentring() {
   auto mt = defaults();
   const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
-  const double k = 1142.0 / 6590.0;
+  const double gap = kGapK * kScreenW;
+  const double stripW = 5.0 * kScreenW + 4.0 * gap;
+  const double k = 1142.0 / stripW;
   const double w = kScreenW * k;
-  const double ov = kOverlap * k;
+  const double g = gap * k;
 
-  // sel 2 -> slots -2,-1,0,1,2 -> indices 0,1,2,3,4. Anchored to the RUN: the
-  // leftmost card's x is 0 and each step adds one (w - overlap).
-  near(L.cards[0].x, 0.0, "leftmost card is flush at stripX");
-  near(L.cards[1].x, w - ov, "left-1 steps one overlap out");
-  near(L.cards[2].x, 2.0 * (w - ov), "centred card sits at the run's middle");
-  near(L.cards[3].x, 3.0 * (w - ov), "right-1 steps one overlap out");
-  near(L.cards[4].x, 4.0 * (w - ov), "right-2 steps two overlaps out");
-  near(L.cards[4].x + L.cards[4].w, L.stripW, "run ends flush at stripX + stripW");
-
-  // Adjacent cards overlap by exactly mt.overlap, scaled.
-  near((L.cards[1].x + L.cards[1].w) - L.cards[2].x, ov, "left-1 overlap");
-  near((L.cards[2].x + L.cards[2].w) - L.cards[3].x, ov, "centre/right-1 overlap");
-  near((L.cards[0].x + L.cards[0].w) - L.cards[1].x, ov, "leftmost overlap");
-
-  // Odd count: the centred card really is the middle of the run.
+  // The FOCUSED card is centred in the usable rect, whatever the count: with an
+  // even count the run is not symmetric about it, and anchoring to the run is
+  // what used to leave the focused card half a card off.
+  // originX IS the focused card's left edge; x is measured from there.
+  near(L.originX, std::round((kUsableW - w) * 0.5),
+       "focused card's left edge is centred, on a whole pixel");
+  const double centreX = 0.0;
+  near(L.cards[2].x, centreX, "focused card sits at that edge");
+  near(L.originX + L.cards[2].x + w * 0.5, std::round((kUsableW - w) * 0.5) + w * 0.5,
+       "focused card's middle follows its edge");
+  // Neighbours one gap apart, both sides.
+  near(L.cards[1].x, centreX - (w + g), "left-1 is one gap out");
+  near(L.cards[0].x, centreX - 2.0 * (w + g), "left-2 is two gaps out");
+  near(L.cards[3].x, centreX + (w + g), "right-1 is one gap out");
+  near(L.cards[4].x, centreX + 2.0 * (w + g), "right-2 is two gaps out");
+  // A gap, not an overlap.
+  near(L.cards[2].x - (L.cards[1].x + L.cards[1].w), g, "cards are a gap apart");
+  near(L.cards[3].x - (L.cards[2].x + L.cards[2].w), g, "cards are a gap apart right");
   near(L.cards[2].x - L.cards[0].x, L.cards[4].x - L.cards[2].x,
-       "run symmetric about the centred card");
+       "run symmetric about the focused card");
 
   // The run is centred inside the usable rect.
-  near(L.originX, (kUsableW - L.stripW) * 0.5, "run centred horizontally");
   // The card keeps the SCREEN's ratio: that is what makes containment honest, so
   // a window short one side lands at its own size instead of being scaled up.
   near(L.cards[2].w / L.cards[2].h, kScreenW / kScreenH,
@@ -146,6 +152,8 @@ void sectionC_selectionDoesNotMoveTheRun() {
       near(c.w, firstW, "centred card width is selection-independent");
     }
     near(L.stripW, 1142.0, "strip width is selection-independent");
+    near(L.originX, std::round((kUsableW - firstW) * 0.5),
+         "focused edge is selection-independent");
     // The SET of boxes is what must not move: same widths, same x values, only
     // the window sitting in each one changes.
     std::vector<double> xs;
@@ -166,14 +174,15 @@ void sectionC_selectionDoesNotMoveTheRun() {
 void sectionD_verticalFitAndCaption() {
   auto mt = defaults();
   const auto L = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
-  const double k = 1142.0 / 6590.0;
+  const double gap = kGapK * kScreenW;
+  const double stripW = 5.0 * kScreenW + 4.0 * gap;
   // stripH = 768 + 56 = 824; availH = 493 - 64 - 32 - 12 = 385, so the height
   // branch would allow 385/824 = 0.467 — but the width branch only allows
-  // 1142/6590 = 0.173, so the WIDTH binds and the run fills the width exactly.
+  // 1142/6993.9 = 0.163, so the WIDTH binds and the run fills it exactly.
   const double availH = 385.0;
-  const double kk = std::min(1142.0 / 6590.0, availH / 824.0);
-  near(k, kk, "one scale fits both axes");
-  near(L.stripH, 824.0 * k, "strip height scaled");
+  const double kk = std::min(1142.0 / stripW, availH / 824.0);
+  near(1142.0 / stripW, kk, "one scale fits both axes");
+  near(L.stripH, 824.0 * kk, "strip height scaled");
   yes(L.panelH <= kUsableH - 2 * kMargin, "panel fits the screen height");
   for (const auto &c : L.cards) {
     if (c.visible)

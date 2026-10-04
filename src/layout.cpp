@@ -193,9 +193,13 @@ Engine parseEngine(const char* s) {
 // deformed — which is also the only fit that keeps the content's corner arcs off
 // the ring, since anything that spills out cannot be rounded back in.
 //
-// Cards are laid left to right and each one overlaps the previous by `overlap`,
-// exactly as the reference's run does; the centred card sits at the middle of the
-// run and carries the caption band below it.
+// Cards are laid left to right from the FOCUSED one, one gap apart. The focused
+// card is centred in the usable rect — which already has the strip's band added
+// to the padding on whichever edge it is anchored to, so the centre is the centre
+// of the free space and moves with the strip instead of being the screen's.
+// Nothing is positioned relative to the run's own extent: with an even card count
+// the run is not symmetric about its middle card, and anchoring to it is what put
+// the focused card half a card off.
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                                const CarouselMetrics& mt) {
     CarouselLayout L;
@@ -228,8 +232,13 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
 
     const double boxW = std::max(1.0, mt.boxW);
     const double boxH = std::max(1.0, mt.boxH);
-    const double stripW = boxW * static_cast<double>(shown) -
-                          mt.overlap * static_cast<double>(shown - 1);
+    // Proportional, so the gap keeps its share of the card at any scale.
+    const double gap = boxW * mt.gapK;
+    // Symmetric extent around the focused card: the wider side decides, so an
+    // even card count still gets a run that fits.
+    const int reach = std::max(leftSlots, rightSlots);
+    const double stripW = boxW * static_cast<double>(2 * reach + 1) +
+                          gap * static_cast<double>(2 * reach);
     // The caption hangs below the centred card, so the panel reserves room for
     // it; the cards themselves stay the standard box.
     const double stripH = boxH + mt.captionGap + mt.captionH;
@@ -243,16 +252,21 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
 
     const double w = boxW * k;
     const double h = boxH * k;
-    const double overlap = mt.overlap * k;
+    const double step = w + gap * k;
 
     L.stripW = stripW * k;
     L.stripH = stripH * k;
     L.panelW = L.stripW;
     L.panelH = mt.countH + mt.sectionGap + L.stripH;
-    L.countX = (L.panelW - L.countW) * 0.5;
     L.stripY = mt.countH + mt.sectionGap;
-    L.originX = std::round((screen.w - L.panelW) * 0.5);
+    // originX is the FOCUSED card's left edge inside the usable rect, and the
+    // cards step from there. Anchoring the run instead and then centring the
+    // focused card within it counted the offset twice, which is what left the
+    // focused card off to one side.
+    L.originX = std::round((screen.w - w) * 0.5);
     L.originY = std::round((screen.h - L.panelH) * 0.5);
+    // The counter rides the free space's centre, not the focused card's edge.
+    L.countX = std::round((screen.w - mt.countW) * 0.5) - L.originX;
 
     for (const int idx : idxOfSlot) {
         const int slot = slotOf[static_cast<size_t>(idx)];
@@ -260,12 +274,9 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         c.visible = true;
         c.showCaption = slot == 0;
         c.depth = std::abs(slot);
-        // Anchored to the RUN, not to the centred card: centring the card puts
-        // the whole run on one side whenever the card count is even, and that is
-        // what made the run drift off-centre. originX then centres the run, and
-        // since every box is identical the geometry cannot depend on which
-        // window is selected at all.
-        c.x = static_cast<double>(slot + leftSlots) * (w - overlap);
+        // From the focused card, one gap per step: its own x puts it dead centre
+        // of the free space, and the neighbours hang off it symmetrically.
+        c.x = static_cast<double>(slot) * step;
         // Every box is the standard box, the centred one included: the caption
         // strip is reserved in stripH for the panel's budget, not bolted onto
         // one card, because a taller centred box is a different size.
