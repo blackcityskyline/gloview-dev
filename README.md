@@ -308,7 +308,7 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   downwards reads as cards hanging off one.
 - **On close the run leaves as a deck.** The focused card flies home and grows
   into the real window, staying whole for the handoff; every other card shrinks
-  the rest shrink to their own centres over the first third of the close and are
+  the rest shrink to their own centres over the first half of the close and are
   gone before it starts growing. They cannot fly home: a maximized window, and
   every window on a workspace that is not the one on screen, all share one
   geometry, so their returns are the same rectangle and the whole run lands on
