@@ -142,7 +142,8 @@ constexpr IntSpec kInts[] = {
     {&behavior.switch_on_new_workspace, "plugin:gloview:switch_on_new_workspace", 1},
     {&behavior.show_all_workspaces, "plugin:gloview:show_all_workspaces", 0},
     {&behavior.show_special, "plugin:gloview:show_special", 0},
-    {&behavior.alttab_advances, "plugin:gloview:alttab_advances", 0},
+    {&behavior.alttab_fast, "plugin:gloview:alttab_fast", 0},
+    {&behavior.alttab_autostep, "plugin:gloview:alttab_autostep", 0},
     {&behavior.hold_lift_ms, "plugin:gloview:hold_lift_ms", 400},
     {&layer.hide_top, "plugin:gloview:hide_top_layers", 0},
     {&layer.hide_overlay, "plugin:gloview:hide_overlay_layers", 0},
@@ -157,6 +158,10 @@ constexpr FloatSpec kFloats[] = {
     {&look.drag_size, "plugin:gloview:drag_size", 0.55F},
     {&carousel.scale, "plugin:gloview:carousel_scale", 1.0F},
     {&carousel.scroll_speed, "plugin:gloview:carousel_scroll_speed", 1.0F},
+    // How much FASTER the auto step plays than a step you ask for: 1.3 is 30%
+    // quicker. It divides the resolved duration of the carousel_step preset, so
+    // that leaf's own curve and speed still decide the motion.
+    {&behavior.alttab_step_speed, "plugin:gloview:alttab_step_speed", 1.3F},
 };
 
 constexpr StrSpec kStrs[] = {
@@ -232,6 +237,7 @@ constexpr LeafSpec kLeaves[] = {
     {"swap_main", &anim::swap_main, 320, "easeinout"},
     {"swap_partner", &anim::swap_partner, 320, "easeinout"},
     {"drag", &anim::drag, 400, "easeout"},
+    {"carousel_step", &anim::carousel_step, 300, "easeout"},
 };
 
 void registerLeaf(HANDLE handle, const LeafSpec &l) {

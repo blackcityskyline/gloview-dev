@@ -117,6 +117,14 @@ void Overview::renderStage(eRenderStage stage) {
 
   updateHover();
   relayoutCarousel();
+  if (m_autoStep != 0 && m_opening && !m_pendingDeactivate &&
+      m_clocks.master.done(leaf("open").ms)) {
+    const int dir = m_autoStep;
+    m_autoStep = 0;
+    m_stepSpeed =
+        std::max(0.05, static_cast<double>(cfg::behavior.alttab_step_speed.get()));
+    stepAltTab(dir);
+  }
   syncTiles();
   updateSnapshots();
 

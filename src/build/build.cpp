@@ -491,7 +491,8 @@ void Overview::startTileGlide(
     for (auto &t : m_scene.edit())
       t.appear = 1.0;
   m_clocks.tiles.begin();
-  m_clocks.tileMs    = m_glide.ms;    // snapshot: glideDur() must return THIS value
+  m_clocks.tileMs    = m_glide.ms / std::max(0.05, m_stepSpeed);
+  m_stepSpeed        = 1.0;
   m_clocks.tileCurve = m_glide.curve; // snapshot: currentBox() must use THIS curve
   if (newcomers || !m_fx.ghosts().empty()) {
     m_clocks.rebuild.begin();

@@ -172,6 +172,7 @@ inline Leaf jump_out{ {}, {}, {} };
 inline Leaf swap_main{ {}, {}, {} };
 inline Leaf swap_partner{ {}, {}, {} };
 inline Leaf drag{ {}, {}, {} };
+inline Leaf carousel_step{ {}, {}, {} };
 
 inline Str ws_enter_style;
 inline Str ws_exit_style;
@@ -234,7 +235,9 @@ struct behavior {
   Int switch_on_new_workspace;
   Int show_all_workspaces;
   Int show_special;
-  Int alttab_advances;
+  Int alttab_fast;    // one press lands on the next window (fast mode)
+  Int alttab_autostep;// the second step plays itself when the entry finishes
+  Float alttab_step_speed;
   Int hold_lift_ms;
   Str tile_layout;
 };

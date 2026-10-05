@@ -376,7 +376,10 @@ void Overview::altTabInvoke(bool reverse) {
     // open() would land the run on one window and swap it at the end, which is the
     // discontinuous motion alttab_advances is supposed to avoid.
     m_pendingStep =
-        cfg::behavior.alttab_advances != 0 ? (reverse ? -1 : 1) : 0;
+        cfg::behavior.alttab_fast != 0 ? (reverse ? -1 : 1) : 0;
+    m_autoStep = (m_pendingStep == 0 && cfg::behavior.alttab_autostep != 0)
+                     ? (reverse ? -1 : 1)
+                     : 0;
     m_view.setAllOverride( 1);
     open();
     m_pendingStep = 0;

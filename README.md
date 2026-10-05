@@ -163,6 +163,7 @@ The imperative twin of these keys is the Lua API
 | `swap_main` | 320ms | easeinout | the swap INITIATOR's flight |
 | `swap_partner` | 320ms | easeinout | the swap PARTNER's flight |
 | `drag` | 150ms | easeout | the drag cycle in BOTH directions: pickup flight to the cursor anchor and release flight back into the slot; disabled → instant |
+| `carousel_step_enabled` / `carousel_step_speed` / `carousel_step_curve` | | | The run's selection step. Its own preset rather than a share of `glide`, which also rides the grid relayout and the opening glide — three motions on one leaf means none can be tuned apart. Same numbers as `glide`, so the motion that existed before is this leaf's default |
 
 Style keys:
 
@@ -219,7 +220,9 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `border_color` | color/role | `"0x50ffffff"` | `show_border`'s ring color |
 | `border_size` | int (px) | `2` | `show_border`'s ring thickness — `0` disables it |
 | `focus_follows_mouse` | bool (0/1) | `1` | Keyboard selection tracks the hovered preview |
-| `alttab_advances` | bool (0/1) | `0` | Alt-tab: the first press opens the run on the window that has focus, and a second press moves. `1` makes the first press land on the next one already. The target is chosen before the run resolves its slots, so the entry motion plays for the window you land on rather than landing on one and swapping at the end |
+| `alttab_fast` | bool (0/1) | `0` | Alt-tab fast mode: one press lands on the next window. The target is resolved before the run lays out its slots, so the entry motion plays for the window you land on |
+| `alttab_autostep` | bool (0/1) | `0` | Alt-tab normal mode: the run opens on the focused window and the step plays itself once the entry animation has finished, instead of the window changing in the last frame |
+| `alttab_step_speed` | float | `1.3` | How much faster the automatic step plays than one you ask for. Divides the resolved `carousel_step` duration, so that preset still decides the motion |
 | `scroll_switches_workspace` | bool (0/1) | `1` | Wheel over the main area steps prev/next workspace. A carousel run pages on its own instead, see `carousel_scroll_speed` |
 | `carousel_scroll_speed` | float | `1.0` | `carousel` only: wheel sensitivity — notches × speed = cards moved, so `1` is one card per notch and `0.5` one card every two. Fractions carry over instead of stalling. Independent of `scroll_switches_workspace`: paging the run is not a workspace switch |
 | `passthrough_keys` | bool (0/1) | `1` | Let keys the overview doesn't use reach Hyprland (keybinds keep working) |

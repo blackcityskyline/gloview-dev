@@ -70,7 +70,9 @@ const char *Overview::ghostLeaf() const {
 
 const char *Overview::glideLeaf() const {
   if (m_view.jumpMode()) return m_opening ? "jump_in" : "jump_out";
-  return m_view.expoFlip() > 0 ? "expo_in" : m_view.expoFlip() < 0 ? "expo_out" : "glide";
+  if (m_view.expoFlip() != 0)
+    return m_view.expoFlip() > 0 ? "expo_in" : "expo_out";
+  return carouselMode() ? "carousel_step" : "glide";
 }
 
 double Overview::eased() const {
