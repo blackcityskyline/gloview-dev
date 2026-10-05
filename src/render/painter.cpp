@@ -5,6 +5,7 @@
 #include <hyprland/src/render/OpenGL.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/desktop/Workspace.hpp>
+#include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/render/pass/PassElement.hpp>
 
 #include "gl_util.hpp"
@@ -15,6 +16,11 @@
 using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
+
+// Both entry clocks done. Committing before this truncates what the tap was for.
+bool Overview::entrySettled() const {
+  return m_clocks.master.done(leaf("open").ms) && m_clocks.tiles.done(glideDur());
+}
 
 namespace {
 
@@ -116,13 +122,9 @@ void Overview::renderStage(eRenderStage stage) {
   }
 
   updateHover();
-  if (m_commitPending && m_active && m_opening && !m_pendingDeactivate &&
-      m_clocks.master.done(leaf("open").ms) &&
-      m_clocks.tiles.done(glideDur())) {
-    m_commitPending = false;
-    activateSelection();
-    return;
-  }
+  if (m_altTabbing && m_active && m_opening && !m_commitPending && g_pInputManager &&
+      !(g_pInputManager->getModsFromAllKBs() & altTabModBit()))
+    m_commitPending = true;
   relayoutCarousel();
   syncTiles();
   updateSnapshots();
@@ -200,6 +202,13 @@ void Overview::paint() {
   renderCursorOnTop();
 
   rearmanim(); // tail: damage() here hits already-committed damage
+  // Tail, not mid-frame: earlier this returned before painting, so the compositor got
+  // an empty frame — the desktop flashed, then the exit started.
+  if (m_commitPending && m_active && m_opening && !m_pendingDeactivate &&
+      entrySettled()) {
+    m_commitPending = false;
+    activateSelection();
+  }
   finishPendingDeactivate();
 }
 

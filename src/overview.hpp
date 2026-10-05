@@ -253,6 +253,8 @@ private:
   double eased() const; // chrome opacity / backdrop progress
   double animDuration() const; // read LIVE, so config applies in-flight
   double glideDur() const { return m_clocks.tileMs > 0 ? m_clocks.tileMs : leaf(glideLeaf()).ms; }
+  bool entrySettled() const;
+  uint32_t altTabModBit() const;
   double newCardDur() const { return std::max(120.0, leaf("new_card").ms); }
   double tileProgress(int i) const;
   LRect currentBox(const model::Tile &t, int i) const;

@@ -373,12 +373,8 @@ void Overview::toggleAllWorkspaces() {
 void Overview::altTabInvoke(bool reverse) {
   if (!(m_active && m_opening)) {
     // Armed BEFORE open() and consumed by the layout it triggers, so the entry is
-    // aimed at the target from its first frame: ONE motion of ONE duration, landing
-    // on the window you are going to get. A step played AFTER open() instead is a
-    // second motion behind a first one, which costs time and breaks the continuity.
-    const int aimedStep =
-        cfg::behavior.alttab_advances != 0 ? (reverse ? -1 : 1) : 0;
-    m_pendingStep = aimedStep;
+    // aimed from its first frame: ONE motion of ONE duration.
+    m_pendingStep = cfg::behavior.alttab_advances != 0 ? (reverse ? -1 : 1) : 0;
     m_view.setAllOverride( 1);
     open();
     m_pendingStep = 0;
@@ -387,7 +383,6 @@ void Overview::altTabInvoke(bool reverse) {
       return;
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
-    m_commitPending = aimedStep != 0;
     // open() already seeded the selection to the window that had the compositor
     // focus. Selecting index 0 here threw that away and landed on whatever window
     // happened to be first in the scene, which is why the same window came up on

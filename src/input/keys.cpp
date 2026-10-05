@@ -39,31 +39,36 @@ uint32_t modBitForKeycode(int kc) {
 }
 } // namespace
 
+uint32_t Overview::altTabModBit() const {
+  const std::string modName = cfg::keys.alt_tab_modifier.get();
+  if (modName == "super" || modName == "meta" || modName == "win")
+    return HL_MODIFIER_META;
+  if (modName == "ctrl" || modName == "control")
+    return HL_MODIFIER_CTRL;
+  if (modName == "shift")
+    return HL_MODIFIER_SHIFT;
+  return HL_MODIFIER_ALT;
+}
+
 void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
   if (!m_active)
     return;
   const bool passthrough = cfg::behavior.passthrough_keys != 0;
 
   if (e.state != WL_KEYBOARD_KEY_STATE_PRESSED) {
-    if (m_altTabbing &&
-        cfg::keys.alt_tab_commit_on_release != 0) {
-      const std::string modName =
-          cfg::keys.alt_tab_modifier.get();
-      uint32_t wantBit = HL_MODIFIER_ALT;
-      if (modName == "super" || modName == "meta" || modName == "win")
-        wantBit = HL_MODIFIER_META;
-      else if (modName == "ctrl" || modName == "control")
-        wantBit = HL_MODIFIER_CTRL;
-      else if (modName == "shift")
-        wantBit = HL_MODIFIER_SHIFT;
-      if (modBitForKeycode(e.keycode) == wantBit) {
-        // Only the swallow. The commit is not armed HERE: a hold-then-release
-        // produced no exit at all, which means the release does not reliably reach
-        // this handler while the bind is held, so anything it gates is unreliable.
-        m_altTabbing = false;
-        cancel = true;
-        return;
+    // The modifier coming up is swallowed either way — letting it through fires the
+    // user's own SUPER binding and tears the state down before the run settles.
+    if (m_altTabbing && modBitForKeycode(e.keycode) == altTabModBit()) {
+      m_altTabbing = false;
+      // A hold commits here; too early to apply means arming it, as a tap does.
+      if (cfg::keys.alt_tab_commit_on_release != 0 && !m_commitPending) {
+        if (entrySettled())
+          activateSelection();
+        else
+          m_commitPending = true;
       }
+      cancel = true;
+      return;
     }
     cancel = !passthrough;
     return;
