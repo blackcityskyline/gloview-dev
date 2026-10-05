@@ -235,8 +235,7 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
             return mt.nearK;
         return mt.farK * std::pow(mt.taper, static_cast<double>(depth - 2));
     };
-    // Cards OVERLAP, and the step is a fraction of the neighbour's OWN width, so
-    // every card is tucked by the same share whatever its depth.
+    // Cards OVERLAP, the step being a fraction of the neighbour's OWN width.
     const auto wAt = [&](int depth) { return boxW * sizeAt(depth); };
     const auto pitchAt = [&](int depth) { return wAt(depth) * mt.pitchK; };
     // Symmetric extent: the wider side decides, so even counts still fit.
@@ -256,6 +255,11 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     const double k =
         std::min({1.0, availW / std::max(1.0, stripW),
                   availH / std::max(1.0, stripH)}) * mt.scale;
+    // It may NOT push the FOCUSED CARD past the screen: a ladder absorbs the zoom because
+    // neighbours shrink it, a lone card has none, and at zoom 2 it came out twice the
+    // monitor wide — over the strip band and off both edges.
+    const double kCard =
+        std::min(k, std::min(screen.w / boxW, screen.h / stripH));
 
     L.stripW = stripW * k;
     L.stripH = stripH * k;
@@ -275,15 +279,13 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         c.showCaption = slot == 0;
         c.depth = std::abs(slot);
         // Each card centred on its own slot's position, at its depth's size.
-        c.w = boxW * sizeAt(std::abs(slot)) * k;
-        c.h = boxH * sizeAt(std::abs(slot)) * k;
-        // x reads c.w, so it has to come after it. The step out is the
-        // neighbour's own pitch, so the sign is all that separates left from right.
+        c.w = boxW * sizeAt(std::abs(slot)) * kCard;
+        c.h = boxH * sizeAt(std::abs(slot)) * kCard;
+        // x reads c.w, so it has to come after it.
         c.x = (screen.w - c.w) * 0.5 +
-              static_cast<double>(slot) * pitchAt(std::abs(slot)) * k;
-        // Symmetric about the focused card: a one-sided ladder reads as cards
-        // hanging off it.
-        c.y = (boxH * k - c.h) * 0.5;
+              static_cast<double>(slot) * pitchAt(std::abs(slot)) * kCard;
+        // Symmetric about the focused card.
+        c.y = (boxH * kCard - c.h) * 0.5;
     }
     return L;
 }

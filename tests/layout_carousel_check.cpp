@@ -245,6 +245,18 @@ void sectionE_wrappingAndEdges() {
       near(c.w, 0.0, "off-run card has no width");
 }
 
+// One card, zoom 2: no ladder, so the fit barely shrinks and the zoom is unopposed —
+// the card came out at ~2592px on a 1366px screen.
+void sectionF_singleCardZoomStaysOnScreen() {
+  auto mt = defaults();
+  mt.scale = 2.0;
+  const LRect screen{0.0, 0.0, kScreenW, kScreenH};
+  const auto L = computeCarousel(1, 0, screen, mt);
+  const auto &c = L.cards[0];
+  yes(c.w <= kScreenW, "one zoomed card is no wider than the screen");
+  yes(c.h <= kScreenH, "one zoomed card is no taller than the screen");
+}
+
 } // namespace
 
 int main() {
@@ -253,6 +265,7 @@ int main() {
   sectionC_userZoom();
   sectionD_selectionDoesNotMoveTheRun();
   sectionE_wrappingAndEdges();
+  sectionF_singleCardZoomStaysOnScreen();
 
   if (g_failed) {
     std::printf("\n%d carousel layout check(s) FAILED\n", g_failed);
