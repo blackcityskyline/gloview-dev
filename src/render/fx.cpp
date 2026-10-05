@@ -139,36 +139,51 @@ void Overview::renderDragWindow() const {
                    roundPow);
 }
 
-// The zone's affordance. Bands, not a fill: OpenGL::renderRect takes a flat
-// colour only, so a gradient is stepped — soft at the zone's inner edge, densest
-// at the screen edge, which is where the eye is already looking on the way out.
-// Drawn on hover only, so the zone costs nothing at rest.
+// The zone's affordance. renderRect takes a flat colour only, so the ramp is
+// stepped — but ONE PIXEL per step, not a dozen fat bands, which read as stripes.
+// The silhouette is rounded by insetting each row by its own corner circle, so it
+// is a soft lozenge rather than a hard rectangle.
+//
+// Direction: soft at the zone's inner edge, densest at the SCREEN edge — where the
+// eye already is on the way out. Rows are counted from the inner edge outward, so
+// one formula serves both anchors and only the placement flips. Hover only, so it
+// costs nothing at rest.
 void Overview::renderKillZone() const {
   const auto m = m_monitor.lock();
-  if (!m)
-    return;
-  if (!m_killZoneHover)
+  if (!m || !m_killZoneHover)
     return;
   const LRect z = killZoneRect();
-  if (z.w < 1.0)
+  if (z.w < 1.0 || z.h < 1.0)
     return;
-  const double s  = m->m_scale;
-  const auto  e  = eased();
-  const auto col = cfg::colors.hover_border.get(e);
-  constexpr int kBands = 12;
-  for (int i = 0; i < kBands; ++i) {
-    // Densest at the SCREEN edge: the last band's y lands on it for either
-    // anchor, so the ramp is the same for both and only the placement flips.
-    const double f = (static_cast<double>(i) + 0.5) / kBands;
-    const double a = std::pow(f, 2.0) * 0.75 * e;
-    if (a < 0.01)
+
+  const double s   = m->m_scale;
+  const double e   = eased();
+  const auto   col = cfg::colors.hover_border.get(e);
+  // Strip at the bottom puts the zone at the top of the screen, and vice versa.
+  const bool zoneAtTop = stripAnchor() == Anchor::Bottom;
+  const int  rows      = std::max(1, static_cast<int>(std::round(z.h)));
+  const double radius  = std::min(z.h * 0.5, std::min(z.w * 0.5, 24.0));
+
+  for (int k = 0; k < rows; ++k) {
+    const double f = (static_cast<double>(k) + 0.5) / static_cast<double>(rows);
+    const double a = std::pow(f, 2.2) * 0.8 * e;
+    if (a < 0.004)
       continue;
-    const double bandH = z.h / kBands;
-    const double y =
-        stripAnchor() == Anchor::Bottom ? z.y + bandH * i
-                                        : z.y + z.h - bandH * (i + 1);
-    g_pHyprOpenGL->renderRect(pxb(LRect{z.x, y, z.w, bandH + 1.0}, s),
-                              argb(col, a), {});
+    // k = 0 is the row at the INNER edge, so the dense end always lands on the
+    // screen edge regardless of which side that is.
+    const double y = zoneAtTop ? z.y + z.h - (k + 1) : z.y + k;
+    // Corner inset: full radius on the outermost row, zero by the radius itself.
+    const double dy = std::min(static_cast<double>(k),
+                               static_cast<double>(rows - 1 - k));
+    const double inset =
+        dy >= radius ? 0.0
+                     : radius - std::sqrt(std::max(0.0, radius * radius -
+                                                          (radius - dy) * (radius - dy)));
+    const double w = z.w - 2.0 * inset;
+    if (w <= 0.5)
+      continue;
+    g_pHyprOpenGL->renderRect(
+        pxb(LRect{z.x + inset, y, w, 1.0}, s), argb(col, a), {});
   }
 }
 
