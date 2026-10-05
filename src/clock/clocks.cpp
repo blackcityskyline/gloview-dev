@@ -89,6 +89,11 @@ double Overview::animDuration() const {
 // CLOSE rides m_progress DOWN: tiles then match the collapsing chrome.
 // Read m_clocks.tileMs, not m_glide.ms: a glideLeaf() flip jumps progress.
 double Overview::tileProgress(int i) const {
+  // The duration this clock started with, and it stays. Retiring it on completion
+  // left the SAME clock being measured against the longer fallback, so a glide run
+  // at 176ms reached 1.0 at 176ms and was immediately re-read at 216/300 = 0.72:
+  // the card arrived, fell back, and arrived again. Nothing retires it — every
+  // startTileGlide overwrites it, and at rest raw() clamps to 1 either way.
   const double glideMs = (m_clocks.tileMs > 0) ? m_clocks.tileMs : m_glide.ms;
   // currentBox lerps natural -> target as e RISES, so close feeds it m_progress
   // as-is. Flipping it put every card on its natural box on the first close frame.
@@ -152,7 +157,7 @@ void Overview::updateAnimation() {
     const double gapMs =
         std::chrono::duration<double, std::milli>(now - m_lastAnimTick).count();
     if (gapMs > 100.0) {
-      const double glideMs = (m_clocks.tileMs > 0) ? m_clocks.tileMs : m_glide.ms;
+      const double glideMs = glideDur();
       m_clocks.master.compensateStall(gapMs, dur);
       m_clocks.tiles.compensateStall(gapMs, glideMs);
       m_clocks.rebuild.compensateStall(gapMs, std::max(m_entry.ms, m_ghost.ms));
@@ -222,11 +227,6 @@ void Overview::updateAnimation() {
       m_pendingJumpClose = false;
       close();
     }
-  }
-
-  if (m_clocks.tileMs > 0 && m_clocks.tiles.done(m_clocks.tileMs)) {
-    m_clocks.tileMs = 0;
-    m_clocks.tileCurve.clear();
   }
 
   // prune on each flight's own clock; live config would cut landings short
