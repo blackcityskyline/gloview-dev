@@ -54,7 +54,7 @@ constexpr double kScreenH = 768.0;
 constexpr double kUsableW = 1206.0; // screen minus the layout's left/right padding
 constexpr double kUsableH = 493.0;  // screen minus top/bottom padding and strip
 constexpr double kMargin = 32.0;
-constexpr double kPitchK = 0.68; // step to a neighbour, as a fraction of its width
+constexpr double kPitchK = 0.816; // step to a neighbour, as a fraction of its width
 constexpr double kNearK = 0.76;
 constexpr double kFarK = 0.56;
 constexpr double kTaper = 0.8;
@@ -106,8 +106,8 @@ void sectionA_taper() {
     near(c.h / (kScreenH * k), sizeAt(d), "height tapers with it");
     yes(std::abs(c.w / c.h - kScreenW / kScreenH) < 1e-9,
         "a tapered card keeps the screen's proportions");
-    // Centred on the focused card: 768 * 0.229473 = 176.235588 for it, and a
-    // depth 1 card is 133.939047, so it starts 21.148271 lower — as much of a
+    // Centred on the focused card: 768 * 0.211766 = 162.636149 for it, and a
+    // depth 1 card is 123.603473, so it starts 19.516338 lower — as much of a
     // step at the top as at the bottom.
     const double h0 = kScreenH * k;
     near(c.y, (h0 - c.h) * 0.5, "card is centred on the focused card", 1e-5);
@@ -116,7 +116,7 @@ void sectionA_taper() {
   }
   {
     const auto &one = L.cards[3];
-    near(one.y, 21.148271, "depth 1 step down is 21.15px", 1e-5);
+    near(one.y, 19.516338, "depth 1 step down is 19.52px", 1e-5);
   }
   // Strictly shrinking outward.
   for (int d = 0; d < 4; ++d)
@@ -145,12 +145,12 @@ void sectionB_placementAndCentring() {
   near(L.originX, 0.0, "no separate centring offset is added on top");
 
   // The numbers themselves, worked out by hand so a change in the pitch cannot
-  // quietly move the run: stripW = 1366 + 4*(0.68*611.968 + 305.984) = 4976.61,
-  // so k = 1142/4976.61 = 0.229473 and every width is that times the taper.
-  near(f.w, 313.460694, "focused card is the fitted standard box", 1e-5);
-  near(f.x, 446.269653, "focused card's left edge", 1e-5);
-  near(L.cards[1].w, 238.230127, "depth 1 card", 1e-5);
-  near(L.cards[1].x, 321.888450, "depth 1 card's left edge", 1e-5);
+  // quietly move the run: stripW = 1366 + 4*(0.816*611.968 + 305.984) = 5392.75,
+  // so k = 1142/5392.75 = 0.211766 and every width is that times the taper.
+  near(f.w, 289.272108, "focused card is the fitted standard box", 1e-5);
+  near(f.x, 458.363946, "focused card's left edge", 1e-5);
+  near(L.cards[1].w, 219.846802, "depth 1 card", 1e-5);
+  near(L.cards[1].x, 313.681608, "depth 1 card's left edge", 1e-5);
   near(L.stripW, 1142.0, "the run fills the width the fit allows");
 
   // Overlap, not a gap: two boxes cover the same span when the distance between
@@ -184,7 +184,7 @@ void sectionC_userZoom() {
 
   mt.scale = 0.5;
   const auto S = computeCarousel(5, 2, LRect{0, 0, kUsableW, kUsableH}, mt);
-  near(L.cards[2].w, 376.152833, "20% zoom: 313.460694 * 1.2", 1e-5);
+  near(L.cards[2].w, 347.126530, "20% zoom: 289.272108 * 1.2", 1e-5);
   near(S.cards[2].w, kScreenW * fit * 0.5, "a zoom below 1 shrinks the run");
 }
 

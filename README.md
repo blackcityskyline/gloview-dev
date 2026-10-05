@@ -299,7 +299,7 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   where it is, a left or right one shifts it.
 - **The run tapers and overlaps.** The focused card is the standard box; each
   step out is a fraction of it (100%, 76%, 56%, then 8% smaller per step), and
-  the step to a neighbour is 68% of *that neighbour's own width*, so every card
+  the step to a neighbour is 81.6% of *that neighbour's own width*, so every card
   is tucked in by the same share and the taper changes the size but not how
   tight the run looks. Because the focused card is placed absolutely rather
   than by centring the run, the run need not be symmetric about it.
