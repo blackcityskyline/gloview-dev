@@ -182,7 +182,7 @@ void Overview::paint() {
   if (dragging) {
     renderDragTile();
     renderDragWindow();
-    renderKillZone(); // hover-only affordance for the closing target
+    renderKillZone();
   }
 
   renderAboveLayers();

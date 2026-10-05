@@ -254,9 +254,11 @@ LRect Overview::killZoneRect() const {
   const auto m = m_monitor.lock();
   if (!m)
     return {};
-  constexpr double kW = 300.0, kH = 50.0;
+  // Full monitor width: a 300px target in the middle of a 1366px edge is a thing
+  // the user has to aim at, and the glow reads as a figure rather than as light.
+  constexpr double kH = 50.0;
   const bool atTop = stripAnchor() == Anchor::Bottom;
-  return LRect{(m->m_size.x - kW) * 0.5, atTop ? 0.0 : m->m_size.y - kH, kW, kH};
+  return LRect{0.0, atTop ? 0.0 : m->m_size.y - kH, m->m_size.x, kH};
 }
 
 // Full brightness inside the zone, nothing by kKillZoneFalloff px away, and

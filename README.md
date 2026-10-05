@@ -328,13 +328,15 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   it is shortened to fit with a trailing `…`; the pill re-renders at the largest
   prefix that fits and is cached, so it costs one render per card, not per frame.
 - **A drop zone at the opposite edge closes.** A card dragged from the run onto
-  the 300×50 area at the centre of the edge opposite the strip's anchor closes
-  that window, in the carousel and in any plain layout alike. It is invisible at
-  rest. While a card is in flight the zone glows in proportion to how close the
-  cursor is — full inside, nothing ~150px away, smoothstepped in between — so it
-  guides the drop instead of appearing only once you are already on top of it.
-  The ramp itself runs soft at the zone's inner edge to densest at the screen
-  edge, with a short tail bleeding onto the inner side so it reads as emitting.
+  the 50px band along the edge opposite the strip's anchor closes that window, in
+  the carousel and in any plain layout alike. The band spans the **whole monitor
+  width** — a narrow target in the middle of a wide edge is something to aim at,
+  and the glow reads as a panel rather than as light.
+  It is invisible at rest. While a card is in flight the edge glows in proportion
+  to how close the cursor is — full inside the band, nothing ~150px away,
+  smoothstepped in between — so it guides the drop instead of appearing only once
+  you are already on top of it. The glow runs soft at the band's inner edge to
+  densest at the screen edge, then bleeds 150px further into the screen.
 - **Only the centred card is framed.** The rest carry no ring, and the ring is
   one fixed size everywhere rather than scaled down to suit a smaller card.
 - **Card count is yours.** `carousel_cards` sets how many cards the run shows —
