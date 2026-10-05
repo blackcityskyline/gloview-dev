@@ -226,8 +226,7 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
 
     const double boxW = std::max(1.0, mt.boxW);
     const double boxH = std::max(1.0, mt.boxH);
-    // The centred card is the standard box; every step out is a fraction of it, so the
-    // run tapers without any card changing its proportions.
+    // The centred card is the standard box; every step out is a fraction of it.
     const auto sizeAt = [&](int depth) {
         if (depth <= 0)
             return 1.0;
@@ -235,7 +234,6 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
             return mt.nearK;
         return mt.farK * std::pow(mt.taper, static_cast<double>(depth - 2));
     };
-    // Cards OVERLAP: the step is a fraction of the neighbour's OWN width.
     const auto wAt = [&](int depth) { return boxW * sizeAt(depth); };
     const auto pitchAt = [&](int depth) { return wAt(depth) * mt.pitchK; };
     // Symmetric extent: the wider side decides, so even counts still fit.

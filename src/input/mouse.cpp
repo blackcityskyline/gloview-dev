@@ -473,10 +473,13 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         return true;
       }
       debug::dbg("[REL] branch=Tile->flyback");
+      // The dragged tile is its own glide source. captureCurrentBoxes excludes it, so
+      // startTileGlide found no match and called it a newcomer: appear = 0, and it
+      // faded in from nowhere while a swap FX flew a second copy from the same point.
+      // In the source, it becomes the landing animation and the FX is the duplicate.
+      if (w)
+        oldBoxes.emplace_back(w, m_lastDragBox);
       replayReflow(oldBoxes);
-      // natural := target parked the tile at the destination while beginSwapFX flew a
-      // second copy from the release point: the animation over a static card.
-      landAfterMove(w, m_lastDragBox, leaf("drag").ms, leaf("drag").curve);
       ensureAnimPump();
       damage();
       return true;
