@@ -359,17 +359,20 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `carousel` | int | `0` | Lay the main area out as a card run instead of `layout`; all-workspaces view only |
-| `carousel_on_open` | bool (0/1) | `1` | `carousel` only: whether the run is on when the all-workspaces view opens. `key_carousel` is a toggle either way — this only picks where it starts |
-| `key_carousel` | key | `c` | Toggle the carousel run on/off in the all-workspaces view |
+| `carousel_on_open` | bool (0/1) | `1` | `carousel` only: whether the run is on when the all-workspaces view is opened from outside. `key_carousel` ignores this |
+| `key_carousel` | key | `c` | From one-workspace: switch to all-workspaces **with** the run on. From all-workspaces: flip the run only, no view change |
 | `carousel_cards` | int | `5` | How many cards the run shows (any count, even included) |
 | `carousel_card_width` | int (px) | `0` | Narrow the standard box; 0 keeps the fullscreen box |
 | `carousel_scale` | float | `1.0` | Zoom the whole run on top of the automatic fit; above 1 it deliberately overflows |
 | `carousel_scroll_speed` | float | `1.0` | Wheel sensitivity: notches × speed = cards moved. `1` is one card per notch, `0.5` one every two, `3` three per notch |
 
-- **The run has its own toggle.** `key_carousel` (`c` by default) flips it in
-  place, and `carousel_on_open` decides which state the all-workspaces view
-  starts in. Toggling takes effect on the next layout, not at the next selection
-  change, so it responds immediately.
+- **The run has its own toggle, and it is asymmetric.** `key_carousel` (`c` by
+  default) does not behave like the `a` binding in both directions: from
+  one-workspace it switches to all-workspaces *and* puts the run on, the same as
+  `a` plus the carousel; from all-workspaces it only flips the run, never the
+  view. There is deliberately no path from all back to one — that is what `a` is
+  for. `carousel_on_open` decides the state when the view is opened from outside,
+  and the key ignores it.
 - **Click to bring a card to centre, click again to leave.** A click on a card
   that is not the focused one moves the run to it and stays in the overview; only
   the focused card commits on click. So an off-centre card costs two clicks — one

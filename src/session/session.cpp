@@ -378,12 +378,26 @@ void Overview::toggle() {
     open();
 }
 
-// The binding is a plain toggle in both directions; carousel_on_open only picks
-// where it starts. Relayout now so the run rebuilds around the new state instead
-// of waiting for the next selection change.
+// Asymmetric on purpose, and NOT the same as the "a" binding:
+//   one  -> all, with the run on        (like "a", plus the carousel)
+//   all  -> all, run only flips         (no view change in either direction)
+// Coming from all there is no path back to one here — that is "a"'s job, and
+// doing it here would make "c" a second, near-identical binding.
+// carousel_on_open still decides the state when the view is opened from outside.
 void Overview::toggleCarousel() {
-  if (!m_active)
+  if (!(m_active && m_opening)) {
+    m_carouselOn = true; // BEFORE open(): buildTiles reads it
+    m_allOverride = 1;
+    open();
+    if (!m_active)
+      m_allOverride = -1;
     return;
+  }
+  if (!showAllWorkspaces()) {
+    m_carouselOn = true; // BEFORE replayReflow -> layoutTiles reads it
+    toggleAllWorkspaces();
+    return;
+  }
   m_carouselOn = !m_carouselOn;
   m_carouselFor = -1; // force relayoutCarousel to see the change
   layoutTiles();
