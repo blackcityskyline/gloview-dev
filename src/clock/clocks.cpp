@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <chrono>
 
-#include "../anim/curves.hpp"
+#include "../clock/curves.hpp"
 #include "../config/config.hpp"
 #include "../overview.hpp"
 
@@ -85,14 +85,14 @@ double Overview::animDuration() const {
 }
 
 // CLOSE rides m_progress DOWN: tiles then match the collapsing chrome.
-// Read m_tileClockMs, not m_glide.ms: a glideLeaf() flip jumps progress.
+// Read m_clocks.tileMs, not m_glide.ms: a glideLeaf() flip jumps progress.
 double Overview::tileProgress(int i) const {
-  const double glideMs = (m_tileClockMs > 0) ? m_tileClockMs : m_glide.ms;
+  const double glideMs = (m_clocks.tileMs > 0) ? m_clocks.tileMs : m_glide.ms;
   // currentBox lerps natural -> target as e RISES, so close feeds it m_progress
   // as-is (falling 1 -> 0): the card starts on its box and flies to its real
   // one. Flipping it here put every card on its natural box on the first close
   // frame — the whole deck became one fullscreen blob before shrinking away.
-  const double base = m_opening ? m_tileClock.raw(glideMs) : m_progress;
+  const double base = m_opening ? m_clocks.tiles.raw(glideMs) : m_progress;
   // The SELECTED tile is never staggered, in any layout. stagger() assumes a
   // rising 0..1, so on close (base falling) it would run backwards and delay the
   // landing — the same flight, timed differently in one-workspace and in the
@@ -105,12 +105,12 @@ double Overview::tileProgress(int i) const {
 double Overview::tileAppear(int i) const {
   return curves::eval(
       m_entry.curve,
-      staggered(m_rebuildClock.raw(m_entry.ms), i,
+      staggered(m_clocks.rebuild.raw(m_entry.ms), i,
                 static_cast<int>(m_tiles.size())));
 }
 
 LRect Overview::currentBox(const model::Tile &t, int i) const {
-  const std::string &curve = m_tileClockCurve.empty() ? m_glide.curve : m_tileClockCurve;
+  const std::string &curve = m_clocks.tileCurve.empty() ? m_glide.curve : m_clocks.tileCurve;
   const double e = curves::eval(curve, tileProgress(i));
   const auto &a = t.natural;
   const auto &b = t.target;
@@ -154,15 +154,15 @@ void Overview::updateAnimation() {
     const double gapMs =
         std::chrono::duration<double, std::milli>(now - m_lastAnimTick).count();
     if (gapMs > 100.0) {
-      const double glideMs = (m_tileClockMs > 0) ? m_tileClockMs : m_glide.ms;
-      m_timeline.compensateStall(gapMs, dur);
-      m_tileClock.compensateStall(gapMs, glideMs);
-      m_rebuildClock.compensateStall(gapMs, std::max(m_entry.ms, m_ghost.ms));
-      m_stripTween.compensateStall(gapMs, leaf("strip_step").ms);
+      const double glideMs = (m_clocks.tileMs > 0) ? m_clocks.tileMs : m_glide.ms;
+      m_clocks.master.compensateStall(gapMs, dur);
+      m_clocks.tiles.compensateStall(gapMs, glideMs);
+      m_clocks.rebuild.compensateStall(gapMs, std::max(m_entry.ms, m_ghost.ms));
+      m_clocks.strip.compensateStall(gapMs, leaf("strip_step").ms);
       if (m_newCardAnim)
-        m_newCard.compensateStall(gapMs, newCardDur());
+        m_clocks.newCard.compensateStall(gapMs, newCardDur());
       if (m_drag.lifted)
-        m_dragLiftClock.compensateStall(gapMs, leaf("drag").ms);
+        m_clocks.dragLift.compensateStall(gapMs, leaf("drag").ms);
       for (auto &fx : m_swapfx)
         fx.clock.compensateStall(gapMs, fx.ms);
     }
@@ -174,7 +174,7 @@ void Overview::updateAnimation() {
         now - m_drag.holdStartMs).count();
     if (elapsedMs >= static_cast<double>(cfg::behavior.hold_lift_ms.get())) {
       m_drag.lifted = true;
-      m_dragLiftClock.begin();
+      m_clocks.dragLift.begin();
       damage();
     } else {
       static auto lastHoldDamage = std::chrono::steady_clock::time_point{};
@@ -188,17 +188,17 @@ void Overview::updateAnimation() {
   }
 
   const auto st = leaf("strip_step");
-  if (!m_stripTween.done(st.ms))
+  if (!m_clocks.strip.done(st.ms))
     m_stripScroll =
         lerp(m_stripScrollFrom, m_stripScrollTarget,
-             curves::eval(st.curve, m_stripTween.raw(st.ms)));
+             curves::eval(st.curve, m_clocks.strip.raw(st.ms)));
   else
     m_stripScroll = m_stripScrollTarget;
 
-  if (!m_ghosts.empty() && m_rebuildClock.done(m_ghost.ms))
+  if (!m_ghosts.empty() && m_clocks.rebuild.done(m_ghost.ms))
     m_ghosts.clear();
   // entries must settle explicitly or they keep evaluating curves forever
-  if (m_rebuildClock.done(m_entry.ms) &&
+  if (m_clocks.rebuild.done(m_entry.ms) &&
       std::any_of(m_tiles.begin(), m_tiles.end(),
                   [](const model::Tile &t) { return t.appear < 1.0; }))
     for (auto &t : m_tiles)
@@ -217,7 +217,7 @@ void Overview::updateAnimation() {
     return p.w.expired() || p.p >= 1.0;
   });
 
-  if (m_rebuildClock.done(m_ghost.ms) && m_rebuildClock.done(m_entry.ms)) {
+  if (m_clocks.rebuild.done(m_ghost.ms) && m_clocks.rebuild.done(m_entry.ms)) {
     m_wsSlideDir = 0;
     m_expoFlip = 0;
     if (m_pendingJumpClose) {
@@ -226,9 +226,9 @@ void Overview::updateAnimation() {
     }
   }
 
-  if (m_tileClockMs > 0 && m_tileClock.done(m_tileClockMs)) {
-    m_tileClockMs = 0;
-    m_tileClockCurve.clear();
+  if (m_clocks.tileMs > 0 && m_clocks.tiles.done(m_clocks.tileMs)) {
+    m_clocks.tileMs = 0;
+    m_clocks.tileCurve.clear();
   }
 
   // prune on each flight's own clock; live config would cut landings short
@@ -239,14 +239,14 @@ void Overview::updateAnimation() {
       ++it;
   }
 
-  const double t = m_timeline.raw(dur);
+  const double t = m_clocks.master.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
-  if (m_newCardAnim && m_newCard.done(newCardDur())) {
+  if (m_newCardAnim && m_clocks.newCard.done(newCardDur())) {
     m_newCardAnim = false;
     m_newCardId = 0;
   }
   // NEVER zero m_progress: a transparent frame before deactivate() flashes
-  if (!m_opening && t >= 1.0 && m_tileClock.done(dur)) {
+  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur)) {
     m_progress = 1e-6;
     m_pendingDeactivate = true;
   }
@@ -254,7 +254,7 @@ void Overview::updateAnimation() {
 
 bool Overview::animBusy() const {
   return m_active &&
-         (secondaryAnimsActive() || !m_tileClock.done(glideDur()) ||
+         (secondaryAnimsActive() || !m_clocks.tiles.done(glideDur()) ||
           m_newCardAnim || m_drag.lifted || !m_swapfx.empty() ||
           m_pendingJumpClose || m_pendingDeactivate ||
           (m_opening && m_progress < 1.0) || (!m_opening && m_progress > 0.0));
@@ -263,7 +263,7 @@ bool Overview::animBusy() const {
 double Overview::newCardScale() const {
   if (!m_newCardAnim)
     return 1.0;
-  return curves::eval(leaf("card").curve, m_newCard.raw(newCardDur()));
+  return curves::eval(leaf("card").curve, m_clocks.newCard.raw(newCardDur()));
 }
 
 void Overview::animateStripTo(double from, double to) {
@@ -274,9 +274,9 @@ void Overview::animateStripTo(double from, double to) {
     m_stripScrollFrom = m_stripScrollTarget = m_stripScroll = to;
     return;
   }
-  m_stripScrollFrom = !m_stripTween.done(st.ms) ? m_stripScroll : from;
+  m_stripScrollFrom = !m_clocks.strip.done(st.ms) ? m_stripScroll : from;
   m_stripScrollTarget = to;
-  m_stripTween.begin();
+  m_clocks.strip.begin();
   ensureAnimPump();
 }
 

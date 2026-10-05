@@ -109,7 +109,7 @@ void Overview::renderStage(eRenderStage stage) {
         " sfx=" + std::to_string(m_swapfx.size()) +
         " dir=" + std::to_string(m_wsSlideDir) +
         " gh=" + std::to_string(m_ghosts.size()) +
-        " pop=" + std::to_string(!m_rebuildClock.done(m_entry.ms)));
+        " pop=" + std::to_string(!m_clocks.rebuild.done(m_entry.ms)));
   }
 
   updateHover();
@@ -149,7 +149,7 @@ void Overview::renderStage(eRenderStage stage) {
   // half-damage frames rebuild half the FB
   {
     const bool busy = secondaryAnimsActive() ||
-                      !m_tileClock.done(glideDur()) || m_newCardAnim ||
+                      !m_clocks.tiles.done(glideDur()) || m_newCardAnim ||
                       m_drag.lifted || !m_pulses.empty() ||
                       !m_swapfx.empty() ||
                       (m_opening ? m_progress < 1.0 : m_progress > 0.0);

@@ -140,6 +140,17 @@ int Overview::stripItemAt(double lx, double ly) const {
   return -1;
 }
 
+// A press that never travelled is a click, not a drag: drop the lift so the card
+// lands back down. Both release paths need it, and having it twice is how one of
+// them drifted.
+void Overview::dropLiftIfNotMoved() {
+  if (m_drag.lifted && m_drag.travelSq() < 64.0) {
+    m_drag.lifted = false;
+    m_clocks.dragLift.reset();
+    damage();
+  }
+}
+
 int Overview::draggedTile() const {
   return (m_drag.press == model::Drag::Press::Tile && m_drag.lifted &&
           m_drag.idx < static_cast<int>(m_tiles.size()))
@@ -353,11 +364,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
                " dxMoved=" + std::to_string(m_drag.travelSq()) +
                " idx=" + std::to_string(press) +
                " win=" + (w ? "valid" : "expired"));
-    if (m_drag.lifted && m_drag.travelSq() < 64.0) {
-      m_drag.lifted = false;
-      m_dragLiftClock = anim::Tween{};
-      damage();
-    }
+    dropLiftIfNotMoved();
     if (m_drag.lifted) {
       const bool rmb = m_drag.button == BTN_RIGHT;
       m_lastDragBox = dragVisualBox();
@@ -519,11 +526,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     const int stripItem = m_drag.idx;
     const auto w = m_drag.win.lock();
     const bool rmb = m_drag.button == BTN_RIGHT;
-    if (m_drag.lifted && m_drag.travelSq() < 64.0) {
-      m_drag.lifted = false;
-      m_dragLiftClock = anim::Tween{};
-      damage();
-    }
+    dropLiftIfNotMoved();
     const bool lifted = m_drag.lifted;
     const LRect fromBox = dragVisualBox();
     m_lastDragBox = fromBox;

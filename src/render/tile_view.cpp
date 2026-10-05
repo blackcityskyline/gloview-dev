@@ -15,7 +15,7 @@
 #include "../config/config.hpp"
 #include "../overview.hpp"
 #include "../debug/log.hpp"
-#include "../anim/curves.hpp"
+#include "../clock/curves.hpp"
 #include "window_content.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -180,7 +180,7 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
   }
   renderWindowLive(w, m, pxb(box, s), pxb(box, s), f, Time::steadyNow(),
                    contentRadiusPx(round, ringW, roundPow, s, !look.contain),
-                   roundPow, m_tileClock.done(glideDur()), look.contain);
+                   roundPow, m_clocks.tiles.done(glideDur()), look.contain);
 
   if (look.tone > 0.0)
     g_pHyprOpenGL->renderRect(pxb(box, s), argb(shadowCol, look.tone * e * f),
@@ -257,7 +257,7 @@ void Overview::renderTiles() const {
 }
 
 void Overview::renderGhosts() const {
-  if (m_ghosts.empty() || m_rebuildClock.done(m_ghost.ms))
+  if (m_ghosts.empty() || m_clocks.rebuild.done(m_ghost.ms))
     return;
   const auto m = m_monitor.lock();
   if (!m)
@@ -265,7 +265,7 @@ void Overview::renderGhosts() const {
   const double scale = m->m_scale;
   const auto when    = Time::steadyNow();
   const float roundPow = cfg::look.preview_round_power;
-  const double p    = std::min(1.0, m_rebuildClock.raw(m_ghost.ms));
+  const double p    = std::min(1.0, m_clocks.rebuild.raw(m_ghost.ms));
   const double eOut = curves::eval(m_ghost.curve, p); // 0..1 gone
 
   for (const auto &g : m_ghosts) {

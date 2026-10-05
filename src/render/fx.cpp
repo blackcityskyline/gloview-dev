@@ -15,7 +15,7 @@
 #include "tile_look.hpp"
 #include "../config/config.hpp"
 #include "../overview.hpp"
-#include "../anim/curves.hpp"
+#include "../clock/curves.hpp"
 #include "../debug/log.hpp"
 #include "window_content.hpp"
 
@@ -55,7 +55,7 @@ LRect Overview::dragStripBox() const {
 }
 
 double Overview::dragLiftProgress() const {
-  return curves::eval(m_lift.curve, m_dragLiftClock.raw(m_lift.ms));
+  return curves::eval(m_lift.curve, m_clocks.dragLift.raw(m_lift.ms));
 }
 
 LRect Overview::dragVisualBox() const {

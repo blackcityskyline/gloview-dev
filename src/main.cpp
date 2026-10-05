@@ -18,7 +18,7 @@ extern "C" {
 #include <lua.h>
 }
 
-#include "anim/curves.hpp"
+#include "clock/curves.hpp"
 #include "config/config.hpp"
 #include "overview.hpp"
 

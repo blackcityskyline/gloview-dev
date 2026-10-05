@@ -114,7 +114,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
         m_newWorkspaces.push_back(ws);
         m_newCardId =
             id;
-        m_newCard.begin();
+        m_clocks.newCard.begin();
         m_newCardAnim = true;
       }
       model::StripItem it;

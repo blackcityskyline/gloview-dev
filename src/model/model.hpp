@@ -6,7 +6,7 @@
 
 #include <hyprland/src/desktop/DesktopTypes.hpp>
 
-#include "../anim/clocks.hpp"
+#include "../clock/clocks.hpp"
 #include "../layout.hpp"
 
 namespace gloview::model {

@@ -487,8 +487,8 @@ void Overview::open() {
                                  .count()));
   m_pendingDeactivate = false;
   m_progress = 0.0;
-  m_timeline.begin();
-  m_tileClock.begin();
+  m_clocks.master.begin();
+  m_clocks.tiles.begin();
   m_lastAnimTick = {};
   hideLayers();
   m_cursor.onOpen(m, cursorMode());
@@ -558,7 +558,7 @@ void Overview::close() {
   restoreLayers();
   m_cursor.onClose();
   // resume from CURRENT progress (1 - raw())
-  m_timeline.seek(1.0 - m_progress, animDuration());
+  m_clocks.master.seek(1.0 - m_progress, animDuration());
   m_lastAnimTick = {}; // else a phantom gap rewinds the clocks
   debug::dbg("=== CLOSE from progress " + std::to_string(m_progress).substr(0, 5) + " ===");
   damage();

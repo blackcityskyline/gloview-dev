@@ -223,7 +223,7 @@ constexpr ColorSpec kColors[] = {
 
 // ---- animation leaves ---------------------------------------------------------
 // One row per leaf: handles, built-in base duration (what speed 1.0 means) and the
-// default curve. The resolver (anim/clocks.cpp) reads ONLY this table and the
+// default curve. The resolver (clock/clocks.cpp) reads ONLY this table and the
 // imperative rules.
 constexpr LeafSpec kLeaves[] = {
     {"open", &anim::open, 300, "easeout"},         {"close", &anim::close, 300, "easeout"},

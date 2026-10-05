@@ -481,11 +481,11 @@ void Overview::startTileGlide(
   } else
     for (auto &t : m_tiles)
       t.appear = 1.0;
-  m_tileClock.begin();
-  m_tileClockMs    = m_glide.ms;    // snapshot: glideDur() must return THIS value
-  m_tileClockCurve = m_glide.curve; // snapshot: currentBox() must use THIS curve
+  m_clocks.tiles.begin();
+  m_clocks.tileMs    = m_glide.ms;    // snapshot: glideDur() must return THIS value
+  m_clocks.tileCurve = m_glide.curve; // snapshot: currentBox() must use THIS curve
   if (newcomers || !m_ghosts.empty()) {
-    m_rebuildClock.begin();
+    m_clocks.rebuild.begin();
     ensureAnimPump(); // frames must keep coming while population runs
   }
 }
@@ -501,7 +501,7 @@ void Overview::replayReflow(
     m_selected = m_tiles.empty() ? -1 : static_cast<int>(m_tiles.size()) - 1;
   m_progress = 1.0;
   m_opening = true;
-  m_timeline.pinEnd(animDuration());
+  m_clocks.master.pinEnd(animDuration());
   damage();
 }
 

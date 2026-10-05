@@ -29,7 +29,8 @@ namespace Config {
 class CGradientValueData; // general:col.active_border's real type
 }
 
-#include "anim/clocks.hpp"
+#include "clock/clocks.hpp"
+#include "clock/clock.hpp"
 #include "model/model.hpp"
 #include "pixel/cache.hpp"
 #include "render/backdrop.hpp"
@@ -149,11 +150,11 @@ private:
   // m_active off mid-frame skips the overlay: one blank frame.
   bool m_pendingDeactivate = false;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
+  // The domain of time: every tween lives here and nowhere else.
+  clock::Clocks m_clocks;
   double m_progress = 0.0;
-  anim::Tween m_timeline; // master open/close clock; CHROME only
   mutable std::chrono::steady_clock::time_point m_lastAnimTick{};
   // Tiles ride their own clock: any layout change is "retarget + restart".
-  anim::Tween m_tileClock;
   // Freeze every tile at the box it is shown at NOW; empty = start from the
   // fresh naturals.
   void startTileGlide(
@@ -184,16 +185,13 @@ private:
 
   int m_newCardId = 0;
   bool m_newCardAnim = false;
-  anim::Tween m_newCard;
   // Held until close so an empty new workspace is not reaped.
   std::vector<PHLWORKSPACEREF> m_newWorkspaces;
   double m_stripScroll = 0.0;    // animated card-group offset on its main axis
   double m_stripScrollMax = 0.0;
   double m_stripScrollTarget = 0.0;
   double m_stripScrollFrom = 0.0;
-  anim::Tween m_stripTween;
   void animateStripTo(double from, double to);
-  anim::Tween m_rebuildClock; // entries and ghost exits share it
   std::vector<model::Ghost> m_ghosts;
   // Per-frame resolved animation state; paint never resolves config itself.
   anim::AnimCfg m_glide, m_entry, m_ghost, m_lift;
@@ -202,10 +200,11 @@ private:
   // Secondary clocks belong in the pump predicates: after a card/digit switch the
   // master clock is done, so without them the pump never arms and later frames
   // commit EMPTY damage over stale buffers.
+  // The clocks that are NOT the master one. The pump predicates have to name every
+  // clock or the next one added never arms the pump — ask m_clocks instead.
   bool secondaryAnimsActive() const {
-    return !m_rebuildClock.done(leaf(entryLeaf()).ms) ||
-           !m_rebuildClock.done(leaf(ghostLeaf()).ms) ||
-           !m_stripTween.done(leaf("strip_step").ms);
+    return m_clocks.anyRunning(leaf(entryLeaf()).ms, leaf(ghostLeaf()).ms,
+                               leaf("strip_step").ms);
   }
   double tileAppear(int i) const; // staggered 0..1 for tile i
   // Leaf selectors; precedence everywhere: expo flip > ws switch > populate.
@@ -283,7 +282,7 @@ private:
   // the moving preview reads as double vision. The fade is the BLUR's.
   double eased() const; // chrome opacity / backdrop progress
   double animDuration() const; // read LIVE, so config applies in-flight
-  double glideDur() const { return m_tileClockMs > 0 ? m_tileClockMs : leaf(glideLeaf()).ms; }
+  double glideDur() const { return m_clocks.tileMs > 0 ? m_clocks.tileMs : leaf(glideLeaf()).ms; }
   double newCardDur() const { return std::max(120.0, leaf("new_card").ms); }
   double tileProgress(int i) const;
   LRect currentBox(const model::Tile &t, int i) const;
@@ -292,6 +291,7 @@ private:
   double dragLiftProgress() const;
   LRect dragVisualBox() const;
   int draggedTile() const;
+  void dropLiftIfNotMoved();
   void drawTile(size_t i, const TileLook &look) const;
   // Every layout resolves its slot through this: the tile box carries the
   // window's own aspect, which is what lets the content meet the ring.
@@ -311,9 +311,6 @@ private:
   int m_wsSlideDir = 0;                // sign of new-vs-old ws id, 0 = none
   int m_expoFlip = 0;                  // +1 spreading, -1 collapsing
   bool m_jumpMode = false;             // drives jump_in/out leaves
-  double m_tileClockMs = 0;            // snapshotted at startTileGlide
-  std::string m_tileClockCurve;
-  anim::Tween m_dragLiftClock;
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
                      const CHyprColor &col, double p) const;
   void addWorkspace();

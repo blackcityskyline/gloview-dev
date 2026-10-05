@@ -105,7 +105,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
       ++id;
     target = State::workspaceState()->create(id, m->m_id);
     m_newCardId = id;
-    m_newCard.begin();
+    m_clocks.newCard.begin();
     m_newCardAnim = true;
   } else if (it.virtualWs) {
     // Placeholder card: create exactly this id, persistent or it is reaped.
@@ -116,7 +116,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
       target->setPersistent(true);
       m_newWorkspaces.push_back(target);
       m_newCardId = it.id;
-      m_newCard.begin();
+      m_clocks.newCard.begin();
       m_newCardAnim = true;
     }
   } else
@@ -352,11 +352,11 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
     m_ghosts.clear();
     for (auto &t : m_tiles)
       t.appear = 1.0;
-    m_rebuildClock.pinEnd(std::max(m_entry.ms, m_ghost.ms));
-    m_tileClock.pinEnd(glideDur());
+    m_clocks.rebuild.pinEnd(std::max(m_entry.ms, m_ghost.ms));
+    m_clocks.tiles.pinEnd(glideDur());
     m_progress = 1.0;
     m_opening = true;
-    m_timeline.pinEnd(animDuration());
+    m_clocks.master.pinEnd(animDuration());
     ensureAnimPump();
     damage();
     return;
@@ -371,12 +371,12 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
     if (!kept)
       m_ghosts.push_back(model::Ghost{oldWin, oldBox});
   }
-  m_rebuildClock.begin();
+  m_clocks.rebuild.begin();
   ensureAnimPump();
-  m_tileClock.pinEnd(glideDur());
+  m_clocks.tiles.pinEnd(glideDur());
   m_progress = 1.0;
   m_opening = true;
-  m_timeline.pinEnd(animDuration());
+  m_clocks.master.pinEnd(animDuration());
   damage();
 }
 
@@ -425,7 +425,7 @@ void Overview::addWorkspace() {
   ws->setPersistent(true);
   m_newWorkspaces.push_back(ws);
   m_newCardId = id;
-  m_newCard.begin();
+  m_clocks.newCard.begin();
   m_newCardAnim = true;
   debug::dbg("added workspace " + std::to_string(id));
   if (cfg::behavior.switch_on_new_workspace != 0) {
