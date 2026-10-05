@@ -376,8 +376,6 @@ void Overview::altTabInvoke(bool reverse) {
     // aimed at the target from its first frame: ONE motion of ONE duration, landing
     // on the window you are going to get. A step played AFTER open() instead is a
     // second motion behind a first one, which costs time and breaks the continuity.
-    // Kept across the open(): layoutTiles consumes it, and the commit below is
-    // armed from it. Reading it after the reset below always said 0.
     const int aimedStep =
         cfg::behavior.alttab_advances != 0 ? (reverse ? -1 : 1) : 0;
     m_pendingStep = aimedStep;
@@ -389,10 +387,6 @@ void Overview::altTabInvoke(bool reverse) {
       return;
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
-    // Armed by the OPEN, not by the release: holding the combo through the
-    // animation and letting go gave no exit, so the release cannot be trusted to
-    // arrive. Tied to m_pendingStep, non-zero exactly when this open was an
-    // alt-tab with alttab_advances on — a plain open never commits itself.
     m_commitPending = aimedStep != 0;
     // open() already seeded the selection to the window that had the compositor
     // focus. Selecting index 0 here threw that away and landed on whatever window
