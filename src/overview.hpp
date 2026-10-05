@@ -90,7 +90,6 @@ public:
   void renderCarousel() const;
   void renderCarouselCounter() const;
   bool carouselMode() const;
-  void stepCarousel(int dir); // center the next/previous card, circular
   void relayoutCarousel();
   void renderGhosts() const;
   void renderDragTile() const;
