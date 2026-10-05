@@ -17,6 +17,7 @@ struct Tile {
   LRect target;
   bool parked = false;
   std::string labelText;
+  void *labelKey = nullptr; // cache key for cachedLabel; null = nothing to fit
   double appear = 1.0;  // 0 = new; ghosts reverse it
   SP<Render::ITexture> label;
 };

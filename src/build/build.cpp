@@ -69,6 +69,8 @@ void Overview::buildTiles() {
         text = w->m_class;
       if (text.size() > 80)
         text = text.substr(0, 79) + "…";
+      t.labelKey  = w.get();
+      t.labelText = text;
       t.label = cachedLabel(w.get(), text, lblCol, 15);
     }
     // glyph pre-rendered: text rendering mid-pass is unsafe

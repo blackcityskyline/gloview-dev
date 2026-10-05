@@ -40,6 +40,16 @@ bool Overview::onMouseAxis(const IPointer::SAxisEvent &e) {
     overStrip = band.contains(lx, ly);
   }
 
+  // Over the carousel run, the wheel pages the run itself: scroll_cards cards per
+  // notch. Checked before the workspace scroll, which would otherwise eat it.
+  if (!overStrip && carouselMode() &&
+      cfg::behavior.scroll_switches_workspace != 0) {
+    const int per = std::max(1, static_cast<int>(cfg::behavior.scroll_cards));
+    if (notches != 0.0)
+      stepAltTab(notches > 0 ? per : -per);
+    return true;
+  }
+
   if (!overStrip &&
       cfg::behavior.scroll_switches_workspace != 0) {
     if (notches != 0.0)

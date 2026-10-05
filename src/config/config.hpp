@@ -219,6 +219,7 @@ struct behavior {
   Str new_workspace_mode;
   Int focus_follows_mouse;
   Int scroll_switches_workspace;
+  Int scroll_cards;
   Int passthrough_keys;
   Int exit_on_click;
   Int exit_on_switch;

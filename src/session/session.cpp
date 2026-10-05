@@ -205,11 +205,43 @@ namespace {
 
 SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
                                            const CHyprColor &col,
-                                           int size) const {
+                                           int size, int maxW) const {
+  // maxW <= 0 = untruncated. renderText takes a maxWidth, but it clips rather
+  // than ellipsizes, so the string is shortened here and re-rendered at the size
+  // that fits. Binary search on the character count: the result is cached per
+  // key, so this runs once per label per width, not per frame.
+  const auto render = [&](const std::string &s) {
+    return g_pHyprRenderer->renderText(s, col, size, false, "", 0,
+                                       size >= 15 ? 700 : 600);
+  };
+  if (maxW > 0 && text.size() > 4 && g_pHyprRenderer) {
+    const auto probe = render(text);
+    if (probe && probe->m_size.x > maxW) {
+      int lo = 1, hi = static_cast<int>(text.size()) - 1, best = 0;
+      while (lo <= hi) {
+        const int mid = (lo + hi) / 2;
+        auto t = render(text.substr(0, static_cast<size_t>(mid)) + "\xE2\x80\xA6");
+        if (t && t->m_size.x <= maxW) {
+          best = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      if (best > 0) {
+        const std::string cut = text.substr(0, static_cast<size_t>(best)) +
+                                "\xE2\x80\xA6";
+        auto &c = m_labelCache[key];
+        if (c.text != cut || !c.tex)
+          c = model::LabelTex{cut, render(cut)};
+        return c.tex;
+      }
+    }
+    // Fits as-is: fall through to the plain path below with the original text.
+  }
   auto &c = m_labelCache[key];
   if ((!c.tex || c.text != text) && g_pHyprRenderer)
-    c = model::LabelTex{text, g_pHyprRenderer->renderText(text, col, size, false, "",
-                                                   0, size >= 15 ? 700 : 600)};
+    c = model::LabelTex{text, render(text)};
   return c.tex;
 }
 

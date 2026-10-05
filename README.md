@@ -219,7 +219,8 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `border_color` | color/role | `"0x50ffffff"` | `show_border`'s ring color |
 | `border_size` | int (px) | `2` | `show_border`'s ring thickness — `0` disables it |
 | `focus_follows_mouse` | bool (0/1) | `1` | Keyboard selection tracks the hovered preview |
-| `scroll_switches_workspace` | bool (0/1) | `1` | Wheel over the main area steps prev/next workspace |
+| `scroll_switches_workspace` | bool (0/1) | `1` | Wheel over the main area pages the carousel run (`scroll_cards` cards per notch); without a carousel it steps prev/next workspace |
+| `scroll_cards` | int | `1` | Cards the wheel moves per notch over the carousel run |
 | `passthrough_keys` | bool (0/1) | `1` | Let keys the overview doesn't use reach Hyprland (keybinds keep working) |
 | `key_close` | key names | `escape` | Keys that dismiss |
 | `key_next_workspace` | key names | `tab` | Cycle the displayed workspace forward (wraps); `""` to disable. Held modifiers match exactly, so e.g. a `SUPER+Tab` toggle bind still passes through and closes |
@@ -323,6 +324,9 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   path that pins the surface alpha to 1, so the desktop's own `active_opacity` /
   `inactive_opacity` rules never make a preview see-through; depth is carried by
   size and overlap instead.
+- **The title pill never outgrows its card.** A title wider than the tile under
+  it is shortened to fit with a trailing `…`; the pill re-renders at the largest
+  prefix that fits and is cached, so it costs one render per card, not per frame.
 - **Only the centred card is framed.** The rest carry no ring, and the ring is
   one fixed size everywhere rather than scaled down to suit a smaller card.
 - **Card count is yours.** `carousel_cards` sets how many cards the run shows —

@@ -191,9 +191,22 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
                               {.round = pxr(round, s), .roundingPower = roundPow});
 
   if ((framed || selected) && !look.lift && t.label && t.label->m_size.x > 0) {
+    // Never wider than the card it sits under: a long title is shortened with an
+    // ellipsis instead of stretching the pill past the tile's own edges.
+    const double padX = 14.0, padY = 6.0;
+    // Never wider than the card it sits under: a long title is shortened with an
+    // ellipsis instead of stretching the pill past the tile's own edges.
+    const int maxText = static_cast<int>(std::max(1.0, box.w - 2 * padX));
+    SP<Render::ITexture> label = t.label;
+    if (t.labelKey && !t.labelText.empty()) {
+      if (const auto fit =
+              cachedLabel(t.labelKey, t.labelText, cfg::colors.label.get(1.0), 15,
+                          maxText);
+          fit && fit->m_size.x > 0)
+        label = fit;
+    }
     const double lw   = t.label->m_size.x;
     const double lh   = t.label->m_size.y;
-    const double padX = 14.0, padY = 6.0;
     const double pw   = lw + 2 * padX;
     const double ph   = lh + 2 * padY;
     const double px   = std::clamp(box.cx() - pw / 2.0, 6.0, m->m_size.x - pw - 6.0);
@@ -201,7 +214,7 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
     g_pHyprOpenGL->renderRect(pxb(CBox(px, py, pw, ph), s),
                               cfg::colors.title_pill.get(e * f),
                               {.round = pxr(ph / 2.0, s)});
-    g_pHyprOpenGL->renderTexture(t.label, pxb(CBox(px + padX, py + padY, lw, lh), s),
+    g_pHyprOpenGL->renderTexture(label, pxb(CBox(px + padX, py + padY, lw, lh), s),
                                  {.a = static_cast<float>(e * f)});
   }
 
