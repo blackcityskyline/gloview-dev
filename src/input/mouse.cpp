@@ -413,6 +413,15 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       // whether the run is a carousel or a plain layout.
       if (w && killZoneRect().contains(lx, ly)) {
         debug::dbg("[REL] branch=Tile->killZone");
+        // Hand the centre to whatever lands in the closed window's place once the
+        // tiles rebuild, so closing the focused card moves the run on instead of
+        // leaving it centred on nothing. Index, not identity: the tile is about to
+        // be rebuilt and the next one shifts into this slot.
+        if (press == m_selected && m_tiles.size() > 1) {
+          m_selected = static_cast<int>(press % (m_tiles.size() - 1));
+          m_selected = std::clamp(m_selected, 0,
+                                   static_cast<int>(m_tiles.size()) - 2);
+        }
         closeTileWindow(press);
         beginSwapFX(w, m_lastDragBox, model::SwapStyle::Horizontal,
                     leaf("drag").ms, leaf("drag").curve);

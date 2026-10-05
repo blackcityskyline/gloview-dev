@@ -41,6 +41,10 @@ bool Overview::carouselMode() const {
 void Overview::relayoutCarousel() {
   if (!carouselMode() || m_tiles.empty())
     return;
+  // Never mid-drag: a relayout moves every slot, so the run would shift under the
+  // window the user is carrying.
+  if (draggedTile() >= 0 || m_drag.press == model::Drag::Press::StripWin)
+    return;
   // Never during a close. layoutTiles() rewrites every tile's natural from the
   // window's own geometry, which for a run of maximized windows is one and the
   // same rectangle — so relayout mid-exit put all four cards back on that shared
@@ -79,6 +83,11 @@ void Overview::renderCarousel() const {
     // one it is shown at is its slot from before it left. Painting it there is
     // what made a window sail across the backdrop on every selection change.
     if (!card.visible)
+      continue;
+    // The card being dragged is already on screen under the cursor (renderDragTile
+    // + renderDragWindow). Painting its slot too is what showed the preview twice:
+    // one copy following the pointer, one stranded in the run.
+    if (i == draggedTile())
       continue;
 
     const auto &t = m_tiles[static_cast<size_t>(i)];
