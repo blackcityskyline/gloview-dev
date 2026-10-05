@@ -220,7 +220,7 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `border_size` | int (px) | `2` | `show_border`'s ring thickness — `0` disables it |
 | `focus_follows_mouse` | bool (0/1) | `1` | Keyboard selection tracks the hovered preview |
 | `scroll_switches_workspace` | bool (0/1) | `1` | Wheel over the main area pages the carousel run (`scroll_cards` cards per notch); without a carousel it steps prev/next workspace |
-| `scroll_cards` | int | `1` | Cards the wheel moves per notch over the carousel run |
+| `scroll_cards` | int | `1` | Cards the wheel moves per notch over the carousel run. Independent of `scroll_switches_workspace`: paging the run is not a workspace switch |
 | `passthrough_keys` | bool (0/1) | `1` | Let keys the overview doesn't use reach Hyprland (keybinds keep working) |
 | `key_close` | key names | `escape` | Keys that dismiss |
 | `key_next_workspace` | key names | `tab` | Cycle the displayed workspace forward (wraps); `""` to disable. Held modifiers match exactly, so e.g. a `SUPER+Tab` toggle bind still passes through and closes |
