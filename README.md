@@ -298,12 +298,6 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   The strip's band is part of the layout's padding on whichever edge it is
   anchored to, so the centre follows it: a top or bottom strip leaves the centre
   where it is, a left or right one shifts it.
-- **The run is in recency order.** Cards are ordered most-recently-used first,
-  with the reference switcher's exact comparator: recency, then workspace id,
-  then screen position (y before x), then creation order, then title. Windows
-  with no recency entry sort after every ranked one. The focused window is pulled
-  to the front, which here is `m_selected` — the run centres the selection, so
-  anything else would let the index drift out from under it.
 - **The run tapers and overlaps.** The focused card is the standard box; each
   step out is a fraction of it (100%, 76%, 56%, then 8% smaller per step), and
   the step to a neighbour is 81.6% of *that neighbour's own width*, so every card

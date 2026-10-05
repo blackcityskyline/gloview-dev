@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
-#include <deque>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -361,11 +360,6 @@ private:
   // flipped by the binding; layoutTiles reads this, not the config, so a toggle
   // takes effect on the next layout instead of being overwritten by it.
   bool m_carouselOn = true;
-  // Recency order, most recent first; window addresses. Stable across an address
-  // reuse only because a dead window's entry is dropped on the next promote.
-  std::deque<void *> m_mru;
-  void promoteMru(void *key);
-  void syncMru();
   std::vector<std::pair<PHLWINDOW, LRect>> captureCurrentBoxes(
       PHLWINDOW exclude = {}) const;
   void replayReflow(std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);
