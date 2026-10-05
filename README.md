@@ -220,9 +220,6 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `border_color` | color/role | `"0x50ffffff"` | `show_border`'s ring color |
 | `border_size` | int (px) | `2` | `show_border`'s ring thickness — `0` disables it |
 | `focus_follows_mouse` | bool (0/1) | `1` | Keyboard selection tracks the hovered preview |
-| `alttab_fast` | bool (0/1) | `0` | Alt-tab fast mode: one press lands on the next window. The target is resolved before the run lays out its slots, so the entry motion plays for the window you land on |
-| `alttab_autostep` | bool (0/1) | `0` | Alt-tab normal mode: the run opens on the focused window and the step plays itself once the entry animation has finished, instead of the window changing in the last frame |
-| `alttab_step_speed` | float | `1.3` | How much faster the automatic step plays than one you ask for. Divides the resolved `carousel_step` duration, so that preset still decides the motion |
 | `scroll_switches_workspace` | bool (0/1) | `1` | Wheel over the main area steps prev/next workspace. A carousel run pages on its own instead, see `carousel_scroll_speed` |
 | `carousel_scroll_speed` | float | `1.0` | `carousel` only: wheel sensitivity — notches × speed = cards moved, so `1` is one card per notch and `0.5` one card every two. Fractions carry over instead of stalling. Independent of `scroll_switches_workspace`: paging the run is not a workspace switch |
 | `passthrough_keys` | bool (0/1) | `1` | Let keys the overview doesn't use reach Hyprland (keybinds keep working) |
@@ -244,6 +241,7 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `strip_wallpaper` | bool (0/1) | `1` | Empty workspace cards show a cover-fit wallpaper thumbnail (the same source the backdrop uses) instead of a flat body |
 | `strip_empty_mode` | `show` \| `neighbors` \| `hide` | `show` | `show`: every numeric workspace up to the highest one in use (at least 1-10) gets a strip card, even ones that were never created — `neighbors`: only occupied workspaces plus the displayed one's immediate numeric neighbors (reveals a run of empties one hop at a time as you navigate into it) — `hide`: only occupied workspaces, no empty ones at all. `show`/`neighbors` cards for a workspace that doesn't exist yet are created lazily on click/drop, same as `+` but at that specific number. |
 | `show_special` | bool (0/1) | `0` | Include the special (scratchpad) workspace as a strip card |
+| `alttab_advances` | bool (0/1) | `0` | Alt-tab: the entry is aimed at the NEXT card, so the run travels to one target from its first frame and lands on it — one motion, taking exactly the entry's own time. `0` opens on the focused window and a second press steps |
 | `strip_all_card` | bool (0/1) | `0` | Show a leading "All workspaces" card on the strip that toggles the expo view |
 | `drag_to_swap` | bool (0/1) | `1` | Grid mode: dropping a preview onto another swaps the two windows' places — works across workspaces too in the all-workspaces (expo) view |
 | `switch_on_drop` | bool (0/1) | `0` | Dropping a window on a card also follows it to that workspace |
