@@ -26,9 +26,6 @@ anim::AnimCfg Overview::leaf(const char *name) const {
   anim::AnimCfg a;
   const auto *spec = cfg::animLeaf(name);
   const auto *rule = cfg::animRule(name);
-  // From the leaf's OWN schema key. It was left at 1.0 and only the imperative rule
-  // could change it, so every registered <leaf>_speed key was dead: carousel_step,
-  // glide, open, swap_main — all of them read as 1.0 and their base duration stood.
   double speed = spec ? static_cast<double>(spec->leaf->speed.get()) : 1.0;
   int absMs = -1;
   a.on = cfg::anim::enabled != 0;
