@@ -385,15 +385,7 @@ void Overview::layoutTiles() {
       mt.boxW = std::min(static_cast<double>(w), m->m_size.x);
       mt.boxH = mt.boxW * m->m_size.y / m->m_size.x;
     }
-    // SLOT ORDER, not a reordered array: slot[k] is the tile that gets card k. The
-    // card array is addressed by position everywhere else, so this is the only place
-    // the mapping may live — sorting the array inside a layout pass is what broke
-    // the run once.
-    //
-    // The sequence is the recency order and it STAYS that way. Rotating it to put
-    // the selection first made every relayout rebuild the sequence around the new
-    // selection, so a step landed on slot 1 and the next step found slot 1 sitting
-    // at slot 0: two windows, forever. The run is centred by POSITION instead.
+
     const auto n = static_cast<int>(m_scene.size());
     std::vector<std::size_t> slot;
     {

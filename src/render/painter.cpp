@@ -57,10 +57,6 @@ void Overview::renderStage(eRenderStage stage) {
   if (stage == RENDER_LAST_MOMENT)
     ++m_frameTick;
 
-  // Fed from the compositor's focus, so it must run while the overlay is CLOSED —
-  // which is exactly when the early return below used to skip it. Placed after the
-  // frame-tick and nothing else: inside, syncRecency declines to read the
-  // overlay's own selection.
   if (stage == RENDER_LAST_MOMENT)
     syncRecency();
 

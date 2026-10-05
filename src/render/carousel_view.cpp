@@ -59,11 +59,6 @@ void Overview::renderCarousel() const {
   // Paint order is far -> near by DEPTH, but the cards are still the scene's tiles:
   // slot k is m_view.slot()[k], so the run can be ordered by recency without the
   // array itself being reordered.
-  // These are TILE indices, so the card a tile lives in is slotOf(tile) — the
-  // inverse of slot(). Reading slot[tile] instead looks up a tile by its position,
-  // which is the other direction entirely: every card then borrows the geometry of
-  // whichever tile happens to sit at that slot, and the counter and the centre of
-  // the run disagree.
   std::vector<int> paint;
   paint.reserve(m_scene.size());
   for (size_t i = 0; i < m_scene.size(); ++i)
