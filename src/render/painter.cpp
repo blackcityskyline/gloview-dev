@@ -116,7 +116,11 @@ void Overview::renderStage(eRenderStage stage) {
   }
 
   updateHover();
-  relayoutCarousel();
+  // The auto step runs BEFORE relayoutCarousel(), not after. It changes the
+  // selection, so with it after, the frame painted the new selection against the
+  // OLD layout: the card snapped to its new slot for one frame and only started
+  // gliding on the next — a jerk a manual step never produces, because a key press
+  // calls damage() and this same pass then relayouts.
   const bool entrySettled =
       m_clocks.master.done(leaf("open").ms) && m_clocks.tiles.done(glideDur());
   if (m_autoStep != 0 && m_opening && !m_pendingDeactivate && entrySettled) {
@@ -126,6 +130,7 @@ void Overview::renderStage(eRenderStage stage) {
         std::max(0.05, static_cast<double>(cfg::behavior.alttab_step_speed.get()));
     stepAltTab(dir);
   }
+  relayoutCarousel();
   syncTiles();
   updateSnapshots();
 
