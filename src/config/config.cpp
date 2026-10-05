@@ -52,9 +52,6 @@ CHyprColor parseColor(std::string s, const char *fallback) {
   return CHyprColor(r, g, b, a);
 }
 
-// Per-option parse cache, keyed by the handle's address (Color handles are inline
-// globals — one stable instance per option). Main thread only: config writes and
-// paint both run there.
 std::unordered_map<const Color *, std::pair<std::string, CHyprColor>>
     g_colorCache;
 
@@ -76,10 +73,9 @@ CHyprColor Color::get(float alphaMul) const {
 // THE SCHEMA: handle, FULL config key, default. Grouped by domain — the table is
 // the documentation of record for what exists and what it defaults to.
 //
-// The key MUST be a string LITERAL: CIntValue/CStringValue keep it as a
-// const char*, so a c_str() of a temporary dangles and commence() aborts on it at
-// registration. Session-fatal, which is why the leaf keys below are built into a
-// deque rather than made on the spot.
+// The key MUST be a string LITERAL: CIntValue/CStringValue keep it as a const
+// char*, so a c_str() of a temporary dangles and commence() aborts on it at
+// registration — which is why the leaf keys below go into a deque.
 
 namespace {
 
@@ -222,9 +218,8 @@ constexpr ColorSpec kColors[] = {
 } // namespace
 
 // ---- animation leaves ---------------------------------------------------------
-// One row per leaf: handles, built-in base duration (what speed 1.0 means) and the
-// default curve. The resolver (clock/clocks.cpp) reads ONLY this table and the
-// imperative rules.
+// One row per leaf: handles, base duration (what speed 1.0 means), default curve.
+// The resolver reads ONLY this table and the imperative rules.
 constexpr LeafSpec kLeaves[] = {
     {"open", &anim::open, 300, "easeout"},         {"close", &anim::close, 300, "easeout"},
     {"glide", &anim::glide, 300, "easeout"},       {"appear", &anim::appear, 250, "easeout"},

@@ -62,8 +62,7 @@ inline void strokeRing(const LRect &lb, double s, const CHyprColor &col,
 inline constexpr float kSeamPadPx = 1.5F;
 
 // The corner radius a tile's CONTENT must carry so its arc lands on the ring's
-// outer edge, from the ring's OWN inputs — disagreement shows square content in a
-// round frame. +1: Hyprland subtracts one.
+// outer edge, from the ring's OWN inputs. +1: Hyprland subtracts one.
 // overCovers false = a contained window, whose arc does not walk outward.
 inline int contentRadiusPx(int round, int width, float roundPow, double scale,
                            bool overCovers = true) {

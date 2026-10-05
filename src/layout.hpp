@@ -53,8 +53,7 @@ Engine parseEngine(const char* s);
 
 // ONE standard box for every card: the size a fullscreen window occupies, to the
 // pixel, so the geometry never depends on which window is centred and nothing
-// spills past a ring. A smaller window is fitted whole, not deformed. Only the
-// centred card is framed.
+// spills past a ring. A smaller window is fitted whole, not deformed.
 struct CarouselMetrics {
     double boxW          = 0.0; // standard card width; 0 = fill the usable area
     double boxH          = 0.0; // standard card height; 0 = follow boxW

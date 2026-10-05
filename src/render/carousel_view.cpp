@@ -22,15 +22,13 @@ namespace gloview {
 
 namespace {
 
-// Depth darkening: the run recedes instead of reading as N equal previews.
 constexpr double kNearTone = 0.125;
 constexpr double kFarTone = 0.25;
 constexpr double kDepthTaper = 0.8;
 
 } // namespace
 
-// What layoutTiles actually built, not what the config asks for: free-arrange, the
-// all/one flip and the carousel switch each override the config.
+// What layoutTiles actually built, not what the config asks for.
 bool Overview::carouselMode() const {
   return m_run;
 }
@@ -43,9 +41,8 @@ void Overview::relayoutCarousel() {
   // window the user is carrying.
   if (draggedTile() >= 0 || m_drag.press == model::Drag::Press::StripWin)
     return;
-  // Never during a close: a relayout rewrites every natural from the window's own
-  // geometry, which for a run of maximized windows is one shared rectangle, so
-  // all the cards would play the landing into one point.
+  // Never during a close: a relayout rewrites every natural, which for a run of
+  // maximized windows is one shared rectangle — all the cards land in one point.
   if (!m_opening || m_pendingDeactivate)
     return;
   if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
@@ -89,13 +86,12 @@ void Overview::renderCarousel() const {
     TileLook look;
     look.box = currentBox(t, i);
     // m_progress runs DOWN on close (1 open -> 0 closed); every exit fraction
-    // reads it through exitT. Read backwards it puts the unfocused cards at size
-    // zero from the first close frame, which looks exactly like no animation.
+    // reads it through exitT. Read backwards it looks exactly like no animation.
     const double exitT = m_opening ? 0.0 : 1.0 - m_progress;
-    // The focused card keeps currentBox's own lerp, as in every other layout —
-    // one motion, one implementation. An unfocused card is pinned to its own box
-    // by close() (its real geometry IS the focused card's, so flying home would
-    // drop it under the landing), so it only shrinks away on the close curve.
+    // The focused card keeps currentBox's own lerp, as in every other layout — one
+    // motion, one implementation. An unfocused card is pinned by close() (its real
+    // geometry IS the focused card's, so flying home drops it under the landing),
+    // so it only shrinks away on the close curve.
     if (!m_opening && card.depth != 0) {
       const double k = std::clamp(1.0 - exitT / 0.5, 0.0, 1.0);
       const double cx = look.box.cx(), cy = look.box.cy();

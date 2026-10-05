@@ -51,8 +51,8 @@ inline model::SwapStyle parseSwapStyle(const std::string &s) {
                           : model::SwapStyle::Horizontal;
 }
 
-// Mission Control-style overview: a workspace strip over a main area of live
-// window previews, drawn compositor-side while the real windows are hidden.
+// Mission Control-style overview: a workspace strip over live window previews,
+// drawn compositor-side while the real windows are hidden.
 class Overview {
 public:
   explicit Overview(HANDLE handle);
@@ -85,15 +85,13 @@ public:
   void renderStripButtons() const;
   void renderPulses(bool strip) const;
   void renderTiles() const;
-  // Carousel paints its run in ONE pass: overlapping cards are each a whole
-  // tile, chrome through content, before the next goes over it.
+  // ONE pass: each overlapping card is a whole tile, chrome through content.
   void renderCarousel() const;
   void renderCarouselCounter() const;
   bool carouselMode() const;
   void stepCarousel(int dir); // center the next/previous card, circular
   CarouselLayout m_carousel; // written by layoutTiles
-  // The selection m_carousel was built for; slots are laid out around it, so any
-  // change needs a relayout.
+  // The selection m_carousel was built for; a change needs a relayout.
   int m_carouselFor = -1;
   void relayoutCarousel();
   // What layoutTiles resolved on its last call — the renderer's only source.
@@ -104,12 +102,12 @@ public:
   void renderDragWindow() const;
   void renderCursorOnTop() const;
 
-  // An EVENT-LOOP timer, not build-time damage: that raced the damage snapshot.
+  // An EVENT-LOOP timer: build-time damage raced the damage snapshot.
   void rearmanim() const;
   void ensureAnimPump();
   SP<CEventLoopTimer> m_animPump; // null when no animation is running
 
-  // From the painter's tail: the immediate route reads m_tiles/m_strip mid-draw.
+  // From the painter's tail; the immediate route reads m_tiles mid-draw.
   void finishPendingDeactivate();
 
   bool isAboveLayer(const std::string &ns) const;
@@ -125,7 +123,7 @@ public:
 
   [[nodiscard]] bool active() const { return m_active; }
   [[nodiscard]] bool opening() const { return m_opening; } // entry anim only
-  // Monotonic RENDER_LAST_MOMENT count, ticked even when inactive.
+  // Monotonic RENDER_LAST_MOMENT count, ticked while inactive.
   [[nodiscard]] std::uint64_t frameTick() const { return m_frameTick; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool blurEnabled() const;
@@ -146,17 +144,15 @@ private:
   std::chrono::steady_clock::time_point m_openStamp{}; // frame-trace t=0
   std::uint64_t m_frameTick = 0;
 
-  // Close anim hit 0 THIS frame; shouldRenderWindow ran first, so flipping
-  // m_active off mid-frame skips the overlay: one blank frame.
+  // The close hit 0 THIS frame and shouldRenderWindow already ran, so flipping
+  // m_active off now skips the overlay: one blank frame.
   bool m_pendingDeactivate = false;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
   // The domain of time: every tween lives here and nowhere else.
   clock::Clocks m_clocks;
   double m_progress = 0.0;
   mutable std::chrono::steady_clock::time_point m_lastAnimTick{};
-  // Tiles ride their own clock: any layout change is "retarget + restart".
-  // Freeze every tile at the box it is shown at NOW; empty = start from the
-  // fresh naturals.
+  // Any layout change is "retarget + restart". Empty oldBoxes = fresh naturals.
   void startTileGlide(
       const std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);
   PHLMONITORREF m_monitor;
@@ -164,8 +160,7 @@ private:
   PHLWORKSPACEREF m_liveWsAtOpen; // for exit_on_switch
   std::vector<model::Tile> m_tiles;
   std::vector<model::StripItem> m_strip;
-  // Captions, the close glyph, entry snapshots. mutable because capture happens
-  // lazily: the first caller of a width renders it, everyone after reads it.
+  // mutable: capture is lazy, the first caller of a width renders it.
   mutable pixel::PixelCache m_pixel;
   double m_scrollAccum = 0.0; // sub-card wheel leftover, so slow paging still moves
   std::vector<std::pair<PHLLSREF, float>> m_hiddenLayers; // + pre-hide alpha
@@ -173,7 +168,7 @@ private:
   int m_hoveredStrip = -1;
   int m_selected = -1;     // keyboard-nav cursor into m_tiles
   // Committed focus target: a ws change re-asserts focus from its own history,
-  // which can still name the previously active window.
+  // which can still name the old window.
   PHLWINDOWREF m_pendingFocus;
 
   // free-arrange: tiles at the real positions, drag floats the real window.
@@ -185,7 +180,6 @@ private:
 
   int m_newCardId = 0;
   bool m_newCardAnim = false;
-  // Held until close so an empty new workspace is not reaped.
   std::vector<PHLWORKSPACEREF> m_newWorkspaces;
   double m_stripScroll = 0.0;    // animated card-group offset on its main axis
   double m_stripScrollMax = 0.0;
@@ -193,21 +187,16 @@ private:
   double m_stripScrollFrom = 0.0;
   void animateStripTo(double from, double to);
   std::vector<model::Ghost> m_ghosts;
-  // Per-frame resolved animation state; paint never resolves config itself.
   anim::AnimCfg m_glide, m_entry, m_ghost, m_lift;
   std::string m_enterStyle, m_exitStyle;
   bool animBusy() const;
-  // Secondary clocks belong in the pump predicates: after a card/digit switch the
-  // master clock is done, so without them the pump never arms and later frames
-  // commit EMPTY damage over stale buffers.
-  // The clocks that are NOT the master one. The pump predicates have to name every
-  // clock or the next one added never arms the pump — ask m_clocks instead.
+  // The clocks that outlive the master: the pump has to name every clock or the
+  // next one added never arms it.
   bool secondaryAnimsActive() const {
     return m_clocks.anyRunning(leaf(entryLeaf()).ms, leaf(ghostLeaf()).ms,
                                leaf("strip_step").ms);
   }
   double tileAppear(int i) const; // staggered 0..1 for tile i
-  // Leaf selectors; precedence everywhere: expo flip > ws switch > populate.
   const char *entryLeaf() const;
   const char *ghostLeaf() const;
   const char *glideLeaf() const;
@@ -221,9 +210,8 @@ private:
   [[nodiscard]] bool swapfxActive(const PHLWINDOW &w) const;
   void renderSwapFX() const;
 
-  // close_trigger == "doubleclick": the first click is deferred behind a timer. An
-  // armed timer with m_pendingClickWin == w IS the "first click" record; a second
-  // click before it fires closes the window instead.
+  // close_trigger == "doubleclick": the first click waits behind a timer, and that
+  // armed timer IS the record. A second click before it fires closes the window.
   PHLWINDOWREF m_pendingClickWin;
   SP<CEventLoopTimer> m_clickTimer;
 
@@ -241,9 +229,8 @@ private:
 
   CCursorModule m_cursor; // KMS plane preferred, software erases-and-redraws
 
-  // Backdrop cache: frame one's blur lives in a persistent FBO, later frames blit
-  // it. srcId + recipe are the key, compared EVERY frame, so the cache survives a
-  // ws switch but catches a real recipe change.
+  // Blur cache: frame one's blur lives in a persistent FBO, later frames blit it.
+  // srcId + recipe compared EVERY frame, outside a dirty guard.
   mutable render::BlurCache m_blur;
   // Full-res FBO holding a rendered desktop background when there is no direct
   // texture to blur.
@@ -254,7 +241,6 @@ private:
   void updateSnapshots();
   std::string cursorMode() const;
 
-  // Single choke point for the <leaf>_enabled/_ms/_curve contract.
   anim::AnimCfg leaf(const char *name) const;
 
   enum class Anchor { Top, Bottom, Left, Right };
@@ -276,10 +262,8 @@ private:
   void layoutTiles();
   void updateAnimation();
   void deactivate();
-  // Boundary policy (user-specified): real windows hard-switch at BOTH edges,
-  // hidden from the first open frame and restored only after the close completes.
-  // NO per-window fades — the window resizes mid-glide, so a fading original under
-  // the moving preview reads as double vision. The fade is the BLUR's.
+  // Boundary policy (user-specified): real windows hard-switch at BOTH edges, NO
+  // per-window fades — a fading original under the preview reads as double vision.
   double eased() const; // chrome opacity / backdrop progress
   double animDuration() const; // read LIVE, so config applies in-flight
   double glideDur() const { return m_clocks.tileMs > 0 ? m_clocks.tileMs : leaf(glideLeaf()).ms; }
@@ -293,14 +277,12 @@ private:
   int draggedTile() const;
   void dropLiftIfNotMoved();
   void drawTile(size_t i, const TileLook &look) const;
-  // Every layout resolves its slot through this: the tile box carries the
-  // window's own aspect, which is what lets the content meet the ring.
+  // Every layout resolves its slot through this, and so does every hit-test.
   LRect tileBox(size_t i, const LRect &slot) const;
-  // instant=true: collapse with no ws-slide, so close() starts settled.
   void switchToWorkspace(const model::StripItem &it, bool instant = false);
   void dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
-  // Shared tail of both drag-release paths: a point on another card moves w
-  // there, or swaps with its last-focused window (RMB). True if consumed.
+  // Shared tail of both release paths: a point on another card moves w there, or
+  // swaps with its last-focused window (RMB).
   bool dropOnStripCard(const PHLWINDOW &w, double lx, double ly, int skipItem);
   model::StripItem *homeStripCardFor(const PHLWINDOW &w);
   void swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
@@ -333,23 +315,21 @@ private:
   int keyIndex(int keycode, uint32_t mods, const std::string &combo) const;
   void moveSelection(int dx, int dy);
   void activateSelection();
-  // A target not on the DISPLAYED workspace (expo, cross-ws click) collapses onto
-  // it and rebuilds BEFORE the close glide, so the glide aims at the real final
-  // position.
+  // A target off the DISPLAYED workspace collapses onto it and rebuilds BEFORE
+  // the glide, so the glide aims at the real final position.
   void focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason);
   bool crossesRealWorkspace(const PHLWINDOW &w) const;
   void syncFocus() const;
   void closeTileWindow(int i);
-  // Drop zone: closing target, opposite the strip's anchored edge. No hit test of
-  // its own is exported — the drag release and the hover pass both go through
-  // killZoneRect so the drawn area and the accepted area cannot drift apart.
+  // Drop zone: opposite the strip's anchored edge. No hit test of its own — the
+  // release and the hover both go through killZoneRect, so drawn and accepted
+  // areas cannot drift.
   LRect killZoneRect() const;
   double killZoneGlow(double lx, double ly) const;
   void renderKillZone() const;
   double m_killGlow = 0.0; // 1 at the zone, 0 a screen-width away, while dragging
-  // Carousel on/off for the all-workspaces view. Seeded from carousel_on_open and
-  // flipped by the binding; layoutTiles reads this, not the config, so a toggle
-  // takes effect on the next layout instead of being overwritten by it.
+  // Carousel on/off for the all-workspaces view. layoutTiles reads this, not the
+  // config, so a toggle is not overwritten by the next layout.
   bool m_carouselOn = true;
   std::vector<std::pair<PHLWINDOW, LRect>> captureCurrentBoxes(
       PHLWINDOW exclude = {}) const;

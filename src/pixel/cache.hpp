@@ -17,21 +17,20 @@ namespace gloview::pixel {
 // Captions, the close glyph, entry snapshots. The job is the KEYING POLICY: a
 // caption is asked for whole and cut to the card, and sharing a slot between the
 // two measures one texture and draws the other. Keys are window addresses, safe
-// only because dead ones are pruned — Hyprland reuses an address, and a stale
-// entry under a live one would serve the previous window's caption forever.
+// only because dead ones are pruned — Hyprland reuses addresses.
 class PixelCache {
   public:
-    // maxW <= 0 means untruncated. renderText clips rather than ellipsizes, so a
-    // title too wide for its card is shortened here and re-rendered to fit.
+    // maxW <= 0 = untruncated. renderText clips rather than ellipsizes, so a title
+    // too wide for its card is shortened and re-rendered to fit.
     SP<Render::ITexture> label(void *key, const std::string &text,
                                const CHyprColor &col, int size,
                                int maxW = 0);
 
-    // Reads without rendering. Paint must not create entries.
+    // Reads without rendering; paint must not create entries.
     [[nodiscard]] SP<Render::ITexture> peekLabel(void *key, int maxW) const;
 
-    // The close glyph, shared by every card that shows one. Same capture/read
-    // split as labels: glyph() renders, closeGlyph() reads.
+    // The close glyph, shared by every card that shows one. glyph() renders,
+    // closeGlyph() reads.
     SP<Render::ITexture> glyph(const std::string &icon, const CHyprColor &col);
     [[nodiscard]] SP<Render::ITexture> closeGlyph() const;
 

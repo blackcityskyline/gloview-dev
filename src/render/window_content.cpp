@@ -87,8 +87,7 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   data.surface  = w->wlSurface()->resource();
   data.dontRound      = false;
   // Opaque: a preview shows the window, not the desktop's own opacity rules.
-  // Every preview goes through here — strip, tiles, ghosts, transitions — so
-  // one assignment covers them all.
+  // Every preview goes through here, so one assignment covers them all.
   data.fadeAlpha = 1.F;
   data.alpha          = std::clamp(alpha, 0.F, 1.F);
   data.decorate       = false;

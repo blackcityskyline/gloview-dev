@@ -139,13 +139,10 @@ void Overview::renderDragWindow() const {
                    roundPow);
 }
 
-// The zone's affordance: the bar glowing, and a halo bleeding off its inner edge.
-//
 // Brightness tracks how close the CURSOR is (m_killGlow, a smoothstepped
-// distance), so it guides the drop instead of switching on once you are on top of
-// it. renderRect takes a flat colour only, so it is stepped per pixel — fat bands
-// read as stripes. One ramp whose alpha reaches ZERO at the far end: stacked
-// rounded rectangles have edges of their own and read as geometry, not light.
+// distance), so it guides the drop rather than switching on once you are on it.
+// One ramp whose alpha reaches ZERO at the far end: stacked rounded rectangles
+// have edges of their own and read as geometry, not light.
 void Overview::renderKillZone() const {
   const auto m = m_monitor.lock();
   if (!m || m_killGlow <= 0.004)
@@ -237,9 +234,8 @@ void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
                roundPow);
 }
 
-// Flying windows, lerped to the CURRENT slot box (which may itself be gliding, so
-// the flight bends toward a moving destination). Slots are suppressed while the
-// flight is live and take over invisibly at t=1.
+// Flying windows, lerped to the CURRENT slot box (which may itself be gliding).
+// Slots are suppressed while the flight is live, take over invisibly at t=1.
 void Overview::renderSwapFX() const {
   if (m_swapfx.empty())
     return;
@@ -371,8 +367,7 @@ bool Overview::isAboveLayer(const std::string &ns) const {
 }
 
 // renderLayer is renderer-protected, so opted-in TOP/OVERLAY surfaces go through
-// the immediate leaf like window content; damageBox forces a composite when the
-// client has no damage of its own.
+// the immediate leaf; damageBox forces a composite with no client damage.
 void Overview::renderAboveLayers() const {
   const auto m = m_monitor.lock();
   if (!m || !g_pHyprRenderer)

@@ -188,13 +188,13 @@ Engine parseEngine(const char* s) {
 
 // ONE standard box for every card, the size a fullscreen window occupies, so the
 // run's geometry cannot depend on which window is centred — only its content
-// differs. A window smaller than the box is fitted whole inside it; nothing is
-// deformed, which also keeps the content's corner arcs off the ring.
+// differs. A smaller window is fitted whole inside it, undeformed, which also keeps
+// the content's corner arcs off the ring.
 //
-// Cards are laid out from the FOCUSED one, overlapping, and it is centred in the
-// usable rect — which already carries the strip's band in the padding, so that is
-// the centre of the free space and it moves with the strip. Nothing is anchored to
-// the run's own extent: with an even card count the run is not symmetric.
+// Cards are laid out from the FOCUSED one, overlapping, centred in the usable rect
+// — which already carries the strip's band in the padding, so that is the centre of
+// the free space and it moves with the strip. Nothing is anchored to the run's own
+// extent: with an even card count the run is not symmetric.
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                                const CarouselMetrics& mt) {
     CarouselLayout L;
@@ -205,8 +205,7 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.countW = mt.countW;
     L.countH = mt.countH;
 
-    // Even counts are allowed: centerSlot leaves the selected card one slot off
-    // the exact middle, as in the reference.
+    // Even counts allowed: centerSlot leaves the selected card one slot off.
     const int want = std::max(1, mt.visibleCards);
     const int shown = std::min(want, count);
     L.visibleCards = shown;
@@ -237,24 +236,23 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         return mt.farK * std::pow(mt.taper, static_cast<double>(depth - 2));
     };
     // Cards OVERLAP, and the step is a fraction of the neighbour's OWN width, so
-    // every card is tucked in by the same share whatever its depth.
+    // every card is tucked by the same share whatever its depth.
     const auto wAt = [&](int depth) { return boxW * sizeAt(depth); };
     const auto pitchAt = [&](int depth) { return wAt(depth) * mt.pitchK; };
-    // Symmetric extent: the wider side decides, so an even card count still fits.
+    // Symmetric extent: the wider side decides, so even counts still fit.
     // The outermost step for every slot over-measures, only conservatively.
     const int reach = std::max(leftSlots, rightSlots);
     const double stripW =
         wAt(0) + (pitchAt(reach) + wAt(reach) * 0.5) * static_cast<double>(reach) * 2.0;
-    // The caption hangs below the centred card, so the panel reserves room for
-    // it; the cards themselves stay the standard box.
+    // The caption hangs below the centred card, so the panel reserves room.
     const double stripH = boxH + mt.captionGap + mt.captionH;
 
     // One uniform scale so the run fits both axes at once.
     const double availW = std::max(1.0, screen.w - mt.screenMargin * 2.0);
     const double availH = std::max(1.0, screen.h - mt.screenMargin * 2.0 -
                                              mt.countH - mt.sectionGap);
-    // The user's zoom rides on top of the fit: past 1.0 the run deliberately
-    // overflows the free space rather than being clamped back to it.
+    // The user's zoom rides on top of the fit: past 1.0 the run overflows
+    // deliberately rather than being clamped back.
     const double k =
         std::min({1.0, availW / std::max(1.0, stripW),
                   availH / std::max(1.0, stripH)}) * mt.scale;
@@ -264,9 +262,8 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.panelW = L.stripW;
     L.panelH = mt.countH + mt.sectionGap + L.stripH;
     L.stripY = mt.countH + mt.sectionGap;
-    // Card x is already absolute inside the usable rect, so originX stays 0; a
-    // centring offset on top would count it twice. The run may hang past an edge,
-    // the price of the focused card sitting on the exact centre.
+    // Card x is already absolute inside the usable rect, so originX stays 0. The
+    // run may hang past an edge, the price of the exact centre.
     L.originX = 0.0;
     L.originY = std::round((screen.h - L.panelH) * 0.5);
     L.countX = std::round((screen.w - mt.countW) * 0.5);
@@ -284,8 +281,8 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         // neighbour's own pitch, so the sign is all that separates left from right.
         c.x = (screen.w - c.w) * 0.5 +
               static_cast<double>(slot) * pitchAt(std::abs(slot)) * k;
-        // Symmetric about the focused card: a ladder that steps only downwards
-        // reads as cards hanging off one.
+        // Symmetric about the focused card: a one-sided ladder reads as cards
+        // hanging off it.
         c.y = (boxH * k - c.h) * 0.5;
     }
     return L;

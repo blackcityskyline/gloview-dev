@@ -194,34 +194,30 @@ bool Overview::initialize() {
   return true;
 }
 
-// config via value(): getConfigValue() ignores Lua config
 std::string Overview::cursorMode() const {
     return cfg::behavior.cursor_mode.get();
 }
 
 namespace {
-// Alpha FIRST (0xAARRGGBB), NOT rgba(RRGGBBAA)
 } // namespace
 // How far the glow reaches past the zone, in logical px.
 static constexpr double kKillZoneFalloff = 150.0;
 
-// The closing target sits at the centre of the edge OPPOSITE the strip, so it
-// is never under the strip's own cards. Width/height are fixed by request.
+// The closing target sits on the edge OPPOSITE the strip, never under its cards.
 LRect Overview::killZoneRect() const {
   const auto m = m_monitor.lock();
   if (!m)
     return {};
-  // Full monitor width: a 300px target in the middle of a 1366px edge is a thing
-  // the user has to aim at, and the glow reads as a figure rather than as light.
+  // Full monitor width: a narrow target on a long edge is something the user has
+  // to aim at, and the glow reads as a figure, not as light.
   constexpr double kH = 40.0; // 50 * 0.8: 20% shorter
   const bool atTop = stripAnchor() == Anchor::Bottom;
   return LRect{0.0, atTop ? 0.0 : m->m_size.y - kH, m->m_size.x, kH};
 }
 
-// Full brightness inside the zone, nothing by kKillZoneFalloff px away, and
-// smoothstepped in between so the glow eases off instead of popping at the edge.
-// A distance, not a bool: the zone was blank until the cursor crossed it, which
-// told the user nothing about where it was while they were still aiming.
+// Full brightness inside the zone, nothing by kKillZoneFalloff px away,
+// smoothstepped between. A distance, not a bool: a zone blank until the cursor
+// crosses it says nothing while the user is still aiming it.
 double Overview::killZoneGlow(double lx, double ly) const {
   const LRect z = killZoneRect();
   if (z.w < 1.0 || z.h < 1.0)
@@ -335,12 +331,8 @@ void Overview::toggle() {
     open();
 }
 
-// Asymmetric on purpose, and NOT the same as the "a" binding:
-//   one  -> all, with the run on        (like "a", plus the carousel)
-//   all  -> all, run only flips         (no view change in either direction)
-// Coming from all there is no path back to one here — that is "a"'s job, and
-// doing it here would make "c" a second, near-identical binding.
-// carousel_on_open still decides the state when the view is opened from outside.
+// Asymmetric on purpose, NOT a copy of the "a" binding: one -> all with the run
+// on; all -> all, run only flips. No path back — that is "a"'s job.
 void Overview::toggleCarousel() {
   if (!(m_active && m_opening)) {
     m_carouselOn = true; // BEFORE open(): buildTiles reads it
@@ -356,12 +348,8 @@ void Overview::toggleCarousel() {
     return;
   }
   m_carouselOn = !m_carouselOn;
-  // The SAME rebuild the 'a' binding does, not a bare layoutTiles(): a layout
-  // call only rewrites targets, and the boxes the carousel era left behind —
-  // zeroed off-run targets, parked tiles — survive it, so the grid came out with
-  // tiles scattered at their run positions. replayReflow rebuilds the tiles and
-  // recomputes their naturals first, which is what makes the grid come out
-  // identical to entering the all-workspaces view directly.
+  // The SAME rebuild the 'a' binding does: a bare layoutTiles() only rewrites
+  // targets, so the carousel era's boxes survive and the grid is scattered.
   m_wsSlideDir = 0; // the view is not changing, so no slide
   m_expoFlip = 0;
   auto oldBoxes = captureCurrentBoxes();
@@ -396,7 +384,6 @@ void Overview::altTabInvoke(bool reverse) {
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
     m_selected = m_tiles.empty() ? -1 : 0;
-    // carousel slots build around m_selected
     if (carouselMode() && !m_tiles.empty())
       layoutTiles();
     syncFocus();
@@ -417,9 +404,7 @@ void Overview::setDesktopMode(bool on) {
 
   auto oldBoxes = captureCurrentBoxes();
   m_hovered = m_hoveredStrip = -1;
-  // The selection survives: free-arrange ignores it, and dropping it left the
-  // carousel's relayout refusing to fire on the way back, so the run came back
-  // with no centered card and a "0 / N" counter.
+  // Selection survives: dropping it stopped the carousel relayout coming back.
   replayReflow(oldBoxes);
 }
 
@@ -441,13 +426,11 @@ void Overview::open() {
       m->m_activeWorkspace;
   m_hovered = m_hoveredStrip = -1;
 
-  // force-rebuild the bg blur cache (boot-built, cold)
   m->m_blurFBDirty = true;
 
   // force several full-damage frames: one damage() = one image
   m->m_forceFullFrames = 8;
 
-  // clear drag state: mid-drag dismiss skips release
   m_drag = {};
   m_pendingFocus.reset();
   cancelPendingClick();
@@ -511,16 +494,12 @@ void Overview::close() {
   m_opening = false;
   m_pendingJumpClose = false;
 
-  // ANY close makes a pending click timer stale
   cancelPendingClick();
 
   // close: target = shown, natural = real geometry
   if (const auto m = m_monitor.lock()) {
-    // Two passes on purpose. The unfocused cards are pinned to their own box
-    // only when their real geometry COLLIDES with the focused card's, and the
-    // loop assigns naturals as it goes — so comparing against
-    // m_tiles[m_selected].natural inside the same loop reads the value from
-    // BEFORE this close, and every card looked distinct and got no pin at all.
+    // Two passes on purpose: the pin test needs m_tiles[m_selected].natural, which
+    // the loop rewrites as it goes — testing inside it reads the pre-close value.
     LRect selNat{};
     if (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size())) {
       if (const auto w = m_tiles[static_cast<size_t>(m_selected)].win.lock()) {
@@ -533,13 +512,9 @@ void Overview::close() {
     for (auto &t : m_tiles) {
       t.target = currentBox(t, static_cast<int>(&t - m_tiles.data()));
       // The natural box is where the tile RETURNS TO. When several windows share
-      // one geometry — every window maximized looks identical, and so does every
-      // window on a workspace that is not the one on screen — their returns are
-      // the same rectangle, and the whole run collapses onto it at once: the
-      // unfocused cards end up exactly under the focused one, which is drawn
-      // last, so their exit is invisible no matter what it is animated to. Give
-      // each unfocused card its own exit instead, and let the focused one fly
-      // home as the only tile that moves to a real box.
+      // one geometry — maximized windows, off-screen workspaces — the unfocused
+      // cards land under the focused one (drawn last), so their exit is invisible
+      // whatever it animates to. Each gets its own exit.
       if (const auto w = t.win.lock()) {
         const auto p = w->positionAnimation()->goal();
         const auto s = w->sizeAnimation()->goal();
@@ -642,7 +617,6 @@ bool Overview::isTileWindow(const PHLWINDOW &w) const {
 }
 
 void Overview::deactivate() {
-  // hand the blur FB back: dirty, so preRender rebuilds it
   if (const auto mm = m_monitor.lock())
     mm->m_blurFBDirty = true;
   restoreLayers();

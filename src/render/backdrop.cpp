@@ -21,12 +21,10 @@ using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
 
-// Never sample currentFB as the backdrop source: a fullscreen window on the
-// active workspace renders through the "solitary client" fast path, and an
-// idle workspace leaves currentFB stale. Source: a fullscreen video client
-// (live, never cached), the monitor wallpaper, or a private FBO of
-// BACKGROUND/BOTTOM layer-shell surfaces; identity is checked EVERY frame,
-// outside any dirty-guard. The blur cache is PURE: no dim, no fade.
+// Never sample currentFB: a fullscreen window on the active workspace renders
+// through the "solitary client" fast path, and an idle workspace leaves it stale.
+// Source: a fullscreen video client (live, never cached), the wallpaper, or a
+// private FBO of BACKGROUND/BOTTOM layer-shell surfaces. Blur cache is PURE.
 
 SP<Render::ITexture> Overview::backdropSource(bool &live) const {
   live = false;

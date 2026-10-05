@@ -303,15 +303,12 @@ void Overview::layoutTiles() {
   if (!m || m_tiles.empty())
     return;
 
-  // The renderer asks m_engine / m_run, never the config: free-arrange, the
-  // all/one flip and the carousel switch all override what `layout` says, and a
-  // renderer that read the config would draw an arrangement this function never
-  // produced.
+  // The renderer asks m_engine / m_run, never the config: free-arrange, the all/one
+  // flip and the carousel switch each override what `layout` says.
   m_engine = m_desktopMode ? Engine::Natural
                            : parseEngine(cfg::grid.layout.get().c_str());
-  // The run is a separate mechanism over any layout, and only in the
-  // all-workspaces view: a single workspace's handful of tiles has nothing to
-  // arrange against. With it off the layout runs untouched.
+  // A separate mechanism over any layout, only in the all-workspaces view: a
+  // single workspace's handful of tiles has nothing to arrange against.
   m_run = m_carouselOn && cfg::carousel.enabled != 0 && !m_desktopMode &&
          showAllWorkspaces();
 
@@ -371,8 +368,8 @@ void Overview::layoutTiles() {
   m_carouselFor     = -1;
 
   // The run replaces the main area wholesale: it lays one window against its
-  // neighbours, which a grid of boxes cannot express.
-  // Slots are built AROUND m_selected: selection = relayout, not repaint.
+  // neighbours, which a grid of boxes cannot express. Slots are built AROUND
+  // m_selected: selection = relayout, not repaint.
   if (m_run) {
     const int sel = (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size()))
                         ? m_selected
@@ -384,11 +381,8 @@ void Overview::layoutTiles() {
     mt.visibleCards = std::max(1, static_cast<int>(cfg::carousel.cards.get()));
     // The user's zoom on the run, on top of whatever the fit allows.
     mt.scale = std::max(0.1, static_cast<double>(cfg::carousel.scale.get()));
-    // The standard card is a FULLSCREEN window's box: the whole monitor, not the
-    // padded usable rect. That is what makes the containment honest — a window
-    // one side short of the screen lands at its own size inside the card, so a
-    // half-screen window really does take up half the card and a fullscreen one
-    // fills it, instead of both being scaled to fit a box of some other ratio.
+    // The standard card is a FULLSCREEN window's box — the whole monitor, not the
+    // padded usable rect, so containment is honest.
     mt.boxW = m->m_size.x;
     mt.boxH = m->m_size.y;
     if (const int w = static_cast<int>(cfg::carousel.card_width.get()); w > 0) {
@@ -407,12 +401,9 @@ void Overview::layoutTiles() {
                                                 m_carousel.stripY + c.y,
                                             c.w, c.h}
                                     : LRect{};
-      // Capture the caption HERE, where the card width is known, cut to that
-      // width. Paint only reads it: rendering text mid-pass is unsafe (see the
-      // glyph note above), and asking at paint time re-ran the whole binary
-      // search every frame. It also measured the pill off the UNTUNCATED entry
-      // while drawing the cut texture, which is how the pill came out wider than
-      // the card it sits on.
+      // Capture the caption HERE, where the card width is known, cut to it. Paint
+      // only reads: mid-pass text rendering is unsafe, and asking at paint time
+      // measured the pill off the uncut entry.
       if (c.visible) {
         if (const auto w = m_tiles[i].win.lock())
           // The fitted box, not the card: a portrait window is drawn narrower than
@@ -536,10 +527,8 @@ void Overview::syncTiles() {
 
   auto oldBoxes = captureCurrentBoxes();
 
-  // NOT parking here. `parked` means "the user dropped this window here, keep it",
-  // and only the drop path may set it: parking every survivor made
-  // layoutTiles' desktop branch skip the whole set, so free-arrange froze after
-  // the first sync and the windows stayed wherever the previous layout left them.
+  // NOT parking here: `parked` means "the user dropped this window here", and only
+  // the drop path may set it. Parking every survivor froze free-arrange.
   replayReflow(oldBoxes);
 }
 

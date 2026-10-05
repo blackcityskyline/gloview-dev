@@ -41,9 +41,7 @@ bool Overview::onMouseAxis(const IPointer::SAxisEvent &e) {
   }
 
   // The run pages on the wheel: notches * carousel_scroll_speed = cards moved. Its
-  // own switch, not scroll_switches_workspace — that one is about WORKSPACES, and
-  // gating the run on it meant a config with workspace scrolling off got a dead
-  // wheel.
+  // own switch, not scroll_switches_workspace, which is about WORKSPACES.
   if (!overStrip && carouselMode()) {
     const double speed =
         std::clamp(static_cast<double>(cfg::carousel.scroll_speed), 0.05, 20.0);
@@ -141,8 +139,7 @@ int Overview::stripItemAt(double lx, double ly) const {
 }
 
 // A press that never travelled is a click, not a drag: drop the lift so the card
-// lands back down. Both release paths need it, and having it twice is how one of
-// them drifted.
+// lands back down. Both release paths need this.
 void Overview::dropLiftIfNotMoved() {
   if (m_drag.lifted && m_drag.travelSq() < 64.0) {
     m_drag.lifted = false;
@@ -416,10 +413,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       // whether the run is a carousel or a plain layout.
       if (w && killZoneRect().contains(lx, ly)) {
         debug::dbg("[REL] branch=Tile->killZone");
-        // Hand the centre to whatever lands in the closed window's place once the
-        // tiles rebuild, so closing the focused card moves the run on instead of
-        // leaving it centred on nothing. Index, not identity: the tile is about to
-        // be rebuilt and the next one shifts into this slot.
+        // Hand the centre to whatever lands in the closed window's place. By
+        // index: the tile is being rebuilt and its neighbour shifts into this slot.
         if (press == m_selected && m_tiles.size() > 1) {
           m_selected = static_cast<int>(press % (m_tiles.size() - 1));
           m_selected = std::clamp(m_selected, 0,
@@ -486,10 +481,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       return true;
     }
     m_drag = {};
-    // The carousel brings the run to the card you clicked, and only the FOCUSED
-    // card commits: one click to bring it to centre, a second on it to leave.
-    // Setting m_selected is enough — renderStage's relayoutCarousel sees the
-    // change against m_carouselFor and glides the run around it.
+    // The run comes to the card you clicked; only the FOCUSED card commits.
+    // Setting m_selected is enough — relayoutCarousel glides the run around it.
     if (carouselMode() && press >= 0 && press < static_cast<int>(m_tiles.size()) &&
         press != m_selected) {
       debug::dbg("[REL] branch=Tile->carouselFocus idx=" + std::to_string(press));
@@ -695,13 +688,10 @@ void Overview::focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason) {
   if (w) {
     if (const auto ws = w->m_workspace;
         ws && (showAllWorkspaces() || ws != m_workspace.lock())) {
-      // Nothing is rebuilt or relaid out here, on purpose. focusAndClose runs
-      // DURING the close, and layoutTiles() recomputes m_run from
-      // showAllWorkspaces(): with m_allOverride already 0 the deck stopped being a
-      // carousel BEFORE close() read it, so every card flew to its own window
-      // box, all of which are the same fullscreen rectangle — the run played the
-      // landing animation four times over and met in one point. The commit only
-      // has to name a window; the exit keeps the layout it already has.
+      // Nothing is rebuilt here. focusAndClose runs DURING the close and
+      // layoutTiles() recomputes m_run, so with m_allOverride already 0 the deck
+      // stopped being a carousel before close() read it — every card flew to its
+      // own box, all the same fullscreen rectangle, and met in one point.
       m_allOverride = 0;
       m_workspace = ws;
       m_hovered = m_hoveredStrip = -1;

@@ -86,9 +86,8 @@ double Overview::entryFade(size_t i) const {
   return tileAppear(static_cast<int>(i));
 }
 
-// A preview always wears the window's own aspect: the surface covers its box from
-// the centre, so only a matching aspect lets the content's arcs meet the ring's.
-// A second way to compute a tile box is a second way to be wrong.
+// A preview always wears the window's own aspect, so the content's arcs meet the
+// ring's. A second way to compute a tile box is a second way to be wrong.
 LRect Overview::tileBox(size_t i, const LRect &slot) const {
   if (m_desktopMode)
     return slot;
@@ -104,8 +103,7 @@ LRect Overview::tileBox(size_t i, const LRect &slot) const {
 }
 
 // THE tile: shadow, ring, focus ring, frost, content, pill, ✕ — each under the
-// next, for every layout. A layout contributes a box and flags only; the ring
-// width handed to contentRadiusPx is the one actually stroked below.
+// next. A layout contributes a box and flags only.
 void Overview::drawTile(size_t i, const TileLook &look) const {
   const auto m = m_monitor.lock();
   if (!m || i >= m_tiles.size())
@@ -188,9 +186,8 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
 
   if ((framed || selected) && !look.lift && t.label && t.label->m_size.x > 0) {
     const double padX = 14.0, padY = 6.0;
-    // The caption was captured to the card's own width during layout, so the pill
-    // measures the texture it draws. Measuring the untruncated entry while drawing
-    // the cut one made the pill wider than its card.
+    // The caption was captured to the card's own width, so the pill measures the
+    // texture it draws — not the uncut entry it used to.
     const double lw   = t.label->m_size.x;
     const double lh   = t.label->m_size.y;
     const double pw   = lw + 2 * padX;
