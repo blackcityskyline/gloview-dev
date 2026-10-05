@@ -163,6 +163,7 @@ private:
   std::vector<model::StripItem> m_strip;
   // mutable: cachedLabel() is const-callable and caching is its whole job.
   mutable std::unordered_map<void *, model::LabelTex> m_labelCache;
+  double m_scrollAccum = 0.0; // sub-card wheel leftover, so slow paging still moves
   // maxW <= 0 = no truncation. The pill's max is the card it belongs to, so a
   // long window title cannot grow the pill wider than the card under it.
   SP<Render::ITexture> cachedLabel(void *key, const std::string &text,

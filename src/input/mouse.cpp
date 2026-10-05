@@ -40,13 +40,23 @@ bool Overview::onMouseAxis(const IPointer::SAxisEvent &e) {
     overStrip = band.contains(lx, ly);
   }
 
-  // The carousel run pages on the wheel, scroll_cards per notch. Its own switch,
-  // not scroll_switches_workspace: that one is about WORKSPACES, and gating the
-  // run on it meant a config with workspace scrolling off got a dead wheel.
+  // The carousel run pages on the wheel: notches * carousel_scroll_speed = cards
+  // moved, so 1 is one card per notch, 0.5 one card every two notches, 3 three
+  // per notch. Its own switch, not scroll_switches_workspace: that one is about
+  // WORKSPACES, and gating the run on it meant a config with workspace scrolling
+  // off got a wheel that did nothing at all.
   if (!overStrip && carouselMode()) {
-    const int per = std::max(1, static_cast<int>(cfg::behavior.scroll_cards));
-    if (notches != 0.0)
-      stepAltTab(notches > 0 ? per : -per);
+    const double speed =
+        std::clamp(static_cast<double>(cfg::carousel.scroll_speed), 0.05, 20.0);
+    const double cards = notches * speed;
+    // Below one card per notch the leftover is carried, so a slow setting still
+    // moves, just a fraction of a card at a time instead of stalling.
+    m_scrollAccum += cards;
+    const int whole = static_cast<int>(std::trunc(m_scrollAccum));
+    if (whole != 0) {
+      m_scrollAccum -= static_cast<double>(whole);
+      stepAltTab(whole);
+    }
     return true;
   }
 

@@ -219,8 +219,8 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `border_color` | color/role | `"0x50ffffff"` | `show_border`'s ring color |
 | `border_size` | int (px) | `2` | `show_border`'s ring thickness — `0` disables it |
 | `focus_follows_mouse` | bool (0/1) | `1` | Keyboard selection tracks the hovered preview |
-| `scroll_switches_workspace` | bool (0/1) | `1` | Wheel over the main area pages the carousel run (`scroll_cards` cards per notch); without a carousel it steps prev/next workspace |
-| `scroll_cards` | int | `1` | Cards the wheel moves per notch over the carousel run. Independent of `scroll_switches_workspace`: paging the run is not a workspace switch |
+| `scroll_switches_workspace` | bool (0/1) | `1` | Wheel over the main area steps prev/next workspace. A carousel run pages on its own instead, see `carousel_scroll_speed` |
+| `carousel_scroll_speed` | float | `1.0` | `carousel` only: wheel sensitivity — notches × speed = cards moved, so `1` is one card per notch and `0.5` one card every two. Fractions carry over instead of stalling. Independent of `scroll_switches_workspace`: paging the run is not a workspace switch |
 | `passthrough_keys` | bool (0/1) | `1` | Let keys the overview doesn't use reach Hyprland (keybinds keep working) |
 | `key_close` | key names | `escape` | Keys that dismiss |
 | `key_next_workspace` | key names | `tab` | Cycle the displayed workspace forward (wraps); `""` to disable. Held modifiers match exactly, so e.g. a `SUPER+Tab` toggle bind still passes through and closes |
@@ -351,6 +351,8 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 | `carousel` | int | `0` | Lay the main area out as a card run instead of `layout`; all-workspaces view only |
 | `carousel_cards` | int | `5` | How many cards the run shows (any count, even included) |
 | `carousel_card_width` | int (px) | `0` | Narrow the standard box; 0 keeps the fullscreen box |
+| `carousel_scale` | float | `1.0` | Zoom the whole run on top of the automatic fit; above 1 it deliberately overflows |
+| `carousel_scroll_speed` | float | `1.0` | Wheel sensitivity: notches × speed = cards moved. `1` is one card per notch, `0.5` one every two, `3` three per notch |
 
 - **Navigation.** Because the slots are built around the selection, moving it
   rotates the run (all cards glide to their new depths on the usual `glide`

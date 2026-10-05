@@ -137,7 +137,6 @@ constexpr IntSpec kInts[] = {
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     {&behavior.focus_follows_mouse, "plugin:gloview:focus_follows_mouse", 1},
     {&behavior.scroll_switches_workspace, "plugin:gloview:scroll_switches_workspace", 1},
-    {&behavior.scroll_cards, "plugin:gloview:scroll_cards", 1},
     {&behavior.passthrough_keys, "plugin:gloview:passthrough_keys", 1},
     {&behavior.exit_on_click, "plugin:gloview:exit_on_click", 1},
     {&behavior.exit_on_switch, "plugin:gloview:exit_on_switch", 0},
@@ -159,6 +158,7 @@ constexpr FloatSpec kFloats[] = {
     {&look.close_button_size, "plugin:gloview:close_button_size", 1.0F},
     {&look.drag_size, "plugin:gloview:drag_size", 0.55F},
     {&carousel.scale, "plugin:gloview:carousel_scale", 1.0F},
+    {&carousel.scroll_speed, "plugin:gloview:carousel_scroll_speed", 1.0F},
 };
 
 constexpr StrSpec kStrs[] = {

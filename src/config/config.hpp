@@ -68,6 +68,9 @@ struct carousel {
   Int cards;
   Int card_width;
   Float scale;
+  // Wheel paging: notches * speed = cards moved. 1 = one card per notch,
+  // 0.5 = one card every two notches, 3 = three per notch.
+  Float scroll_speed;
 };
 
 inline carousel carousel;
@@ -219,7 +222,6 @@ struct behavior {
   Str new_workspace_mode;
   Int focus_follows_mouse;
   Int scroll_switches_workspace;
-  Int scroll_cards;
   Int passthrough_keys;
   Int exit_on_click;
   Int exit_on_switch;
