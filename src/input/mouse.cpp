@@ -114,12 +114,12 @@ int Overview::tileAt(double lx, double ly) const {
     // Cards overlap: first-match hits the wrong one, so scan front to back.
     int best = -1, bestDepth = 1 << 30;
     for (size_t i = 0; i < m_tiles.size(); ++i) {
-      if (i >= m_carousel.cards.size() || !m_carousel.cards[i].visible)
+      if (i >= m_view.carousel().cards.size() || !m_view.carousel().cards[i].visible)
         continue;
       if (!currentBox(m_tiles[i], static_cast<int>(i)).contains(lx, ly))
         continue;
-      if (m_carousel.cards[i].depth < bestDepth) {
-        bestDepth = m_carousel.cards[i].depth;
+      if (m_view.carousel().cards[i].depth < bestDepth) {
+        bestDepth = m_view.carousel().cards[i].depth;
         best = static_cast<int>(i);
       }
     }
@@ -258,7 +258,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         if (static_cast<int>(i) == dragIdx)
           continue;
         if (carouselMode() &&
-            (i >= m_carousel.cards.size() || !m_carousel.cards[i].visible))
+            (i >= m_view.carousel().cards.size() || !m_view.carousel().cards[i].visible))
           continue; // off-run: nothing of it is drawn
         const LRect cur = currentBox(m_tiles[i], static_cast<int>(i));
         if (closeButtonRect(tileBox(i, cur)).contains(lx, ly)) {
@@ -270,7 +270,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       }
     }
 
-    if (m_desktopMode || closeButtonsAlwaysOn()) {
+    if (m_view.desktop() || closeButtonsAlwaysOn()) {
       for (size_t i = 0; i < m_strip.size(); ++i) {
         if (m_strip[i].kind == model::StripItem::Kind::Plus || m_strip[i].kind == model::StripItem::Kind::All)
           continue;
@@ -428,7 +428,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         return true;
       }
       // Nearest tile within gap/2, not containment: a natural drop lands in the gap.
-      if (!m_desktopMode && w &&
+      if (!m_view.desktop() && w &&
           cfg::behavior.drag_to_swap != 0) {
         int best = -1;
         double bestDist2 = 1e18;
@@ -455,7 +455,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       }
       // Desktop mode parks the preview; the box lives on the Tile so
       // rebuilds keep it.
-      if (m_desktopMode && w) {
+      if (m_view.desktop() && w) {
         debug::dbg("[REL] branch=Tile->desktopPark");
         const LRect cur =
             m_tiles[press].target;
@@ -689,10 +689,10 @@ void Overview::focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason) {
     if (const auto ws = w->m_workspace;
         ws && (showAllWorkspaces() || ws != m_workspace.lock())) {
       // Nothing is rebuilt here. focusAndClose runs DURING the close and
-      // layoutTiles() recomputes m_run, so with m_allOverride already 0 the deck
+      // layoutTiles() recomputes m_view.run(), so with m_view.allOverride() already 0 the deck
       // stopped being a carousel before close() read it — every card flew to its
       // own box, all the same fullscreen rectangle, and met in one point.
-      m_allOverride = 0;
+      m_view.setAllOverride( 0);
       m_workspace = ws;
       m_hovered = m_hoveredStrip = -1;
       m_selected = -1;

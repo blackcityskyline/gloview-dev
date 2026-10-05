@@ -54,7 +54,7 @@ bool Overview::closeOnDoubleClick() const {
 // One rule for every layout, read by the hit-test too, so the ✕ can never appear
 // where a click will not close.
 bool Overview::tileCloseButtons() const {
-  return !closeOnDoubleClick() && (m_desktopMode || closeButtonsAlwaysOn());
+  return !closeOnDoubleClick() && (m_view.desktop() || closeButtonsAlwaysOn());
 }
 
 LRect Overview::closeButtonRect(const LRect &lb) const {
@@ -81,7 +81,7 @@ double Overview::entryFade(size_t i) const {
   if (i >= m_tiles.size())
     return 1.0;
   const auto &t = m_tiles[i];
-  if (t.appear >= 1.0 || m_wsSlideDir == 0 || m_enterStyle != "fade")
+  if (t.appear >= 1.0 || m_view.wsSlideDir() == 0 || m_enterStyle != "fade")
     return 1.0;
   return tileAppear(static_cast<int>(i));
 }
@@ -89,7 +89,7 @@ double Overview::entryFade(size_t i) const {
 // A preview always wears the window's own aspect, so the content's arcs meet the
 // ring's. A second way to compute a tile box is a second way to be wrong.
 LRect Overview::tileBox(size_t i, const LRect &slot) const {
-  if (m_desktopMode)
+  if (m_view.desktop())
     return slot;
   double aspect = slot.w / std::max(1.0, slot.h);
   if (i < m_tiles.size()) {
@@ -275,10 +275,10 @@ void Overview::renderGhosts() const {
                     g.box.w * k, g.box.h * k};
     LRect slidBox = box;
     float gAlpha = static_cast<float>((1.0 - eOut) * 0.85);
-    if (m_wsSlideDir != 0 && m_exitStyle == "slide") {
-      slidBox.x -= static_cast<double>(m_wsSlideDir) * m->m_size.x * eOut;
-    } else if (m_wsSlideDir != 0 && m_exitStyle == "slidevert") {
-      slidBox.y -= static_cast<double>(m_wsSlideDir) * m->m_size.y * eOut;
+    if (m_view.wsSlideDir() != 0 && m_exitStyle == "slide") {
+      slidBox.x -= static_cast<double>(m_view.wsSlideDir()) * m->m_size.x * eOut;
+    } else if (m_view.wsSlideDir() != 0 && m_exitStyle == "slidevert") {
+      slidBox.y -= static_cast<double>(m_view.wsSlideDir()) * m->m_size.y * eOut;
     }
     const CBox px = pxb(slidBox, scale);
     renderWindowLive(w, m, px, px, gAlpha, when,

@@ -31,6 +31,7 @@ class CGradientValueData; // general:col.active_border's real type
 
 #include "clock/clocks.hpp"
 #include "clock/clock.hpp"
+#include "view/state.hpp"
 #include "model/model.hpp"
 #include "pixel/cache.hpp"
 #include "render/backdrop.hpp"
@@ -90,13 +91,7 @@ public:
   void renderCarouselCounter() const;
   bool carouselMode() const;
   void stepCarousel(int dir); // center the next/previous card, circular
-  CarouselLayout m_carousel; // written by layoutTiles
-  // The selection m_carousel was built for; a change needs a relayout.
-  int m_carouselFor = -1;
   void relayoutCarousel();
-  // What layoutTiles resolved on its last call — the renderer's only source.
-  Engine m_engine = Engine::Rows;
-  bool   m_run = false; // the carousel run is on top of m_engine right now
   void renderGhosts() const;
   void renderDragTile() const;
   void renderDragWindow() const;
@@ -148,6 +143,8 @@ private:
   // m_active off now skips the overlay: one blank frame.
   bool m_pendingDeactivate = false;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
+  // Which view is on screen, where it is going, what the layout resolved.
+  view::State m_view;
   // The domain of time: every tween lives here and nowhere else.
   clock::Clocks m_clocks;
   double m_progress = 0.0;
@@ -172,11 +169,6 @@ private:
   PHLWINDOWREF m_pendingFocus;
 
   // free-arrange: tiles at the real positions, drag floats the real window.
-  bool m_desktopMode = false;
-  int m_allOverride = -1; // -1 follow config, 0 off, 1 on
-  double m_desktopS = 1.0;  // monitor->preview scale (inverse for drops)
-  double m_desktopOx = 0.0;
-  double m_desktopOy = 0.0;
 
   int m_newCardId = 0;
   bool m_newCardAnim = false;
@@ -290,9 +282,6 @@ private:
   bool swapWindows(const PHLWINDOW &a, const PHLWINDOW &b);
   std::vector<model::WinPulse> m_pulses;
   std::vector<model::SwapFX> m_swapfx; // strip thumbnails' flight machinery
-  int m_wsSlideDir = 0;                // sign of new-vs-old ws id, 0 = none
-  int m_expoFlip = 0;                  // +1 spreading, -1 collapsing
-  bool m_jumpMode = false;             // drives jump_in/out leaves
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
                      const CHyprColor &col, double p) const;
   void addWorkspace();
@@ -330,7 +319,6 @@ private:
   double m_killGlow = 0.0; // 1 at the zone, 0 a screen-width away, while dragging
   // Carousel on/off for the all-workspaces view. layoutTiles reads this, not the
   // config, so a toggle is not overwritten by the next layout.
-  bool m_carouselOn = true;
   std::vector<std::pair<PHLWINDOW, LRect>> captureCurrentBoxes(
       PHLWINDOW exclude = {}) const;
   void replayReflow(std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);

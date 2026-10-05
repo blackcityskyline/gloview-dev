@@ -335,51 +335,51 @@ void Overview::toggle() {
 // on; all -> all, run only flips. No path back — that is "a"'s job.
 void Overview::toggleCarousel() {
   if (!(m_active && m_opening)) {
-    m_carouselOn = true; // BEFORE open(): buildTiles reads it
-    m_allOverride = 1;
+    m_view.setCarouselOn( true); // BEFORE open(): buildTiles reads it
+    m_view.setAllOverride( 1);
     open();
     if (!m_active)
-      m_allOverride = -1;
+      m_view.setAllOverride( -1);
     return;
   }
   if (!showAllWorkspaces()) {
-    m_carouselOn = true; // BEFORE replayReflow -> layoutTiles reads it
+    m_view.setCarouselOn( true); // BEFORE replayReflow -> layoutTiles reads it
     toggleAllWorkspaces();
     return;
   }
-  m_carouselOn = !m_carouselOn;
+  m_view.setCarouselOn( !m_view.carouselOn());
   // The SAME rebuild the 'a' binding does: a bare layoutTiles() only rewrites
   // targets, so the carousel era's boxes survive and the grid is scattered.
-  m_wsSlideDir = 0; // the view is not changing, so no slide
-  m_expoFlip = 0;
+  m_view.setWsSlideDir( 0); // the view is not changing, so no slide
+  m_view.setExpoFlip( 0);
   auto oldBoxes = captureCurrentBoxes();
   replayReflow(oldBoxes);
-  debug::dbg("TOGGLE-CAROUSEL on=" + std::to_string(m_carouselOn));
+  debug::dbg("TOGGLE-CAROUSEL on=" + std::to_string(m_view.carouselOn()));
 }
 
 void Overview::toggleAllWorkspaces() {
   if (!(m_active && m_opening)) {
-    m_allOverride =
-        1; // BEFORE open(), so buildTiles sees it
+    m_view.setAllOverride(
+        1); // BEFORE open(), so buildTiles sees it
     open();
     if (!m_active)
-      m_allOverride = -1;
+      m_view.setAllOverride( -1);
     return;
   }
   const bool wasAll = showAllWorkspaces();
-  m_allOverride = wasAll ? 0 : 1;
-  m_wsSlideDir = 1; // all<->one slides horizontally (no ws order)
-  m_expoFlip = wasAll ? -1 : 1;
+  m_view.setAllOverride( wasAll ? 0 : 1);
+  m_view.setWsSlideDir( 1); // all<->one slides horizontally (no ws order)
+  m_view.setExpoFlip( wasAll ? -1 : 1);
   auto oldBoxes = captureCurrentBoxes();
   replayReflow(oldBoxes);
 }
 
 void Overview::altTabInvoke(bool reverse) {
   if (!(m_active && m_opening)) {
-    m_allOverride = 1;
+    m_view.setAllOverride( 1);
     open();
     if (!m_active) {
-      m_allOverride = -1;
+      m_view.setAllOverride( -1);
       return;
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
@@ -395,12 +395,12 @@ void Overview::altTabInvoke(bool reverse) {
 
 void Overview::toggleDesktop() {
   if (m_active && m_opening)
-    setDesktopMode(!m_desktopMode);
+    setDesktopMode(!m_view.desktop());
 }
 
 // canvas never moves or resizes a real window
 void Overview::setDesktopMode(bool on) {
-  m_desktopMode = on;
+  m_view.setDesktop( on);
 
   auto oldBoxes = captureCurrentBoxes();
   m_hovered = m_hoveredStrip = -1;
@@ -435,7 +435,7 @@ void Overview::open() {
   m_pendingFocus.reset();
   cancelPendingClick();
   m_altTabbing = false;
-  m_desktopMode = false;
+  m_view.setDesktop( false);
   m_newCardAnim = false;
   m_newCardId = 0;
   releaseNewWorkspaces();
@@ -457,10 +457,10 @@ void Overview::open() {
 
   layoutTiles();
 
-  m_carouselOn = cfg::carousel.on_open != 0;
+  m_view.setCarouselOn( cfg::carousel.on_open != 0);
   m_active = true;
   m_opening = true;
-  m_jumpMode = false;
+  m_view.setJumpMode( false);
   m_pendingJumpClose = false;
   m_openStamp = std::chrono::steady_clock::now();
   debug::dbg("OPEN tick=" + std::to_string(m_frameTick) +
@@ -554,7 +554,7 @@ void Overview::hardClose() {
   m_active = false;
   m_opening = false;
   m_pendingDeactivate = false;
-  m_desktopMode = false;
+  m_view.setDesktop( false);
   m_newCardAnim = false;
   m_newCardId = 0;
   m_progress = 0.0;
@@ -569,9 +569,9 @@ void Overview::hardClose() {
 }
 
 bool Overview::showAllWorkspaces() const {
-  return m_allOverride < 0
+  return m_view.allOverride() < 0
              ? (cfg::behavior.show_all_workspaces != 0)
-             : (m_allOverride != 0);
+             : (m_view.allOverride() != 0);
 }
 
 // buildTiles() and syncTiles() MUST share this
@@ -652,8 +652,8 @@ void Overview::deactivate() {
   m_active = false;
   m_opening = false;
   m_pendingDeactivate = false;
-  m_desktopMode = false;
-  m_allOverride = -1;
+  m_view.setDesktop( false);
+  m_view.setAllOverride( -1);
   m_altTabbing = false;
   m_newCardAnim = false;
   m_newCardId = 0;

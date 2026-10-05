@@ -57,30 +57,30 @@ anim::AnimCfg Overview::leaf(const char *name) const {
 }
 
 const char *Overview::entryLeaf() const {
-  if (m_expoFlip != 0)
-    return m_expoFlip > 0 ? "expo_in" : "expo_out";
-  return m_wsSlideDir != 0 ? "ws_enter" : "appear";
+  if (m_view.expoFlip() != 0)
+    return m_view.expoFlip() > 0 ? "expo_in" : "expo_out";
+  return m_view.wsSlideDir() != 0 ? "ws_enter" : "appear";
 }
 
 const char *Overview::ghostLeaf() const {
-  if (m_expoFlip != 0)
-    return m_expoFlip > 0 ? "expo_in" : "expo_out";
-  return m_wsSlideDir != 0 ? "ws_exit" : "appear";
+  if (m_view.expoFlip() != 0)
+    return m_view.expoFlip() > 0 ? "expo_in" : "expo_out";
+  return m_view.wsSlideDir() != 0 ? "ws_exit" : "appear";
 }
 
 const char *Overview::glideLeaf() const {
-  if (m_jumpMode) return m_opening ? "jump_in" : "jump_out";
-  return m_expoFlip > 0 ? "expo_in" : m_expoFlip < 0 ? "expo_out" : "glide";
+  if (m_view.jumpMode()) return m_opening ? "jump_in" : "jump_out";
+  return m_view.expoFlip() > 0 ? "expo_in" : m_view.expoFlip() < 0 ? "expo_out" : "glide";
 }
 
 double Overview::eased() const {
-  const char *leaf_name = (m_jumpMode && !m_opening) ? "jump_out"
+  const char *leaf_name = (m_view.jumpMode() && !m_opening) ? "jump_out"
                         : m_opening ? "open" : "close";
   return curves::eval(leaf(leaf_name).curve, m_progress);
 }
 
 double Overview::animDuration() const {
-  if (m_jumpMode && !m_opening) return leaf("jump_out").ms;
+  if (m_view.jumpMode() && !m_opening) return leaf("jump_out").ms;
   return leaf(m_opening ? "open" : "close").ms;
 }
 
@@ -119,10 +119,10 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
   const double ap = t.appear < 1.0 ? tileAppear(i) : 1.0;
   if (ap >= 1.0)
     return r;
-  if (m_wsSlideDir != 0 && m_enterStyle != "pop") {
+  if (m_view.wsSlideDir() != 0 && m_enterStyle != "pop") {
     if (const auto m = m_monitor.lock()) {
       if (m_enterStyle == "slide")
-        r.x += static_cast<double>(m_wsSlideDir) * m->m_size.x * (1.0 - ap);
+        r.x += static_cast<double>(m_view.wsSlideDir()) * m->m_size.x * (1.0 - ap);
       else if (m_enterStyle == "slidevert")
         r.y -= static_cast<double>(m->m_size.y) * (1.0 - ap);
     }
@@ -214,8 +214,8 @@ void Overview::updateAnimation() {
   });
 
   if (m_clocks.rebuild.done(m_ghost.ms) && m_clocks.rebuild.done(m_entry.ms)) {
-    m_wsSlideDir = 0;
-    m_expoFlip = 0;
+    m_view.setWsSlideDir( 0);
+    m_view.setExpoFlip( 0);
     if (m_pendingJumpClose) {
       m_pendingJumpClose = false;
       close();

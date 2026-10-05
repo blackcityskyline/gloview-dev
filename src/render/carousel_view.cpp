@@ -30,10 +30,10 @@ constexpr double kDepthTaper = 0.8;
 
 // What layoutTiles actually built, not what the config asks for.
 bool Overview::carouselMode() const {
-  return m_run;
+  return m_view.run();
 }
 
-// A selection move is a relayout + glide, detected once: renderStage vs m_carouselFor.
+// A selection move is a relayout + glide, detected once: renderStage vs m_view.carouselFor().
 void Overview::relayoutCarousel() {
   if (!carouselMode() || m_tiles.empty())
     return;
@@ -47,7 +47,7 @@ void Overview::relayoutCarousel() {
     return;
   if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
     return; // not a selection change; layoutTiles settles it next
-  if (m_selected == m_carouselFor)
+  if (m_selected == m_view.carouselFor())
     return;
   auto shown = captureCurrentBoxes();
   layoutTiles();
@@ -56,7 +56,7 @@ void Overview::relayoutCarousel() {
 
 void Overview::renderCarousel() const {
   const auto m = m_monitor.lock();
-  if (!m || m_tiles.empty() || m_carousel.cards.size() != m_tiles.size())
+  if (!m || m_tiles.empty() || m_view.carousel().cards.size() != m_tiles.size())
     return;
 
   std::vector<int> order;
@@ -64,15 +64,15 @@ void Overview::renderCarousel() const {
   for (size_t i = 0; i < m_tiles.size(); ++i)
     order.push_back(static_cast<int>(i));
   std::stable_sort(order.begin(), order.end(), [this](int a, int b) {
-    const auto &ca = m_carousel.cards[static_cast<size_t>(a)];
-    const auto &cb = m_carousel.cards[static_cast<size_t>(b)];
+    const auto &ca = m_view.carousel().cards[static_cast<size_t>(a)];
+    const auto &cb = m_view.carousel().cards[static_cast<size_t>(b)];
     if (ca.visible != cb.visible)
       return !ca.visible;
     return ca.depth > cb.depth;
   });
 
   for (const int i : order) {
-    const auto &card = m_carousel.cards[static_cast<size_t>(i)];
+    const auto &card = m_view.carousel().cards[static_cast<size_t>(i)];
     // A card off the run has no box; the one it is shown at is its slot from
     // before it left, and painting it there sails it across the backdrop.
     if (!card.visible)
@@ -125,12 +125,12 @@ void Overview::renderCarouselCounter() const {
   if (auto tex = m_pixel.label(const_cast<char *>("/carousel/count"), text,
                              cfg::colors.label.get(eased()), 15);
       tex && tex->m_size.x > 0) {
-    const double bw = m_carousel.countW, bh = m_carousel.countH;
-    // originX/Y are relative to m_carousel.area, not the monitor.
+    const double bw = m_view.carousel().countW, bh = m_view.carousel().countH;
+    // originX/Y are relative to m_view.carousel().area, not the monitor.
     const double bx =
-        m_carousel.area.x + m_carousel.originX + m_carousel.countX;
+        m_view.carousel().area.x + m_view.carousel().originX + m_view.carousel().countX;
     const double by =
-        m_carousel.area.y + m_carousel.originY + m_carousel.countY;
+        m_view.carousel().area.y + m_view.carousel().originY + m_view.carousel().countY;
     g_pHyprOpenGL->renderTexture(
         tex,
         pxb(LRect{bx + (bw - tex->m_size.x) / 2.0,

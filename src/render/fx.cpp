@@ -36,7 +36,7 @@ LRect Overview::dragBox() const {
   if (dragIdx < 0)
     return LRect{0, 0, 0, 0};
   const LRect base = m_tiles[dragIdx].target;
-  if (m_desktopMode)
+  if (m_view.desktop())
     return LRect{m_drag.x - m_drag.grabDX, m_drag.y - m_drag.grabDY,
                  base.w, base.h};
   const LRect full = tileBox(static_cast<size_t>(dragIdx), base);

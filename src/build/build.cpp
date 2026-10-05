@@ -303,17 +303,17 @@ void Overview::layoutTiles() {
   if (!m || m_tiles.empty())
     return;
 
-  // The renderer asks m_engine / m_run, never the config: free-arrange, the all/one
+  // The renderer asks m_view.engine() / m_view.run(), never the config: free-arrange, the all/one
   // flip and the carousel switch each override what `layout` says.
-  m_engine = m_desktopMode ? Engine::Natural
-                           : parseEngine(cfg::grid.layout.get().c_str());
+  m_view.setEngine(m_view.desktop() ? Engine::Natural
+                                    : parseEngine(cfg::grid.layout.get().c_str()));
   // A separate mechanism over any layout, only in the all-workspaces view: a
   // single workspace's handful of tiles has nothing to arrange against.
-  m_run = m_carouselOn && cfg::carousel.enabled != 0 && !m_desktopMode &&
-         showAllWorkspaces();
+  m_view.setRun( m_view.carouselOn() && cfg::carousel.enabled != 0 && !m_view.desktop() &&
+         showAllWorkspaces());
 
   LayoutCfg cfg;
-  cfg.engine = m_engine;
+  cfg.engine = m_view.engine();
   cfg.gap = cfg::grid.gap;
   const int padX = cfg::grid.padding;
   const int padT = cfg::grid.padding_top;
@@ -342,7 +342,7 @@ void Overview::layoutTiles() {
   cfg.maxScale = cfg::grid.max_scale;
 
   // whole monitor scaled into the usable box
-  if (m_desktopMode) {
+  if (m_view.desktop()) {
     const double usableX = cfg.padLeft;
     const double usableY = cfg.padTop;
     const double usableW =
@@ -351,26 +351,24 @@ void Overview::layoutTiles() {
         std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom);
     const double s = std::min({usableW / m->m_size.x, usableH / m->m_size.y,
                                static_cast<double>(cfg.maxScale)});
-    m_desktopS = s;
-    m_desktopOx = usableX + (usableW - m->m_size.x * s) / 2.0;
-    m_desktopOy = usableY + (usableH - m->m_size.y * s) / 2.0;
+    m_view.setTransform(s, usableX + (usableW - m->m_size.x * s) / 2.0,
+                        usableY + (usableH - m->m_size.y * s) / 2.0);
     for (auto &t : m_tiles) {
       if (t.parked)
         continue;
-      t.target = LRect{m_desktopOx + t.natural.x * s,
-                       m_desktopOy + t.natural.y * s,
+      t.target = LRect{m_view.ox() + t.natural.x * s,
+                       m_view.oy() + t.natural.y * s,
                        std::max(1.0, t.natural.w * s),
                        std::max(1.0, t.natural.h * s)};
     }
     return;
   }
-  m_carousel        = {};
-  m_carouselFor     = -1;
+  m_view.clearCards();
 
   // The run replaces the main area wholesale: it lays one window against its
   // neighbours, which a grid of boxes cannot express. Slots are built AROUND
   // m_selected: selection = relayout, not repaint.
-  if (m_run) {
+  if (m_view.run()) {
     const int sel = (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size()))
                         ? m_selected
                         : 0;
@@ -389,16 +387,16 @@ void Overview::layoutTiles() {
       mt.boxW = std::min(static_cast<double>(w), m->m_size.x);
       mt.boxH = mt.boxW * m->m_size.y / m->m_size.x;
     }
-    m_carousel = computeCarousel(static_cast<int>(m_tiles.size()), sel, usable,
-                                 mt);
-    m_carouselFor = sel;
+    m_view.resolve(m_view.engine(),
+                   computeCarousel(static_cast<int>(m_tiles.size()), sel, usable, mt),
+                   sel);
     for (size_t i = 0; i < m_tiles.size(); ++i) {
-      const auto &c = m_carousel.cards[i];
+      const auto &c = m_view.carousel().cards[i];
       // Zero target = off-run. Nothing paints an off-run card, so where it would
       // have gone does not matter; a zeroed box keeps the glide from resizing it.
-      m_tiles[i].target = c.visible ? LRect{usable.x + m_carousel.originX + c.x,
-                                            usable.y + m_carousel.originY +
-                                                m_carousel.stripY + c.y,
+      m_tiles[i].target = c.visible ? LRect{usable.x + m_view.carousel().originX + c.x,
+                                            usable.y + m_view.carousel().originY +
+                                                m_view.carousel().stripY + c.y,
                                             c.w, c.h}
                                     : LRect{};
       // Capture the caption HERE, where the card width is known, cut to it. Paint
@@ -416,8 +414,7 @@ void Overview::layoutTiles() {
     }
     return;
   }
-  m_carousel        = {};
-  m_carouselFor     = -1;
+  m_view.clearCards();
 
   std::vector<LRect> nat;
   nat.reserve(m_tiles.size());

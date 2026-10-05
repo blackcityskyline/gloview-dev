@@ -331,13 +331,13 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
   } else
     return;
 
-  // Read the PREVIOUS ws BEFORE reassigning: m_wsSlideDir arms from the id order.
+  // Read the PREVIOUS ws BEFORE reassigning: m_view.wsSlideDir() arms from the id order.
   const auto oldWs = m_workspace.lock();
   m_workspace = ws;
 
   m_hovered = m_hoveredStrip = -1;
   if (oldWs && ws && ws->m_id != oldWs->m_id)
-    m_wsSlideDir = ws->m_id > oldWs->m_id ? 1 : -1;
+    m_view.setWsSlideDir( ws->m_id > oldWs->m_id ? 1 : -1);
   // The frozen backdrop belongs to the PREVIOUS ws — do NOT invalidate it.
   const auto oldBoxes = captureCurrentBoxes();
   buildTiles();
@@ -347,8 +347,8 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
       std::to_string(m_tiles.size()));
   // instant=true (jump mode) skips the ws-slide so close() cannot collide.
   if (instant) {
-    m_wsSlideDir = 0;
-    m_jumpMode   = true;
+    m_view.setWsSlideDir( 0);
+    m_view.setJumpMode( true);
     m_ghosts.clear();
     for (auto &t : m_tiles)
       t.appear = 1.0;

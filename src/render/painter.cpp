@@ -107,7 +107,7 @@ void Overview::renderStage(eRenderStage stage) {
         " drag=" + std::to_string((int)m_drag.press) + "/" +
         std::to_string(m_drag.lifted) + "/" + std::to_string(m_drag.idx) +
         " sfx=" + std::to_string(m_swapfx.size()) +
-        " dir=" + std::to_string(m_wsSlideDir) +
+        " dir=" + std::to_string(m_view.wsSlideDir()) +
         " gh=" + std::to_string(m_ghosts.size()) +
         " pop=" + std::to_string(!m_clocks.rebuild.done(m_entry.ms)));
   }
@@ -127,7 +127,7 @@ void Overview::renderStage(eRenderStage stage) {
       debug::dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
           " tiles=" + std::to_string(m_tiles.size()));
       if (const auto prev = m_workspace.lock())
-        m_wsSlideDir = m->m_activeWorkspace->m_id > prev->m_id ? 1 : -1;
+        m_view.setWsSlideDir( m->m_activeWorkspace->m_id > prev->m_id ? 1 : -1);
       m_workspace = m->m_activeWorkspace;
       const auto shown = captureCurrentBoxes();
       buildTiles();
