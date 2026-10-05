@@ -250,8 +250,7 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     const double availW = std::max(1.0, screen.w - mt.screenMargin * 2.0);
     const double availH = std::max(1.0, screen.h - mt.screenMargin * 2.0 -
                                              mt.countH - mt.sectionGap);
-    // The user's zoom rides on top of the fit: past 1.0 the run overflows
-    // deliberately rather than being clamped back.
+    // The user's zoom rides on top of the fit; past 1.0 it overflows deliberately.
     const double k =
         std::min({1.0, availW / std::max(1.0, stripW),
                   availH / std::max(1.0, stripH)}) * mt.scale;
@@ -261,8 +260,9 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     const double kCard =
         std::min(k, std::min(screen.w / boxW, screen.h / stripH));
 
-    L.stripW = stripW * k;
-    L.stripH = stripH * k;
+    // kCard, not k: a panel measured at the unclamped scale is taller than what it holds.
+    L.stripW = stripW * kCard;
+    L.stripH = stripH * kCard;
     L.panelW = L.stripW;
     L.panelH = mt.countH + mt.sectionGap + L.stripH;
     L.stripY = mt.countH + mt.sectionGap;

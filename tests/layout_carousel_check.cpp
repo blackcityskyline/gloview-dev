@@ -255,6 +255,10 @@ void sectionF_singleCardZoomStaysOnScreen() {
   const auto &c = L.cards[0];
   yes(c.w <= kScreenW, "one zoomed card is no wider than the screen");
   yes(c.h <= kScreenH, "one zoomed card is no taller than the screen");
+  // The panel positions the card vertically and was still measured at the unclamped scale.
+  const double top = L.originY + L.stripY + c.y;
+  yes(top >= 0.0, "one zoomed card does not hang off the top");
+  yes(top + c.h <= kScreenH, "one zoomed card and its caption stay on screen");
 }
 
 } // namespace
