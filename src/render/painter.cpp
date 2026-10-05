@@ -117,11 +117,6 @@ void Overview::renderStage(eRenderStage stage) {
 
   updateHover();
   relayoutCarousel();
-  // glideDur(), NOT m_clocks.tileMs: the snapshot is cleared once the glide is
-  // retired, and done(0) reads as instantly complete — so asking that question made
-  // this wait vacuous and the step restarted the glide mid-flight, which is the
-  // shudder. glideDur() falls back to the leaf when the snapshot is gone, so it
-  // answers with the duration that is actually in force.
   const bool entrySettled =
       m_clocks.master.done(leaf("open").ms) && m_clocks.tiles.done(glideDur());
   if (m_autoStep != 0 && m_opening && !m_pendingDeactivate && entrySettled) {
