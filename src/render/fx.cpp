@@ -35,7 +35,7 @@ LRect Overview::dragBox() const {
   const int dragIdx = draggedTile();
   if (dragIdx < 0)
     return LRect{0, 0, 0, 0};
-  const LRect base = m_tiles[dragIdx].target;
+  const LRect base = m_scene.tiles()[dragIdx].target;
   if (m_view.desktop())
     return LRect{m_drag.x - m_drag.grabDX, m_drag.y - m_drag.grabDY,
                  base.w, base.h};
@@ -208,11 +208,11 @@ void Overview::renderPulses(bool strip) const {
         }
       }
     } else {
-      for (size_t i = 0; i < m_tiles.size(); ++i) {
-        if (m_tiles[i].win.lock() != w)
+      for (size_t i = 0; i < m_scene.tiles().size(); ++i) {
+        if (m_scene.tiles()[i].win.lock() != w)
           continue;
         const LRect lb =
-            tileBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
+            tileBox(i, currentBox(m_scene.tiles()[i], static_cast<int>(i)));
         // The pulse tracks the tile's own radius, so it lands on the same arc.
         drawPulseRing(pxb(lb, s),
                       pxr(clampRound(cfg::look.preview_round, lb.w, lb.h), s),
@@ -253,9 +253,9 @@ void Overview::renderSwapFX() const {
       continue;
     LRect to;
     bool found = false;
-    for (size_t i = 0; i < m_tiles.size() && !found; ++i)
-      if (m_tiles[i].win.lock() == w) {
-        to = tileBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
+    for (size_t i = 0; i < m_scene.tiles().size() && !found; ++i)
+      if (m_scene.tiles()[i].win.lock() == w) {
+        to = tileBox(i, currentBox(m_scene.tiles()[i], static_cast<int>(i)));
         found = true;
       }
     for (size_t i = 0; i < m_strip.size() && !found; ++i) {

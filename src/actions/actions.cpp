@@ -173,12 +173,12 @@ bool Overview::swapWindows(const PHLWINDOW &wa, const PHLWINDOW &wb) {
 }
 
 void Overview::swapTiles(int a, int b) {
-  if (a < 0 || b < 0 || a == b || a >= static_cast<int>(m_tiles.size()) ||
-      b >= static_cast<int>(m_tiles.size())) {
+  if (a < 0 || b < 0 || a == b || a >= static_cast<int>(m_scene.tiles().size()) ||
+      b >= static_cast<int>(m_scene.tiles().size())) {
     damage();
     return;
   }
-  if (!swapWindows(m_tiles[a].win.lock(), m_tiles[b].win.lock()))
+  if (!swapWindows(m_scene.tiles()[a].win.lock(), m_scene.tiles()[b].win.lock()))
     damage();
 }
 
@@ -231,7 +231,7 @@ void Overview::landAfterMove(const PHLWINDOW &w, const LRect &oldBox,
                 ms, curve);
     return;
   }
-  for (auto &t : m_tiles)
+  for (auto &t : m_scene.edit())
     if (t.win.lock() == w) {
       t.natural = oldBox;
       t.appear = 1.0;
@@ -335,7 +335,7 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
   const auto oldWs = m_workspace.lock();
   m_workspace = ws;
 
-  m_hovered = m_hoveredStrip = -1;
+  m_scene.clearHover();
   if (oldWs && ws && ws->m_id != oldWs->m_id)
     m_view.setWsSlideDir( ws->m_id > oldWs->m_id ? 1 : -1);
   // The frozen backdrop belongs to the PREVIOUS ws — do NOT invalidate it.
@@ -344,13 +344,13 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
   buildStrip();
   layoutTiles();
   debug::dbg("SWITCH ->" + std::to_string(ws ? ws->m_id : -1) + " tiles=" +
-      std::to_string(m_tiles.size()));
+      std::to_string(m_scene.tiles().size()));
   // instant=true (jump mode) skips the ws-slide so close() cannot collide.
   if (instant) {
     m_view.setWsSlideDir( 0);
     m_view.setJumpMode( true);
     m_fx.clearGhosts();
-    for (auto &t : m_tiles)
+    for (auto &t : m_scene.edit())
       t.appear = 1.0;
     m_clocks.rebuild.pinEnd(std::max(m_entry.ms, m_ghost.ms));
     m_clocks.tiles.pinEnd(glideDur());
@@ -361,12 +361,12 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
     damage();
     return;
   }
-  for (auto &t : m_tiles)
+  for (auto &t : m_scene.edit())
     t.appear = 0.0;
   m_fx.clearGhosts();
   for (const auto &[oldWin, oldBox] : oldBoxes) {
     bool kept = false;
-    for (const auto &t : m_tiles)
+    for (const auto &t : m_scene.tiles())
       if (t.win.lock() == oldWin) { kept = true; break; }
     if (!kept)
       m_fx.addGhost(model::Ghost{oldWin, oldBox});
@@ -434,16 +434,16 @@ void Overview::addWorkspace() {
     switchToWorkspace(
         it);
   } else {
-    m_hovered = m_hoveredStrip = -1;
+    m_scene.clearHover();
     buildStrip();
     damage();
   }
 }
 
 void Overview::closeTileWindow(int i) {
-  if (i < 0 || i >= static_cast<int>(m_tiles.size()))
+  if (i < 0 || i >= static_cast<int>(m_scene.tiles().size()))
     return;
-  const auto w = m_tiles[i].win.lock();
+  const auto w = m_scene.tiles()[i].win.lock();
   if (!w)
     return;
   debug::dbg("close tile window");

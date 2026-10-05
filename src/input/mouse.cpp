@@ -113,10 +113,10 @@ int Overview::tileAt(double lx, double ly) const {
   if (carouselMode()) {
     // Cards overlap: first-match hits the wrong one, so scan front to back.
     int best = -1, bestDepth = 1 << 30;
-    for (size_t i = 0; i < m_tiles.size(); ++i) {
+    for (size_t i = 0; i < m_scene.tiles().size(); ++i) {
       if (i >= m_view.carousel().cards.size() || !m_view.carousel().cards[i].visible)
         continue;
-      if (!currentBox(m_tiles[i], static_cast<int>(i)).contains(lx, ly))
+      if (!currentBox(m_scene.tiles()[i], static_cast<int>(i)).contains(lx, ly))
         continue;
       if (m_view.carousel().cards[i].depth < bestDepth) {
         bestDepth = m_view.carousel().cards[i].depth;
@@ -125,8 +125,8 @@ int Overview::tileAt(double lx, double ly) const {
     }
     return best;
   }
-  for (size_t i = 0; i < m_tiles.size(); ++i)
-    if (currentBox(m_tiles[i], static_cast<int>(i)).contains(lx, ly))
+  for (size_t i = 0; i < m_scene.tiles().size(); ++i)
+    if (currentBox(m_scene.tiles()[i], static_cast<int>(i)).contains(lx, ly))
       return static_cast<int>(i);
   return -1;
 }
@@ -150,7 +150,7 @@ void Overview::dropLiftIfNotMoved() {
 
 int Overview::draggedTile() const {
   return (m_drag.press == model::Drag::Press::Tile && m_drag.lifted &&
-          m_drag.idx < static_cast<int>(m_tiles.size()))
+          m_drag.idx < static_cast<int>(m_scene.tiles().size()))
              ? m_drag.idx
              : -1;
 }
@@ -169,10 +169,9 @@ void Overview::updateHover() {
     if (m_drag.lifted) {
       m_drag.x = lx;
       m_drag.y = ly;
-      m_hoveredStrip = stripItemAt(lx, ly);
-      m_hovered = (m_drag.press == model::Drag::Press::Tile)
+      m_scene.hover((m_drag.press == model::Drag::Press::Tile)
                       ? m_drag.idx
-                      : -1;
+                      : -1, stripItemAt(lx, ly));
       damage();
       return;
     }
@@ -180,23 +179,22 @@ void Overview::updateHover() {
 
   const int newTile = tileAt(lx, ly);
   const int newStrip = stripItemAt(lx, ly);
-  if (newTile != m_hovered || newStrip != m_hoveredStrip) {
-    const int oldTile = m_hovered, oldStrip = m_hoveredStrip,
-              oldSel = m_selected;
-    m_hovered = newTile;
-    m_hoveredStrip = newStrip;
+  if (newTile != m_scene.hoveredTile() || newStrip != m_scene.hoveredStrip()) {
+    const int oldTile = m_scene.hoveredTile(), oldStrip = m_scene.hoveredStrip(),
+              oldSel = m_scene.selected();
+    m_scene.hover(newTile, newStrip);
     // Carousel: hover must NOT move the selection (slots are built around it).
     if (newTile >= 0 && cfg::behavior.focus_follows_mouse != 0 &&
         !carouselMode()) {
-      m_selected = newTile;
+      m_scene.select(newTile);
       syncFocus(); // so passthrough keybinds hit it
     }
     const auto m = m_monitor.lock();
     if (m) {
       auto dmgTile = [&](int idx) {
-        if (idx < 0 || idx >= static_cast<int>(m_tiles.size()))
+        if (idx < 0 || idx >= static_cast<int>(m_scene.tiles().size()))
           return;
-        LRect b = currentBox(m_tiles[idx], idx);
+        LRect b = currentBox(m_scene.tiles()[idx], idx);
         b.grow(48.0);
         g_pHyprRenderer->damageBox(
             CBox{b.x + m->m_position.x, b.y + m->m_position.y, b.w, b.h});
@@ -212,7 +210,7 @@ void Overview::updateHover() {
       };
       dmgTile(oldTile);
       dmgTile(newTile);
-      if (oldSel != m_selected)
+      if (oldSel != m_scene.selected())
         dmgTile(oldSel);
       dmgCard(oldStrip);
       dmgCard(newStrip);
@@ -254,13 +252,13 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     if (tileCloseButtons()) {
       // tileBox is what drawTile used, so the hit-test cannot drift from it.
       const int dragIdx = draggedTile();
-      for (size_t i = 0; i < m_tiles.size(); ++i) {
+      for (size_t i = 0; i < m_scene.tiles().size(); ++i) {
         if (static_cast<int>(i) == dragIdx)
           continue;
         if (carouselMode() &&
             (i >= m_view.carousel().cards.size() || !m_view.carousel().cards[i].visible))
           continue; // off-run: nothing of it is drawn
-        const LRect cur = currentBox(m_tiles[i], static_cast<int>(i));
+        const LRect cur = currentBox(m_scene.tiles()[i], static_cast<int>(i));
         if (closeButtonRect(tileBox(i, cur)).contains(lx, ly)) {
           m_drag.press =
               model::Drag::Press::Consumed; // handled on press
@@ -327,7 +325,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     if (const int hit = tileAt(lx, ly); hit >= 0) {
       m_drag.press = model::Drag::Press::Tile;
       m_drag.idx = hit;
-      const LRect b = currentBox(m_tiles[hit], hit);
+      const LRect b = currentBox(m_scene.tiles()[hit], hit);
       m_drag.pressX = m_drag.x = lx;
       m_drag.pressY = m_drag.y = ly;
       m_drag.grabDX = lx - b.x;
@@ -354,7 +352,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
   case model::Drag::Press::Tile: {
     const int press = m_drag.idx;
     m_killGlow = 0.0; // a stale glow would stay painted after the drop
-    const auto w = m_tiles[press].win.lock();
+    const auto w = m_scene.tiles()[press].win.lock();
     const double grabDX = m_drag.grabDX, grabDY = m_drag.grabDY;
     debug::dbg("[REL] press=Tile lifted=" + std::to_string(m_drag.lifted) +
                " rmb=" + std::to_string(m_drag.button == BTN_RIGHT) +
@@ -415,10 +413,10 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         debug::dbg("[REL] branch=Tile->killZone");
         // Hand the centre to whatever lands in the closed window's place. By
         // index: the tile is being rebuilt and its neighbour shifts into this slot.
-        if (press == m_selected && m_tiles.size() > 1) {
-          m_selected = static_cast<int>(press % (m_tiles.size() - 1));
-          m_selected = std::clamp(m_selected, 0,
-                                   static_cast<int>(m_tiles.size()) - 2);
+        if (press == m_scene.selected() && m_scene.tiles().size() > 1) {
+          m_scene.select(static_cast<int>(press % (m_scene.tiles().size() - 1)));
+          m_scene.select(std::clamp(m_scene.selected(), 0,
+                                   static_cast<int>(m_scene.tiles().size()) - 2));
         }
         closeTileWindow(press);
         beginSwapFX(w, m_lastDragBox, model::SwapStyle::Horizontal,
@@ -432,10 +430,10 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           cfg::behavior.drag_to_swap != 0) {
         int best = -1;
         double bestDist2 = 1e18;
-        for (size_t i = 0; i < m_tiles.size(); ++i) {
+        for (size_t i = 0; i < m_scene.tiles().size(); ++i) {
           if (static_cast<int>(i) == press)
             continue;
-          const LRect b = currentBox(m_tiles[i], static_cast<int>(i));
+          const LRect b = currentBox(m_scene.tiles()[i], static_cast<int>(i));
           const double cx = std::clamp(lx, b.x, b.x + b.w);
           const double cy = std::clamp(ly, b.y, b.y + b.h);
           const double dx = lx - cx, dy = ly - cy;
@@ -458,19 +456,19 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       if (m_view.desktop() && w) {
         debug::dbg("[REL] branch=Tile->desktopPark");
         const LRect cur =
-            m_tiles[press].target;
+            m_scene.tiles()[press].target;
         const LRect parked{lx - grabDX, ly - grabDY, cur.w, cur.h};
-        auto &t = m_tiles[press];
+        auto &t = m_scene.edit()[press];
         t.target = t.natural = parked;
         t.parked = true;
-        m_hovered = -1;
+        m_scene.hover(-1, m_scene.hoveredStrip());
         damage();
         return true;
       }
       debug::dbg("[REL] branch=Tile->flyback");
       replayReflow(oldBoxes);
-      if (press < static_cast<int>(m_tiles.size())) {
-        auto &t = m_tiles[press];
+      if (press < static_cast<int>(m_scene.tiles().size())) {
+        auto &t = m_scene.edit()[press];
         t.natural = t.target;
         t.appear = 1.0;
       }
@@ -482,11 +480,11 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
     }
     m_drag = {};
     // The run comes to the card you clicked; only the FOCUSED card commits.
-    // Setting m_selected is enough — relayoutCarousel glides the run around it.
-    if (carouselMode() && press >= 0 && press < static_cast<int>(m_tiles.size()) &&
-        press != m_selected) {
+    // Setting m_scene.selected() is enough — relayoutCarousel glides the run around it.
+    if (carouselMode() && press >= 0 && press < static_cast<int>(m_scene.tiles().size()) &&
+        press != m_scene.selected()) {
       debug::dbg("[REL] branch=Tile->carouselFocus idx=" + std::to_string(press));
-      m_selected = press;
+      m_scene.select(press);
       syncFocus();
       damage();
       return true;
@@ -606,10 +604,10 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           if (rmb) {
             int best = -1;
             double bestDist2 = 1e18;
-            for (size_t i = 0; i < m_tiles.size(); ++i) {
-              const auto tv = m_tiles[i].win.lock();
+            for (size_t i = 0; i < m_scene.tiles().size(); ++i) {
+              const auto tv = m_scene.tiles()[i].win.lock();
               if (!tv || tv == w) continue;
-              const LRect b = currentBox(m_tiles[i], static_cast<int>(i));
+              const LRect b = currentBox(m_scene.tiles()[i], static_cast<int>(i));
               const double cx = std::clamp(lx, b.x, b.x + b.w);
               const double cy = std::clamp(ly, b.y, b.y + b.h);
               const double d2 = (lx-cx)*(lx-cx) + (ly-cy)*(ly-cy);
@@ -617,8 +615,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
             }
             const double tol = std::max(0.0, cfg::grid.gap / 2.0 + 8.0);
             if (best >= 0 && bestDist2 <= tol * tol) {
-              const auto vj = m_tiles[best].win.lock();
-              const LRect vOld = currentBox(m_tiles[best], best);
+              const auto vj = m_scene.tiles()[best].win.lock();
+              const LRect vOld = currentBox(m_scene.tiles()[best], best);
               if (vj && swapWindows(w, vj)) {
                 debug::dbg("[REL] branch=StripWin->gridTileSwap");
                 landAfterMove(w,  fromBox, leaf("swap_main").ms,    leaf("swap_main").curve);
@@ -694,11 +692,11 @@ void Overview::focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason) {
       // own box, all the same fullscreen rectangle, and met in one point.
       m_view.setAllOverride( 0);
       m_workspace = ws;
-      m_hovered = m_hoveredStrip = -1;
-      m_selected = -1;
-      for (size_t i = 0; i < m_tiles.size(); ++i)
-        if (m_tiles[i].win.lock() == w) {
-          m_selected = static_cast<int>(i);
+      m_scene.clearHover();
+      m_scene.select(-1);
+      for (size_t i = 0; i < m_scene.tiles().size(); ++i)
+        if (m_scene.tiles()[i].win.lock() == w) {
+          m_scene.select(static_cast<int>(i));
           break;
         }
     }

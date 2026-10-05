@@ -33,6 +33,7 @@ class CGradientValueData; // general:col.active_border's real type
 #include "clock/clock.hpp"
 #include "view/state.hpp"
 #include "model/effects.hpp"
+#include "model/scene.hpp"
 #include "model/model.hpp"
 #include "pixel/cache.hpp"
 #include "render/backdrop.hpp"
@@ -144,6 +145,8 @@ private:
   // m_active off now skips the overlay: one blank frame.
   bool m_pendingDeactivate = false;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
+  // The cards in the main area, the focus and the cursor.
+  model::Scene m_scene;
   // Ghosts, pulses, thumbnail flights, workspaces held until close.
   model::Effects m_fx;
   // Which view is on screen, where it is going, what the layout resolved.
@@ -158,15 +161,11 @@ private:
   PHLMONITORREF m_monitor;
   PHLWORKSPACEREF m_workspace;
   PHLWORKSPACEREF m_liveWsAtOpen; // for exit_on_switch
-  std::vector<model::Tile> m_tiles;
   std::vector<model::StripItem> m_strip;
   // mutable: capture is lazy, the first caller of a width renders it.
   mutable pixel::PixelCache m_pixel;
   double m_scrollAccum = 0.0; // sub-card wheel leftover, so slow paging still moves
   std::vector<std::pair<PHLLSREF, float>> m_hiddenLayers; // + pre-hide alpha
-  int m_hovered = -1;      // index into m_tiles
-  int m_hoveredStrip = -1;
-  int m_selected = -1;     // keyboard-nav cursor into m_tiles
   // Committed focus target: a ws change re-asserts focus from its own history,
   // which can still name the old window.
   PHLWINDOWREF m_pendingFocus;

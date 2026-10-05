@@ -29,11 +29,11 @@ namespace gloview {
 void Overview::buildTiles() {
   // parked boxes survive the rebuild
   std::unordered_map<PHLWINDOWREF, std::pair<LRect, bool>> priorTargets;
-  for (const auto &t : m_tiles)
+  for (const auto &t : m_scene.edit())
     if (t.parked)
       if (const auto w = t.win.lock())
         priorTargets.emplace(w, std::pair{t.target, true});
-  m_tiles.clear();
+  m_scene.edit().clear();
   const auto m = m_monitor.lock();
   const auto ws = m_workspace.lock();
   if (!m || !ws)
@@ -54,13 +54,13 @@ void Overview::buildTiles() {
     const auto s = w->sizeAnimation()->goal();
     t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
                       std::max(1.0, s.x), std::max(1.0, s.y)};
-    m_tiles.push_back(t);
+    m_scene.edit().push_back(t);
   }
 
   if (g_pHyprOpenGL && g_pHyprRenderer) {
     g_pHyprOpenGL->makeEGLCurrent();
     const auto lblCol = cfg::colors.label.get();
-    for (auto &t : m_tiles) {
+    for (auto &t : m_scene.edit()) {
       const auto w = t.win.lock();
       if (!w)
         continue;
@@ -300,7 +300,7 @@ LRect Overview::stripWinSlotRect(const model::StripItem &it, const LRect &card,
 
 void Overview::layoutTiles() {
   const auto m = m_monitor.lock();
-  if (!m || m_tiles.empty())
+  if (!m || m_scene.edit().empty())
     return;
 
   // The renderer asks m_view.engine() / m_view.run(), never the config: free-arrange, the all/one
@@ -353,7 +353,7 @@ void Overview::layoutTiles() {
                                static_cast<double>(cfg.maxScale)});
     m_view.setTransform(s, usableX + (usableW - m->m_size.x * s) / 2.0,
                         usableY + (usableH - m->m_size.y * s) / 2.0);
-    for (auto &t : m_tiles) {
+    for (auto &t : m_scene.edit()) {
       if (t.parked)
         continue;
       t.target = LRect{m_view.ox() + t.natural.x * s,
@@ -367,11 +367,10 @@ void Overview::layoutTiles() {
 
   // The run replaces the main area wholesale: it lays one window against its
   // neighbours, which a grid of boxes cannot express. Slots are built AROUND
-  // m_selected: selection = relayout, not repaint.
+  // selection = relayout, not repaint.
   if (m_view.run()) {
-    const int sel = (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size()))
-                        ? m_selected
-                        : 0;
+    const int sel =
+      m_scene.hasSelection() ? m_scene.selected() : 0;
     const LRect usable{cfg.padLeft, cfg.padTop,
                        std::max(1.0, m->m_size.x - cfg.padLeft - cfg.padRight),
                        std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
@@ -388,13 +387,13 @@ void Overview::layoutTiles() {
       mt.boxH = mt.boxW * m->m_size.y / m->m_size.x;
     }
     m_view.resolve(m_view.engine(),
-                   computeCarousel(static_cast<int>(m_tiles.size()), sel, usable, mt),
+                   computeCarousel(static_cast<int>(m_scene.edit().size()), sel, usable, mt),
                    sel);
-    for (size_t i = 0; i < m_tiles.size(); ++i) {
+    for (size_t i = 0; i < m_scene.edit().size(); ++i) {
       const auto &c = m_view.carousel().cards[i];
       // Zero target = off-run. Nothing paints an off-run card, so where it would
       // have gone does not matter; a zeroed box keeps the glide from resizing it.
-      m_tiles[i].target = c.visible ? LRect{usable.x + m_view.carousel().originX + c.x,
+      m_scene.edit()[i].target = c.visible ? LRect{usable.x + m_view.carousel().originX + c.x,
                                             usable.y + m_view.carousel().originY +
                                                 m_view.carousel().stripY + c.y,
                                             c.w, c.h}
@@ -403,12 +402,12 @@ void Overview::layoutTiles() {
       // only reads: mid-pass text rendering is unsafe, and asking at paint time
       // measured the pill off the uncut entry.
       if (c.visible) {
-        if (const auto w = m_tiles[i].win.lock())
+        if (const auto w = m_scene.edit()[i].win.lock())
           // The fitted box, not the card: a portrait window is drawn narrower than
           // the standard card, and the pill is sized off what it actually covers.
-          m_tiles[i].label = m_pixel.label(
-              w.get(), m_tiles[i].labelText, cfg::colors.label.get(1.0), 15,
-              static_cast<int>(std::max(1.0, tileBox(i, m_tiles[i].target).w -
+          m_scene.edit()[i].label = m_pixel.label(
+              w.get(), m_scene.edit()[i].labelText, cfg::colors.label.get(1.0), 15,
+              static_cast<int>(std::max(1.0, tileBox(i, m_scene.edit()[i].target).w -
                                                  28.0)));
       }
     }
@@ -417,24 +416,25 @@ void Overview::layoutTiles() {
   m_view.clearCards();
 
   std::vector<LRect> nat;
-  nat.reserve(m_tiles.size());
-  for (const auto &t : m_tiles)
+  nat.reserve(m_scene.edit().size());
+  for (const auto &t : m_scene.edit())
     nat.push_back(t.natural);
 
   const auto out =
       computeLayout(nat, LRect{0, 0, m->m_size.x, m->m_size.y}, cfg);
-  for (size_t i = 0; i < m_tiles.size(); ++i)
-    m_tiles[i].target = out[i];
+  for (size_t i = 0; i < m_scene.edit().size(); ++i)
+    m_scene.edit()[i].target = out[i];
 }
 
 // Survivors glide from their captured boxes; no chrome re-reveal.
 std::vector<std::pair<PHLWINDOW, LRect>>
 Overview::captureCurrentBoxes(PHLWINDOW exclude) const {
   std::vector<std::pair<PHLWINDOW, LRect>> boxes;
-  boxes.reserve(m_tiles.size());
-  for (size_t i = 0; i < m_tiles.size(); ++i) {
-    if (const auto win = m_tiles[i].win.lock(); win && win != exclude)
-      boxes.emplace_back(win, currentBox(m_tiles[i], static_cast<int>(i)));
+  const auto &tiles = m_scene.tiles();
+  boxes.reserve(tiles.size());
+  for (size_t i = 0; i < tiles.size(); ++i) {
+    if (const auto win = tiles[i].win.lock(); win && win != exclude)
+      boxes.emplace_back(win, currentBox(tiles[i], static_cast<int>(i)));
   }
   return boxes;
 }
@@ -445,7 +445,7 @@ void Overview::startTileGlide(
     const std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes) {
   bool newcomers = false;
   if (!oldBoxes.empty()) {
-    for (auto &t : m_tiles) {
+    for (auto &t : m_scene.edit()) {
       t.natural = t.target;
       bool matched = false;
       for (const auto &[oldWin, oldBox] : oldBoxes)
@@ -461,13 +461,13 @@ void Overview::startTileGlide(
     m_fx.clearGhosts();
     for (const auto &[oldWin, oldBox] : oldBoxes) {
       bool kept = false;
-      for (auto &t : m_tiles)
+      for (auto &t : m_scene.edit())
         if (t.win.lock() == oldWin) { kept = true; break; }
       if (!kept)
         m_fx.addGhost(model::Ghost{oldWin, oldBox});
     }
   } else
-    for (auto &t : m_tiles)
+    for (auto &t : m_scene.edit())
       t.appear = 1.0;
   m_clocks.tiles.begin();
   m_clocks.tileMs    = m_glide.ms;    // snapshot: glideDur() must return THIS value
@@ -480,13 +480,15 @@ void Overview::startTileGlide(
 
 void Overview::replayReflow(
     std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes) {
-  m_hovered = m_hoveredStrip = -1;
+  m_scene.clearHover();
   buildTiles();
   buildStrip();
   layoutTiles();
   startTileGlide(oldBoxes);
-  if (m_selected >= static_cast<int>(m_tiles.size()))
-    m_selected = m_tiles.empty() ? -1 : static_cast<int>(m_tiles.size()) - 1;
+  // Clamped, never past the end: an index that ran off the cards indexed dead
+  // memory on the next read.
+  if (m_scene.selected() >= static_cast<int>(m_scene.size()))
+    m_scene.select(m_scene.empty() ? -1 : static_cast<int>(m_scene.size()) - 1);
   m_progress = 1.0;
   m_opening = true;
   m_clocks.master.pinEnd(animDuration());
@@ -510,9 +512,9 @@ void Overview::syncTiles() {
     if (belongs(w))
       ++expected;
 
-  bool diff = expected != m_tiles.size();
+  bool diff = expected != m_scene.edit().size();
   if (!diff)
-    for (const auto &t : m_tiles) {
+    for (const auto &t : m_scene.edit()) {
       const auto w = t.win.lock();
       if (!belongs(w)) {
         diff = true;

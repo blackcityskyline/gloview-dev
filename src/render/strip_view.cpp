@@ -78,7 +78,7 @@ void Overview::renderStrip() const {
         m_drag.lifted &&
         m_drag.press == model::Drag::Press::StripWin &&
         static_cast<int>(i) == m_drag.idx;
-    const bool hover = static_cast<int>(i) == m_hoveredStrip;
+    const bool hover = static_cast<int>(i) == m_scene.hoveredStrip();
     LRect card = it.card;
     card.x += slide.x + scroll.x;
     card.y += slide.y + scroll.y;
@@ -329,7 +329,7 @@ void Overview::renderStripButtons() const {
                        0.9F * static_cast<float>(e), sr, roundPow);
           break;
         }
-      } else if (static_cast<int>(i) == m_hoveredStrip) {
+      } else if (static_cast<int>(i) == m_scene.hoveredStrip()) {
         const bool dwindle = cfg::behavior.tile_layout.get() == "dwindle";
         bool slotFound = false;
         for (size_t j = 0; j < it.wins.size(); ++j) {

@@ -78,9 +78,9 @@ LRect Overview::closeButtonRect(const LRect &lb) const {
 }
 
 double Overview::entryFade(size_t i) const {
-  if (i >= m_tiles.size())
+  if (i >= m_scene.tiles().size())
     return 1.0;
-  const auto &t = m_tiles[i];
+  const auto &t = m_scene.tiles()[i];
   if (t.appear >= 1.0 || m_view.wsSlideDir() == 0 || m_enterStyle != "fade")
     return 1.0;
   return tileAppear(static_cast<int>(i));
@@ -92,8 +92,8 @@ LRect Overview::tileBox(size_t i, const LRect &slot) const {
   if (m_view.desktop())
     return slot;
   double aspect = slot.w / std::max(1.0, slot.h);
-  if (i < m_tiles.size()) {
-    if (const auto w = m_tiles[i].win.lock()) {
+  if (i < m_scene.tiles().size()) {
+    if (const auto w = m_scene.tiles()[i].win.lock()) {
       const auto s = w->sizeAnimation()->goal();
       if (s.x > 0 && s.y > 0)
         aspect = s.x / s.y;
@@ -106,9 +106,9 @@ LRect Overview::tileBox(size_t i, const LRect &slot) const {
 // next. A layout contributes a box and flags only.
 void Overview::drawTile(size_t i, const TileLook &look) const {
   const auto m = m_monitor.lock();
-  if (!m || i >= m_tiles.size())
+  if (!m || i >= m_scene.tiles().size())
     return;
-  const auto &t = m_tiles[i];
+  const auto &t = m_scene.tiles()[i];
   const auto w  = t.win.lock();
   if (!w || !w->m_isMapped || w->isHidden())
     return;
@@ -126,8 +126,8 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
   const float  roundPow = cfg::look.preview_round_power;
   const auto shadowCol  = cfg::colors.shadow.get(1.0);
 
-  const bool framed   = static_cast<int>(i) == m_hovered || look.lift;
-  const bool selected = static_cast<int>(i) == m_selected && !look.lift;
+  const bool framed   = static_cast<int>(i) == m_scene.hoveredTile() || look.lift;
+  const bool selected = static_cast<int>(i) == m_scene.selected() && !look.lift;
   const bool focused  = cfg::look.show_focus_border != 0 && (framed || selected);
   // Whichever ring ends up on top is the one the content has to tuck under.
   const int ringW = focused ? (framed ? cfg::look.hover_border_size
@@ -236,14 +236,14 @@ void Overview::renderTiles() const {
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   const int dragIdx = draggedTile();
-  for (size_t i = 0; i < m_tiles.size(); ++i) {
+  for (size_t i = 0; i < m_scene.tiles().size(); ++i) {
     if (static_cast<int>(i) == dragIdx)
       continue; // the dragged tile floats over the strip; drawn later
-    const auto w = m_tiles[i].win.lock();
+    const auto w = m_scene.tiles()[i].win.lock();
     if (!w || !w->m_isMapped || w->isHidden() || swapfxActive(w))
       continue; // flying via a landing: its slot is painted by renderSwapFX
     TileLook look;
-    look.box = tileBox(i, currentBox(m_tiles[i], static_cast<int>(i)));
+    look.box = tileBox(i, currentBox(m_scene.tiles()[i], static_cast<int>(i)));
     look.button = wantButtons;
     drawTile(i, look);
   }

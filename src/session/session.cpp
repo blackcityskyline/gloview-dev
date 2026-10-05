@@ -90,7 +90,7 @@ Overview::~Overview() {
   restoreFill();
   releaseNewWorkspaces();
   if (m_animPump) { m_animPump->cancel(); m_animPump.reset(); }
-  m_tiles.clear();
+  m_scene.clear();
   m_strip.clear();
   cancelPendingClick(); // no timer callback against a half-destroyed Overview
   if (m_shouldRenderHook) {
@@ -383,8 +383,8 @@ void Overview::altTabInvoke(bool reverse) {
       return;
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
-    m_selected = m_tiles.empty() ? -1 : 0;
-    if (carouselMode() && !m_tiles.empty())
+    m_scene.select(m_scene.tiles().empty() ? -1 : 0);
+    if (carouselMode() && !m_scene.tiles().empty())
       layoutTiles();
     syncFocus();
     damage();
@@ -403,7 +403,7 @@ void Overview::setDesktopMode(bool on) {
   m_view.setDesktop( on);
 
   auto oldBoxes = captureCurrentBoxes();
-  m_hovered = m_hoveredStrip = -1;
+  m_scene.clearHover();
   // Selection survives: dropping it stopped the carousel relayout coming back.
   replayReflow(oldBoxes);
 }
@@ -424,7 +424,7 @@ void Overview::open() {
   m_workspace = m->m_activeWorkspace;
   m_liveWsAtOpen =
       m->m_activeWorkspace;
-  m_hovered = m_hoveredStrip = -1;
+  m_scene.clearHover();
 
   m->m_blurFBDirty = true;
 
@@ -442,15 +442,15 @@ void Overview::open() {
 
   buildTiles();
   buildStrip();
-  if (m_tiles.empty() && m_strip.size() <= 1)
+  if (m_scene.tiles().empty() && m_strip.size() <= 1)
     return;
 
   // seed selection BEFORE layoutTiles
-  m_selected = m_tiles.empty() ? -1 : 0;
+  m_scene.select(m_scene.tiles().empty() ? -1 : 0);
   if (const auto fw = Desktop::focusState()->window()) {
-    for (size_t i = 0; i < m_tiles.size(); ++i)
-      if (m_tiles[i].win.lock() == fw) {
-        m_selected = static_cast<int>(i);
+    for (size_t i = 0; i < m_scene.tiles().size(); ++i)
+      if (m_scene.tiles()[i].win.lock() == fw) {
+        m_scene.select(static_cast<int>(i));
         break;
       }
   }
@@ -498,19 +498,19 @@ void Overview::close() {
 
   // close: target = shown, natural = real geometry
   if (const auto m = m_monitor.lock()) {
-    // Two passes on purpose: the pin test needs m_tiles[m_selected].natural, which
+    // Two passes on purpose: the pin test needs m_scene.tiles()[m_scene.selected()].natural, which
     // the loop rewrites as it goes — testing inside it reads the pre-close value.
     LRect selNat{};
-    if (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size())) {
-      if (const auto w = m_tiles[static_cast<size_t>(m_selected)].win.lock()) {
+    if (m_scene.selected() >= 0 && m_scene.selected() < static_cast<int>(m_scene.tiles().size())) {
+      if (const auto w = m_scene.tiles()[static_cast<size_t>(m_scene.selected())].win.lock()) {
         const auto p = w->positionAnimation()->goal();
         const auto s = w->sizeAnimation()->goal();
         selNat = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
                        std::max(1.0, s.x), std::max(1.0, s.y)};
       }
     }
-    for (auto &t : m_tiles) {
-      t.target = currentBox(t, static_cast<int>(&t - m_tiles.data()));
+    for (auto &t : m_scene.edit()) {
+      t.target = currentBox(t, static_cast<int>(&t - m_scene.tiles().data()));
       // The natural box is where the tile RETURNS TO. When several windows share
       // one geometry — maximized windows, off-screen workspaces — the unfocused
       // cards land under the focused one (drawn last), so their exit is invisible
@@ -520,7 +520,7 @@ void Overview::close() {
         const auto s = w->sizeAnimation()->goal();
         t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
                           std::max(1.0, s.x), std::max(1.0, s.y)};
-        if (carouselMode() && static_cast<int>(&t - m_tiles.data()) != m_selected &&
+        if (carouselMode() && static_cast<int>(&t - m_scene.tiles().data()) != m_scene.selected() &&
             selNat.w >= 1.0 && std::abs(t.natural.x - selNat.x) < 1.0 &&
             std::abs(t.natural.y - selNat.y) < 1.0 &&
             std::abs(t.natural.w - selNat.w) < 1.0 &&
@@ -559,11 +559,11 @@ void Overview::hardClose() {
   m_newCardId = 0;
   m_progress = 0.0;
   m_altTabbing = false;
-  m_tiles.clear();
+  m_scene.clear();
   m_strip.clear();
   m_pixel.clearSnapshots();
-  m_hovered = m_hoveredStrip = -1;
-  m_selected = -1;
+  m_scene.clearHover();
+  m_scene.select(-1);
 
   damage();
 }
@@ -599,7 +599,7 @@ bool Overview::shouldHideWindow(const PHLWINDOW &w,
   // fullscreen hidden: a transition force-render leaks it
   if (Fullscreen::controller()->isFullscreen(w))
     return true;
-  for (const auto &t : m_tiles)
+  for (const auto &t : m_scene.tiles())
     if (t.win.lock() == w)
       return true;
   if (const auto aw = m->m_activeWorkspace; aw && w->m_workspace == aw)
@@ -610,7 +610,7 @@ bool Overview::shouldHideWindow(const PHLWINDOW &w,
 bool Overview::isTileWindow(const PHLWINDOW &w) const {
     if (!w)
         return false;
-    for (const auto &t : m_tiles)
+    for (const auto &t : m_scene.tiles())
         if (t.win.lock() == w)
             return true;
     return false;
@@ -658,11 +658,11 @@ void Overview::deactivate() {
   m_newCardAnim = false;
   m_newCardId = 0;
   m_progress = 0.0;
-  m_tiles.clear();
+  m_scene.clear();
   m_strip.clear();
   m_pixel.clearSnapshots();
-  m_hovered = m_hoveredStrip = -1;
-  m_selected = -1;
+  m_scene.clearHover();
+  m_scene.select(-1);
   damage();
 }
 
@@ -678,7 +678,7 @@ void Overview::damage() const {
     g_pHyprRenderer->damageMonitor(m);
 }
 
-// EXECUTION tail: m_tiles must survive the frame
+// EXECUTION tail: m_scene.tiles() must survive the frame
 void Overview::finishPendingDeactivate() {
   if (!m_pendingDeactivate)
     return;
@@ -777,7 +777,7 @@ void Overview::updateSnapshots() {
 
     m_pixel.putSnapshot(w.get(), fb->getTexture());
   };
-  for (const auto &t : m_tiles)
+  for (const auto &t : m_scene.tiles())
     if (const auto w = t.win.lock())
       grab(w);
   for (const auto &it : m_strip)

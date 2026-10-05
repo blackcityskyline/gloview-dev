@@ -35,7 +35,7 @@ bool Overview::carouselMode() const {
 
 // A selection move is a relayout + glide, detected once: renderStage vs m_view.carouselFor().
 void Overview::relayoutCarousel() {
-  if (!carouselMode() || m_tiles.empty())
+  if (!carouselMode() || m_scene.tiles().empty())
     return;
   // Never mid-drag: a relayout moves every slot, so the run would shift under the
   // window the user is carrying.
@@ -45,9 +45,9 @@ void Overview::relayoutCarousel() {
   // maximized windows is one shared rectangle — all the cards land in one point.
   if (!m_opening || m_pendingDeactivate)
     return;
-  if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
+  if (m_scene.selected() < 0 || m_scene.selected() >= static_cast<int>(m_scene.tiles().size()))
     return; // not a selection change; layoutTiles settles it next
-  if (m_selected == m_view.carouselFor())
+  if (m_scene.selected() == m_view.carouselFor())
     return;
   auto shown = captureCurrentBoxes();
   layoutTiles();
@@ -56,12 +56,12 @@ void Overview::relayoutCarousel() {
 
 void Overview::renderCarousel() const {
   const auto m = m_monitor.lock();
-  if (!m || m_tiles.empty() || m_view.carousel().cards.size() != m_tiles.size())
+  if (!m || m_scene.tiles().empty() || m_view.carousel().cards.size() != m_scene.tiles().size())
     return;
 
   std::vector<int> order;
-  order.reserve(m_tiles.size());
-  for (size_t i = 0; i < m_tiles.size(); ++i)
+  order.reserve(m_scene.tiles().size());
+  for (size_t i = 0; i < m_scene.tiles().size(); ++i)
     order.push_back(static_cast<int>(i));
   std::stable_sort(order.begin(), order.end(), [this](int a, int b) {
     const auto &ca = m_view.carousel().cards[static_cast<size_t>(a)];
@@ -82,7 +82,7 @@ void Overview::renderCarousel() const {
     if (i == draggedTile())
       continue;
 
-    const auto &t = m_tiles[static_cast<size_t>(i)];
+    const auto &t = m_scene.tiles()[static_cast<size_t>(i)];
     TileLook look;
     look.box = currentBox(t, i);
     // m_progress runs DOWN on close (1 open -> 0 closed); every exit fraction
@@ -113,14 +113,14 @@ void Overview::renderCarousel() const {
 }
 
 void Overview::renderCarouselCounter() const {
-  if (m_tiles.size() < 2)
+  if (m_scene.tiles().size() < 2)
     return;
   const auto m = m_monitor.lock();
   if (!m)
     return;
   const double s = m->m_scale;
   const std::string text =
-      std::to_string(m_selected + 1) + " / " + std::to_string(m_tiles.size());
+      std::to_string(m_scene.selected() + 1) + " / " + std::to_string(m_scene.tiles().size());
   if (auto tex = m_pixel.label(const_cast<char *>("/carousel/count"), text,
                              cfg::colors.label.get(eased()), 15);
       tex && tex->m_size.x > 0) {

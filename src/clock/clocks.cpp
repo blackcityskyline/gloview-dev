@@ -93,16 +93,16 @@ double Overview::tileProgress(int i) const {
   const double base = m_opening ? m_clocks.tiles.raw(glideMs) : m_progress;
   // The SELECTED tile is never staggered: stagger() assumes a rising 0..1, so on
   // close it would delay the landing — the same flight, timed differently.
-  if (carouselMode() || i == m_selected)
+  if (carouselMode() || i == m_scene.selected())
     return base;
-  return staggered(base, i, static_cast<int>(m_tiles.size()));
+  return staggered(base, i, static_cast<int>(m_scene.tiles().size()));
 }
 
 double Overview::tileAppear(int i) const {
   return curves::eval(
       m_entry.curve,
       staggered(m_clocks.rebuild.raw(m_entry.ms), i,
-                static_cast<int>(m_tiles.size())));
+                static_cast<int>(m_scene.tiles().size())));
 }
 
 LRect Overview::currentBox(const model::Tile &t, int i) const {
@@ -194,9 +194,9 @@ void Overview::updateAnimation() {
     m_fx.clearGhosts();
   // entries must settle explicitly or they keep evaluating curves forever
   if (m_clocks.rebuild.done(m_entry.ms) &&
-      std::any_of(m_tiles.begin(), m_tiles.end(),
+      std::any_of(m_scene.tiles().begin(), m_scene.tiles().end(),
                   [](const model::Tile &t) { return t.appear < 1.0; }))
-    for (auto &t : m_tiles)
+    for (auto &t : m_scene.edit())
       t.appear = 1.0;
 
   const auto pulse = leaf("pulse");

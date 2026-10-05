@@ -82,7 +82,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
   else if (keyMatches(k, mods, cfg::keys.activate.get()))
     activateSelection();
   else if (keyMatches(k, mods, cfg::keys.close_window.get()))
-    closeTileWindow(m_selected);
+    closeTileWindow(m_scene.selected());
   else if (keyMatches(k, mods, cfg::keys.left.get()))
     moveSelection(-1, 0);
   else if (keyMatches(k, mods, cfg::keys.right.get()))
@@ -328,33 +328,33 @@ int Overview::keyIndex(int keycode, uint32_t mods,
 }
 
 void Overview::moveSelection(int dx, int dy) {
-  if (m_tiles.empty())
+  if (m_scene.tiles().empty())
     return;
-  if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size())) {
-    m_selected = (m_hovered >= 0) ? m_hovered : 0;
+  if (m_scene.selected() < 0 || m_scene.selected() >= static_cast<int>(m_scene.tiles().size())) {
+    m_scene.select((m_scene.hoveredTile() >= 0) ? m_scene.hoveredTile() : 0);
     syncFocus();
     damage();
     return;
   }
   // Carousel: dx is a circular index step, dy is unused; relayoutCarousel()
-  // reacts to m_selected.
+  // reacts to m_scene.selected().
   if (carouselMode()) {
     if (dx != 0) {
-      const int n = static_cast<int>(m_tiles.size());
-      m_selected = ((m_selected + dx) % n + n) % n;
+      const int n = static_cast<int>(m_scene.tiles().size());
+      m_scene.select(((m_scene.selected() + dx) % n + n) % n);
       syncFocus();
       damage();
     }
     return;
   }
-  const LRect cur = currentBox(m_tiles[m_selected], m_selected);
+  const LRect cur = currentBox(m_scene.tiles()[m_scene.selected()], m_scene.selected());
   const double cx = cur.cx(), cy = cur.cy();
   int best = -1;
   double bestScore = 1e18;
-  for (size_t i = 0; i < m_tiles.size(); ++i) {
-    if (static_cast<int>(i) == m_selected)
+  for (size_t i = 0; i < m_scene.tiles().size(); ++i) {
+    if (static_cast<int>(i) == m_scene.selected())
       continue;
-    const LRect b = currentBox(m_tiles[i], static_cast<int>(i));
+    const LRect b = currentBox(m_scene.tiles()[i], static_cast<int>(i));
     const double ddx = b.cx() - cx;
     const double ddy = b.cy() - cy;
     const double along =
@@ -370,36 +370,36 @@ void Overview::moveSelection(int dx, int dy) {
     }
   }
   if (best >= 0) {
-    m_selected = best;
+    m_scene.select(best);
     syncFocus();
     damage();
   }
 }
 
 void Overview::stepAltTab(int dir) {
-  const int n = static_cast<int>(m_tiles.size());
+  const int n = static_cast<int>(m_scene.tiles().size());
   if (n == 0)
     return;
-  m_selected = ((m_selected + dir) % n + n) % n;
+  m_scene.select(((m_scene.selected() + dir) % n + n) % n);
   syncFocus();
   damage();
 }
 
 void Overview::activateSelection() {
   PHLWINDOW w;
-  if (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size()))
-    w = m_tiles[m_selected].win.lock();
+  if (m_scene.selected() >= 0 && m_scene.selected() < static_cast<int>(m_scene.tiles().size()))
+    w = m_scene.tiles()[m_scene.selected()].win.lock();
   focusAndClose(w, Desktop::FOCUS_REASON_KEYBIND);
 }
 
-// Real focus must track m_selected: a passthrough `killactive` would hit
+// Real focus must track m_scene.selected(): a passthrough `killactive` would hit
 // the pre-open window. Guarded to the ACTIVE ws — a hidden one desyncs it.
 void Overview::syncFocus() const {
-  if (!m_active || m_selected < 0 ||
-      m_selected >= static_cast<int>(m_tiles.size()))
+  if (!m_active || m_scene.selected() < 0 ||
+      m_scene.selected() >= static_cast<int>(m_scene.tiles().size()))
     return;
   const auto m = m_monitor.lock();
-  const auto w = m_tiles[m_selected].win.lock();
+  const auto w = m_scene.tiles()[m_scene.selected()].win.lock();
   if (!m || !w || !w->m_isMapped || w->isHidden())
     return;
   if (w->m_workspace !=

@@ -98,7 +98,7 @@ void Overview::renderStage(eRenderStage stage) {
         " dmg=" + std::to_string(ext.w) + "x" + std::to_string(ext.h) +
         " rects=" +
         std::to_string(g_pHyprRenderer->m_renderData.damage.copy().getRects().size()) +
-        " tiles=" + std::to_string(m_tiles.size()) +
+        " tiles=" + std::to_string(m_scene.tiles().size()) +
         " strip=" + std::to_string(m_strip.size()) +
         " ws=" +
         std::to_string(m_workspace.lock() ? m_workspace.lock()->m_id : -1) +
@@ -125,7 +125,7 @@ void Overview::renderStage(eRenderStage stage) {
     } else if (!showAllWorkspaces()) {
       // capture + replay reflow, else stale ghosts survive
       debug::dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
-          " tiles=" + std::to_string(m_tiles.size()));
+          " tiles=" + std::to_string(m_scene.tiles().size()));
       if (const auto prev = m_workspace.lock())
         m_view.setWsSlideDir( m->m_activeWorkspace->m_id > prev->m_id ? 1 : -1);
       m_workspace = m->m_activeWorkspace;
@@ -135,8 +135,8 @@ void Overview::renderStage(eRenderStage stage) {
       layoutTiles();
       startTileGlide(shown);
       // no blur invalidation: source id rechecked per frame
-      if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
-        m_selected = m_tiles.empty() ? -1 : 0;
+      if (m_scene.selected() < 0 || m_scene.selected() >= static_cast<int>(m_scene.tiles().size()))
+        m_scene.select(m_scene.tiles().empty() ? -1 : 0);
       damage();
     } else {
       buildStrip();
