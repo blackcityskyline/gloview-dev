@@ -92,6 +92,17 @@ void Overview::onMouseMove() {
   }
   const CBox unionBox = m_cursor.moveDamage(m);
   updateHover();
+  // Hover state for the closing zone, recomputed with the cursor: it only lights
+  // up while a card is actually over it, and it has to clear again on the way
+  // out or the band stays painted after the drag leaves.
+  if (draggedTile() >= 0 || m_drag.press == model::Drag::Press::StripWin) {
+    const auto mc = g_pInputManager->getMouseCoordsInternal();
+    const bool was = m_killZoneHover;
+    m_killZoneHover =
+        killZoneRect().contains(mc.x - m->m_position.x, mc.y - m->m_position.y);
+    if (was != m_killZoneHover)
+      damage();
+  }
   if (!m_active || unionBox.w <= 0 || unionBox.h <= 0)
     return;
   if (g_pHyprRenderer)
@@ -326,10 +337,12 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
   case model::Drag::Press::Consumed: { // handled on press
     debug::dbg("[REL] press=Consumed");
     m_drag = {};
+    m_killZoneHover = false;
     return true;
   }
   case model::Drag::Press::Tile: {
     const int press = m_drag.idx;
+    m_killZoneHover = false; // a stale band would stay painted after the drop
     const auto w = m_tiles[press].win.lock();
     const double grabDX = m_drag.grabDX, grabDY = m_drag.grabDY;
     debug::dbg("[REL] press=Tile lifted=" + std::to_string(m_drag.lifted) +
@@ -387,6 +400,17 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           kickPulse(w);
           landAfterMove(w, m_lastDragBox, leaf("drag").ms, leaf("drag").curve);
         }
+        return true;
+      }
+      // The closing zone wins over everything else: a card dropped on it closes,
+      // whether the run is a carousel or a plain layout.
+      if (w && killZoneRect().contains(lx, ly)) {
+        debug::dbg("[REL] branch=Tile->killZone");
+        closeTileWindow(press);
+        beginSwapFX(w, m_lastDragBox, model::SwapStyle::Horizontal,
+                    leaf("drag").ms, leaf("drag").curve);
+        ensureAnimPump();
+        damage();
         return true;
       }
       // Nearest tile within gap/2, not containment: a natural drop lands in the gap.

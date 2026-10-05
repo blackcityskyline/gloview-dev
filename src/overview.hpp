@@ -348,6 +348,12 @@ private:
   bool crossesRealWorkspace(const PHLWINDOW &w) const;
   void syncFocus() const;
   void closeTileWindow(int i);
+  // Drop zone: closing target, opposite the strip's anchored edge. No hit test of
+  // its own is exported — the drag release and the hover pass both go through
+  // killZoneRect so the drawn area and the accepted area cannot drift apart.
+  LRect killZoneRect() const;
+  void renderKillZone() const;
+  bool m_killZoneHover = false; // cursor inside the zone while dragging
   std::vector<std::pair<PHLWINDOW, LRect>> captureCurrentBoxes(
       PHLWINDOW exclude = {}) const;
   void replayReflow(std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);

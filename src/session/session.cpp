@@ -245,6 +245,17 @@ SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
   return c.tex;
 }
 
+// The closing target sits at the centre of the edge OPPOSITE the strip, so it
+// is never under the strip's own cards. Width/height are fixed by request.
+LRect Overview::killZoneRect() const {
+  const auto m = m_monitor.lock();
+  if (!m)
+    return {};
+  constexpr double kW = 300.0, kH = 50.0;
+  const bool atTop = stripAnchor() == Anchor::Bottom;
+  return LRect{(m->m_size.x - kW) * 0.5, atTop ? 0.0 : m->m_size.y - kH, kW, kH};
+}
+
 Overview::Anchor Overview::stripAnchor() const {
   std::string a = cfg::strip.anchor.get();
   if (a.empty()) // back-compat knob

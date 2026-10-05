@@ -327,6 +327,12 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 - **The title pill never outgrows its card.** A title wider than the tile under
   it is shortened to fit with a trailing `…`; the pill re-renders at the largest
   prefix that fits and is cached, so it costs one render per card, not per frame.
+- **A drop zone at the opposite edge closes.** A card dragged from the run onto
+  the 300×50 area at the centre of the edge opposite the strip's anchor closes
+  that window, in the carousel and in any plain layout alike. It is invisible at
+  rest; while a card is over it the zone lights up in stepped bands, soft at its
+  inner edge and densest at the screen edge, so the affordance shows up exactly
+  where the eye already is on the way out.
 - **Only the centred card is framed.** The rest carry no ring, and the ring is
   one fixed size everywhere rather than scaled down to suit a smaller card.
 - **Card count is yours.** `carousel_cards` sets how many cards the run shows —

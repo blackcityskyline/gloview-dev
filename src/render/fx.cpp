@@ -139,6 +139,38 @@ void Overview::renderDragWindow() const {
                    roundPow);
 }
 
+// The zone's affordance. Bands, not a fill: OpenGL::renderRect takes a flat
+// colour only, so a gradient is stepped — soft at the zone's inner edge, densest
+// at the screen edge, which is where the eye is already looking on the way out.
+// Drawn on hover only, so the zone costs nothing at rest.
+void Overview::renderKillZone() const {
+  const auto m = m_monitor.lock();
+  if (!m)
+    return;
+  if (!m_killZoneHover)
+    return;
+  const LRect z = killZoneRect();
+  if (z.w < 1.0)
+    return;
+  const double s  = m->m_scale;
+  const auto  e  = eased();
+  const auto col = cfg::colors.hover_border.get(e);
+  constexpr int kBands = 12;
+  for (int i = 0; i < kBands; ++i) {
+    // 0 at the zone's inner edge, 1 at the screen edge.
+    const double f = static_cast<double>(i) / (kBands - 1);
+    const double a = std::pow(f, 2.0) * 0.5 * e;
+    if (a < 0.01)
+      continue;
+    const double bandH = z.h / kBands;
+    const double y =
+        stripAnchor() == Anchor::Bottom ? z.y + bandH * i
+                                        : z.y + z.h - bandH * (i + 1);
+    g_pHyprOpenGL->renderRect(pxb(LRect{z.x, y, z.w, bandH + 1.0}, s),
+                              argb(col, a), {});
+  }
+}
+
 void Overview::kickPulse(const PHLWINDOW &w) {
   if (!w || !leaf("pulse").on)
     return;
