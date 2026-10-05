@@ -364,6 +364,10 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 | `carousel_scale` | float | `1.0` | Zoom the whole run on top of the automatic fit; above 1 it deliberately overflows |
 | `carousel_scroll_speed` | float | `1.0` | Wheel sensitivity: notches × speed = cards moved. `1` is one card per notch, `0.5` one every two, `3` three per notch |
 
+- **Click to bring a card to centre, click again to leave.** A click on a card
+  that is not the focused one moves the run to it and stays in the overview; only
+  the focused card commits on click. So an off-centre card costs two clicks — one
+  to bring it in, one to leave on it — and the centred one costs one.
 - **Navigation.** Because the slots are built around the selection, moving it
   rotates the run (all cards glide to their new depths on the usual `glide`
   clock, without the per-tile stagger — it is one band, not a queue).

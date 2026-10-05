@@ -256,7 +256,7 @@ LRect Overview::killZoneRect() const {
     return {};
   // Full monitor width: a 300px target in the middle of a 1366px edge is a thing
   // the user has to aim at, and the glow reads as a figure rather than as light.
-  constexpr double kH = 50.0;
+  constexpr double kH = 40.0; // 50 * 0.8: 20% shorter
   const bool atTop = stripAnchor() == Anchor::Bottom;
   return LRect{0.0, atTop ? 0.0 : m->m_size.y - kH, m->m_size.x, kH};
 }

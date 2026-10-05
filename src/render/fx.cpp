@@ -163,31 +163,18 @@ void Overview::renderKillZone() const {
   const auto   col  = cfg::colors.select_border.get(eased());
   // Strip at the bottom puts the zone at the top of the screen, and vice versa.
   const bool zoneAtTop = stripAnchor() == Anchor::Bottom;
-  const int  rows      = std::max(1, static_cast<int>(std::round(z.h)));
-  // The halo, on the inner side — where the eye is on the way out. It spans the
-  // WHOLE monitor: a halo with visible side edges is a shape, and the whole point
-  // is that this reads as light coming off the bezel rather than as a panel.
-  // Alpha reaches zero at the far end, so its only boundary is gone too.
-  constexpr int kHalo = 150;
-  for (int d = 1; d <= kHalo; ++d) {
-    const double f = static_cast<double>(d) / kHalo;
-    const double a = std::pow(1.0 - f, 2.4) * 0.40 * glow;
+  // ONE continuous falloff measured from the SCREEN edge, through the band and
+  // on into the screen. Two ramps — a band and a halo — put a step where they
+  // met: the band's inner end faded to nothing while the halo's first row was
+  // already at 0.39, and that step read as a second line across the bottom.
+  // A single ramp cannot have a seam.
+  constexpr int kReach = 160; // 200 * 0.8: the glow is 20% shorter
+  for (int d = 0; d < kReach; ++d) {
+    const double f = static_cast<double>(d) / kReach;
+    const double a = std::pow(1.0 - f, 2.5) * 0.4675 * glow; // 0.55 less 15%
     if (a < 0.004)
       continue;
-    const double y = zoneAtTop ? z.y + z.h + (d - 1) : z.y - d;
-    g_pHyprOpenGL->renderRect(
-        pxb(LRect{0.0, y, m->m_size.x, 1.0}, s), argb(col, a), {});
-  }
-
-  // The band itself: soft at the inner edge, densest at the screen edge. Full
-  // width and square throughout — there is nothing to round, both ends run into
-  // the bezel.
-  for (int k = 0; k < rows; ++k) {
-    const double f = (static_cast<double>(k) + 0.5) / static_cast<double>(rows);
-    const double a = std::pow(f, 1.2) * 0.55 * glow;
-    if (a < 0.004)
-      continue;
-    const double y = zoneAtTop ? z.y + z.h - (k + 1) : z.y + k;
+    const double y = zoneAtTop ? z.y + d : z.y + z.h - 1 - d;
     g_pHyprOpenGL->renderRect(pxb(LRect{0.0, y, z.w, 1.0}, s), argb(col, a), {});
   }
 }

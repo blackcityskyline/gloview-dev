@@ -473,10 +473,19 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       damage();
       return true;
     }
-    // close_trigger=doubleclick: defer the activate behind DBLCLICK_WINDOW, or
-    // the overview is gone before the second click. Clear m_drag BEFORE
-    // focusAndClose(): an armed press re-fires lifted=true mid-close.
     m_drag = {};
+    // The carousel brings the run to the card you clicked, and only the FOCUSED
+    // card commits: one click to bring it to centre, a second on it to leave.
+    // Setting m_selected is enough — renderStage's relayoutCarousel sees the
+    // change against m_carouselFor and glides the run around it.
+    if (carouselMode() && press >= 0 && press < static_cast<int>(m_tiles.size()) &&
+        press != m_selected) {
+      debug::dbg("[REL] branch=Tile->carouselFocus idx=" + std::to_string(press));
+      m_selected = press;
+      syncFocus();
+      damage();
+      return true;
+    }
     if (closeOnDoubleClick() && w && g_pEventLoopManager) {
       if (m_clickTimer && m_pendingClickWin.lock() == w) {
         cancelPendingClick();
