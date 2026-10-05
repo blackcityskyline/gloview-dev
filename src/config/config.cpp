@@ -113,6 +113,7 @@ constexpr IntSpec kInts[] = {
     {&grid.padding_bottom, "plugin:gloview:padding_bottom", 70},
     // carousel: the run, laid over `layout` in the all-workspaces view only
     {&carousel.enabled, "plugin:gloview:carousel", 0},
+    {&carousel.on_open, "plugin:gloview:carousel_on_open", 1},
     {&carousel.cards, "plugin:gloview:carousel_cards", 5},
     {&carousel.card_width, "plugin:gloview:carousel_card_width", 0},
     {&strip.height, "plugin:gloview:strip_height", 150},
@@ -181,6 +182,7 @@ constexpr StrSpec kStrs[] = {
     {&keys.down, "plugin:gloview:key_down", "down"},
     {&keys.desktop, "plugin:gloview:key_desktop", "shift"},
     {&keys.all_workspaces, "plugin:gloview:key_all_workspaces", "a"},
+    {&keys.carousel, "plugin:gloview:key_carousel", "c"},
     {&keys.workspace, "plugin:gloview:key_workspace", "1,2,3,4,5,6,7,8,9,0"},
     {&keys.alt_tab_modifier, "plugin:gloview:alt_tab_modifier", "alt"},
     {&behavior.preview_mode, "plugin:gloview:preview_mode", "live"},

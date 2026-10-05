@@ -64,7 +64,8 @@ public:
   void close();
   void hardClose();           // animation-free teardown for the UNLOAD path
   void toggleDesktop();       // open, or switch into free-arrange mode
-  void toggleAllWorkspaces(); // open, or toggle the all-workspaces view
+  void toggleAllWorkspaces();
+  void toggleCarousel();   // flip the run on/off; on_open picks the start
   void altTabInvoke(bool reverse); // opens+seeds if closed, else advances
 
   // renderStage is the frame entry (BUILD); paint is the painter it schedules.
@@ -355,6 +356,10 @@ private:
   double killZoneGlow(double lx, double ly) const;
   void renderKillZone() const;
   double m_killGlow = 0.0; // 1 at the zone, 0 a screen-width away, while dragging
+  // Carousel on/off for the all-workspaces view. Seeded from carousel_on_open and
+  // flipped by the binding; layoutTiles reads this, not the config, so a toggle
+  // takes effect on the next layout instead of being overwritten by it.
+  bool m_carouselOn = true;
   std::vector<std::pair<PHLWINDOW, LRect>> captureCurrentBoxes(
       PHLWINDOW exclude = {}) const;
   void replayReflow(std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);

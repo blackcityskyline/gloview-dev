@@ -359,11 +359,17 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `carousel` | int | `0` | Lay the main area out as a card run instead of `layout`; all-workspaces view only |
+| `carousel_on_open` | bool (0/1) | `1` | `carousel` only: whether the run is on when the all-workspaces view opens. `key_carousel` is a toggle either way — this only picks where it starts |
+| `key_carousel` | key | `c` | Toggle the carousel run on/off in the all-workspaces view |
 | `carousel_cards` | int | `5` | How many cards the run shows (any count, even included) |
 | `carousel_card_width` | int (px) | `0` | Narrow the standard box; 0 keeps the fullscreen box |
 | `carousel_scale` | float | `1.0` | Zoom the whole run on top of the automatic fit; above 1 it deliberately overflows |
 | `carousel_scroll_speed` | float | `1.0` | Wheel sensitivity: notches × speed = cards moved. `1` is one card per notch, `0.5` one every two, `3` three per notch |
 
+- **The run has its own toggle.** `key_carousel` (`c` by default) flips it in
+  place, and `carousel_on_open` decides which state the all-workspaces view
+  starts in. Toggling takes effect on the next layout, not at the next selection
+  change, so it responds immediately.
 - **Click to bring a card to centre, click again to leave.** A click on a card
   that is not the focused one moves the run to it and stays in the overview; only
   the focused card commits on click. So an off-centre card costs two clicks — one

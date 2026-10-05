@@ -71,6 +71,9 @@ struct carousel {
   // Wheel paging: notches * speed = cards moved. 1 = one card per notch,
   // 0.5 = one card every two notches, 3 = three per notch.
   Float scroll_speed;
+  // Carousel state when the all-workspaces view opens. The key binding is always
+  // a toggle; this only decides where it starts.
+  Int on_open;
 };
 
 inline carousel carousel;
@@ -209,6 +212,7 @@ struct keys {
   Str desktop;
   Str all_workspaces;
   Str workspace;
+  Str carousel;
   Str alt_tab_modifier;
   Int alt_tab_commit_on_release;
 };

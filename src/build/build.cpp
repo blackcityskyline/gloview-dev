@@ -317,7 +317,8 @@ void Overview::layoutTiles() {
   // The run is a separate mechanism over any layout, and only in the
   // all-workspaces view: a single workspace's handful of tiles has nothing to
   // arrange against. With it off the layout runs untouched.
-  m_run = cfg::carousel.enabled != 0 && !m_desktopMode && showAllWorkspaces();
+  m_run = m_carouselOn && cfg::carousel.enabled != 0 && !m_desktopMode &&
+         showAllWorkspaces();
 
   LayoutCfg cfg;
   cfg.engine = m_engine;

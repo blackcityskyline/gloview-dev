@@ -378,6 +378,19 @@ void Overview::toggle() {
     open();
 }
 
+// The binding is a plain toggle in both directions; carousel_on_open only picks
+// where it starts. Relayout now so the run rebuilds around the new state instead
+// of waiting for the next selection change.
+void Overview::toggleCarousel() {
+  if (!m_active)
+    return;
+  m_carouselOn = !m_carouselOn;
+  m_carouselFor = -1; // force relayoutCarousel to see the change
+  layoutTiles();
+  damage();
+  debug::dbg("TOGGLE-CAROUSEL on=" + std::to_string(m_carouselOn));
+}
+
 void Overview::toggleAllWorkspaces() {
   if (!(m_active && m_opening)) {
     m_allOverride =
@@ -483,6 +496,7 @@ void Overview::open() {
 
   layoutTiles();
 
+  m_carouselOn = cfg::carousel.on_open != 0;
   m_active = true;
   m_opening = true;
   m_jumpMode = false;

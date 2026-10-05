@@ -36,7 +36,7 @@ struct Action {
     void (*invoke)();
 };
 
-constexpr std::array<Action, 8> kActions{{
+constexpr std::array<Action, 9> kActions{{
     {"toggle", "gloview", "toggle",
      [] { if (g_overview) g_overview->toggle(); }},
     {"open", nullptr, "open",
@@ -47,6 +47,8 @@ constexpr std::array<Action, 8> kActions{{
      [] { if (g_overview) g_overview->toggleDesktop(); }},
     {"allworkspaces", "gloviewall", "allworkspaces",
      [] { if (g_overview) g_overview->toggleAllWorkspaces(); }},
+    {"togglecarousel", "gloviewcarousel", "togglecarousel",
+     [] { if (g_overview) g_overview->toggleCarousel(); }},
     {"alttab", "gloviewalttab", "alttab",
      [] { if (g_overview) g_overview->altTabInvoke(false); }},
     {"alttabback", "gloviewalttabback", "alttabback",
