@@ -303,7 +303,90 @@ LRect Overview::stripWinSlotRect(const model::StripItem &it, const LRect &card,
                std::max(2.0, rel.w * card.w), std::max(2.0, rel.h * card.h)};
 }
 
+// Recency order, matching the reference switcher: drop entries whose window is
+// gone, then put this one at the front — inserting if new, rotating if it was
+// already ranked. Rotation rather than erase+insert so the deque keeps the
+// identity of the entry.
+void Overview::promoteMru(void *key) {
+  if (!key)
+    return;
+  const auto live = [&](void *k) {
+    for (const auto &t : m_tiles)
+      if (t.win.lock().get() == k)
+        return true;
+    return false;
+  };
+  std::erase_if(m_mru, [&](void *k) { return k != key && !live(k); });
+  const auto it = std::find(m_mru.begin(), m_mru.end(), key);
+  if (it == m_mru.end()) {
+    m_mru.insert(m_mru.begin(), key);
+    return;
+  }
+  if (it != m_mru.begin())
+    std::rotate(m_mru.begin(), it, it + 1);
+}
+
+// The reference's comparator, in its order: recency, then workspace id, then
+// screen position, then creation order, then title. Unranked windows sort AFTER
+// every ranked one, which is what an absent rank of max does.
+void Overview::syncMru() {
+  std::vector<size_t> order(m_tiles.size());
+  std::iota(order.begin(), order.end(), 0);
+  std::stable_sort(order.begin(), order.end(), [this](size_t a, size_t b) {
+    const auto &ta = m_tiles[a], &tb = m_tiles[b];
+    const auto rank = [&](const model::Tile &t) {
+      const auto it = std::find(m_mru.begin(), m_mru.end(), t.win.lock().get());
+      return it == m_mru.end() ? std::numeric_limits<size_t>::max()
+                               : static_cast<size_t>(std::distance(m_mru.begin(), it));
+    };
+    if (const auto ra = rank(ta), rb = rank(tb); ra != rb)
+      return ra < rb;
+    const auto wid = [](const model::Tile &t) {
+      return t.win.lock() && t.win.lock()->m_workspace ? t.win.lock()->m_workspace->m_id : -1;
+    };
+    if (const auto wa = wid(ta), wb = wid(tb); wa != wb)
+      return wa < wb;
+    const auto y = [](const model::Tile &t) {
+      return t.win.lock() ? t.win.lock()->positionAnimation()->goal().y : 0.0;
+    };
+    if (const auto ya = y(ta), yb = y(tb); ya != yb)
+      return ya < yb;
+    const auto x = [](const model::Tile &t) {
+      return t.win.lock() ? t.win.lock()->positionAnimation()->goal().x : 0.0;
+    };
+    if (const auto xa = x(ta), xb = x(tb); xa != xb)
+      return xa < xb;
+    const auto lower = [](const std::string &v) {
+      std::string r = v;
+      std::transform(r.begin(), r.end(), r.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      return r;
+    };
+    return lower(ta.win.lock() ? ta.win.lock()->m_title : std::string{}) <
+           lower(tb.win.lock() ? tb.win.lock()->m_title : std::string{});
+  });
+
+  std::vector<model::Tile> sorted;
+  sorted.reserve(m_tiles.size());
+  for (const auto i : order)
+    sorted.push_back(std::move(m_tiles[i]));
+  m_tiles = std::move(sorted);
+}
+
 void Overview::layoutTiles() {
+  // Recency order, then the focused window pulled to the front — the reference's
+  // two steps after sorting. Front means index 0 here, and the run centres
+  // m_selected, so the focused window has to BE m_selected or the index would
+  // drift out from under it.
+  if (m_run) {
+    syncMru();
+    if (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size())) {
+      promoteMru(m_tiles[static_cast<size_t>(m_selected)].win.lock().get());
+      std::rotate(m_tiles.begin(), m_tiles.begin() + m_selected, m_tiles.begin() + m_selected + 1);
+      m_selected = 0;
+    }
+  }
+
   const auto m = m_monitor.lock();
   if (!m || m_tiles.empty())
     return;
