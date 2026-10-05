@@ -50,8 +50,7 @@ SP<Render::ITexture> Overview::backdropSource(bool &live) const {
       }
     }
   }
-  if (m->m_background && m->m_background->ok())
-    return m->m_background;
+  // Not returned: renderBackdropSource() composites it under the live layers.
   return nullptr;
 }
 
