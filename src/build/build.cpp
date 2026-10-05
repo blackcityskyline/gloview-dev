@@ -385,10 +385,15 @@ void Overview::layoutTiles() {
       mt.boxW = std::min(static_cast<double>(w), m->m_size.x);
       mt.boxH = mt.boxW * m->m_size.y / m->m_size.x;
     }
-    // SLOT ORDER, not a reordered array. `slot[k]` is the tile that gets card k:
-    // the focused one leads, the rest follow the recency service. The card array is
-    // addressed by position everywhere else, so this is the only place the mapping
-    // may live — sorting the array inside a layout pass is what broke the run once.
+    // SLOT ORDER, not a reordered array: slot[k] is the tile that gets card k. The
+    // card array is addressed by position everywhere else, so this is the only place
+    // the mapping may live — sorting the array inside a layout pass is what broke
+    // the run once.
+    //
+    // The sequence is the recency order and it STAYS that way. Rotating it to put
+    // the selection first made every relayout rebuild the sequence around the new
+    // selection, so a step landed on slot 1 and the next step found slot 1 sitting
+    // at slot 0: two windows, forever. The run is centred by POSITION instead.
     const auto n = static_cast<int>(m_scene.size());
     std::vector<std::size_t> slot;
     {
@@ -398,14 +403,15 @@ void Overview::layoutTiles() {
         keys.push_back(t.win.lock().get());
       m_recency.order(keys, slot);
     }
-    if (const auto lead = std::find(slot.begin(), slot.end(),
-                                    static_cast<std::size_t>(sel));
-        lead != slot.end())
-      std::rotate(slot.begin(), lead, lead + 1);
+    const auto lead = std::find(slot.begin(), slot.end(),
+                                static_cast<std::size_t>(sel));
+    const int selSlot =
+        lead == slot.end() ? 0 : static_cast<int>(lead - slot.begin());
 
-    // Slot 0 holds the focused window, so the run is centred on card 0.
-    m_view.resolve(m_view.engine(), computeCarousel(n, 0, usable, mt), sel,
-                   slot);
+    // Card k is slot k, so the centred card is the one at the selection's own
+    // position in the sequence.
+    m_view.resolve(m_view.engine(), computeCarousel(n, selSlot, usable, mt),
+                   sel, slot);
     for (int k = 0; k < n; ++k) {
       const auto i = slot[static_cast<std::size_t>(k)];
       const auto &c = m_view.carousel().cards[static_cast<std::size_t>(k)];

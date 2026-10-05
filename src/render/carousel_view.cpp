@@ -59,22 +59,31 @@ void Overview::renderCarousel() const {
   // Paint order is far -> near by DEPTH, but the cards are still the scene's tiles:
   // slot k is m_view.slot()[k], so the run can be ordered by recency without the
   // array itself being reordered.
-  const auto &slot = m_view.slot();
+  // These are TILE indices, so the card a tile lives in is slotOf(tile) — the
+  // inverse of slot(). Reading slot[tile] instead looks up a tile by its position,
+  // which is the other direction entirely: every card then borrows the geometry of
+  // whichever tile happens to sit at that slot, and the counter and the centre of
+  // the run disagree.
   std::vector<int> paint;
   paint.reserve(m_scene.size());
-  for (size_t k = 0; k < m_view.carousel().cards.size(); ++k)
-    paint.push_back(static_cast<int>(slot[k]));
+  for (size_t i = 0; i < m_scene.size(); ++i)
+    paint.push_back(static_cast<int>(i));
   std::stable_sort(paint.begin(), paint.end(), [this](int a, int b) {
-    const auto &ca = m_view.carousel().cards[static_cast<size_t>(m_view.slot()[static_cast<size_t>(a)])];
-    const auto &cb = m_view.carousel().cards[static_cast<size_t>(m_view.slot()[static_cast<size_t>(b)])];
+    const auto kOf = [&](const int tile) {
+      const int k = m_view.slotOf(static_cast<std::size_t>(tile));
+      return static_cast<std::size_t>(k < 0 ? 0 : k);
+    };
+    const auto &ca = m_view.carousel().cards[kOf(a)];
+    const auto &cb = m_view.carousel().cards[kOf(b)];
     if (ca.visible != cb.visible)
       return !ca.visible;
     return ca.depth > cb.depth;
   });
 
   for (const int i : paint) {
+    const int k = m_view.slotOf(static_cast<std::size_t>(i));
     const auto &card =
-        m_view.carousel().cards[static_cast<size_t>(slot[static_cast<size_t>(i)])];
+        m_view.carousel().cards[static_cast<std::size_t>(k < 0 ? 0 : k)];
     if (!card.visible)
       continue;
     if (i == draggedTile())
