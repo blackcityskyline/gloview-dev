@@ -386,6 +386,11 @@ void Overview::altTabInvoke(bool reverse) {
       return;
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
+    // Armed by the OPEN, not by the release: holding the combo through the
+    // animation and letting go gave no exit, so the release cannot be trusted to
+    // arrive. Tied to m_pendingStep, non-zero exactly when this open was an
+    // alt-tab with alttab_advances on — a plain open never commits itself.
+    m_commitPending = m_pendingStep != 0;
     // open() already seeded the selection to the window that had the compositor
     // focus. Selecting index 0 here threw that away and landed on whatever window
     // happened to be first in the scene, which is why the same window came up on

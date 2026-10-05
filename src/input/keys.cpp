@@ -57,8 +57,10 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
       else if (modName == "shift")
         wantBit = HL_MODIFIER_SHIFT;
       if (modBitForKeycode(e.keycode) == wantBit) {
+        // Only the swallow. The commit is not armed HERE: a hold-then-release
+        // produced no exit at all, which means the release does not reliably reach
+        // this handler while the bind is held, so anything it gates is unreliable.
         m_altTabbing = false;
-        m_commitPending = true;
         cancel = true;
         return;
       }
