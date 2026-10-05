@@ -398,10 +398,7 @@ void Overview::layoutTiles() {
     auto lead = std::find(slot.begin(), slot.end(), static_cast<std::size_t>(sel));
     int selSlot = lead == slot.end() ? 0 : static_cast<int>(lead - slot.begin());
 
-    // A pending step moves along the sequence BEFORE the centre is chosen, and
-    // commits the move to the selection, so the run opens already aimed at the
-    // target and plays one motion. Stepping after the fact meant the run landed on
-    // the window it opened with and swapped at the end of the entry animation.
+
     if (m_pendingStep != 0 && selSlot >= 0) {
       const int nxt =
           ((selSlot + m_pendingStep) % n + n) % n;
