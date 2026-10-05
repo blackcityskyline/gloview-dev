@@ -370,7 +370,9 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   default) does not behave like the `a` binding in both directions: from
   one-workspace it switches to all-workspaces *and* puts the run on, the same as
   `a` plus the carousel; from all-workspaces it only flips the run, never the
-  view. There is deliberately no path from all back to one — that is what `a` is
+  view. Both directions go through the same full rebuild the `a` binding uses —
+  a bare relayout leaves the carousel era's boxes behind and the grid comes out
+  scattered. There is deliberately no path from all back to one — that is what `a` is
   for. `carousel_on_open` decides the state when the view is opened from outside,
   and the key ignores it.
 - **Click to bring a card to centre, click again to leave.** A click on a card

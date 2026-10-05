@@ -399,9 +399,16 @@ void Overview::toggleCarousel() {
     return;
   }
   m_carouselOn = !m_carouselOn;
-  m_carouselFor = -1; // force relayoutCarousel to see the change
-  layoutTiles();
-  damage();
+  // The SAME rebuild the 'a' binding does, not a bare layoutTiles(): a layout
+  // call only rewrites targets, and the boxes the carousel era left behind —
+  // zeroed off-run targets, parked tiles — survive it, so the grid came out with
+  // tiles scattered at their run positions. replayReflow rebuilds the tiles and
+  // recomputes their naturals first, which is what makes the grid come out
+  // identical to entering the all-workspaces view directly.
+  m_wsSlideDir = 0; // the view is not changing, so no slide
+  m_expoFlip = 0;
+  auto oldBoxes = captureCurrentBoxes();
+  replayReflow(oldBoxes);
   debug::dbg("TOGGLE-CAROUSEL on=" + std::to_string(m_carouselOn));
 }
 
