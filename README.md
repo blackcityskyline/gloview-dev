@@ -219,6 +219,7 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `border_color` | color/role | `"0x50ffffff"` | `show_border`'s ring color |
 | `border_size` | int (px) | `2` | `show_border`'s ring thickness — `0` disables it |
 | `focus_follows_mouse` | bool (0/1) | `1` | Keyboard selection tracks the hovered preview |
+| `alttab_advances` | bool (0/1) | `0` | Alt-tab: the first press opens the run on the window that has focus, and a second press moves. `1` makes the first press land on the next one already. The target is chosen before the run resolves its slots, so the entry motion plays for the window you land on rather than landing on one and swapping at the end |
 | `scroll_switches_workspace` | bool (0/1) | `1` | Wheel over the main area steps prev/next workspace. A carousel run pages on its own instead, see `carousel_scroll_speed` |
 | `carousel_scroll_speed` | float | `1.0` | `carousel` only: wheel sensitivity — notches × speed = cards moved, so `1` is one card per notch and `0.5` one card every two. Fractions carry over instead of stalling. Independent of `scroll_switches_workspace`: paging the run is not a workspace switch |
 | `passthrough_keys` | bool (0/1) | `1` | Let keys the overview doesn't use reach Hyprland (keybinds keep working) |

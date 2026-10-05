@@ -145,6 +145,10 @@ private:
   // Inside, the run's selection is INTERNAL and never touches the compositor, so
   // hovering a card cannot change what a passthrough bind acts on.
   PHLWINDOWREF m_focusOutside;
+  // A step the run must apply BEFORE it resolves its centre, so the opening
+  // motion plays for the target window instead of landing on one and swapping to
+  // another at the end. Consumed by layoutTiles, never by a key path.
+  int m_pendingStep = 0;
   void syncRecency();
   void pruneRecency();
   model::Scene m_scene;

@@ -234,6 +234,7 @@ struct behavior {
   Int switch_on_new_workspace;
   Int show_all_workspaces;
   Int show_special;
+  Int alttab_advances;
   Int hold_lift_ms;
   Str tile_layout;
 };

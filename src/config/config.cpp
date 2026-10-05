@@ -142,6 +142,9 @@ constexpr IntSpec kInts[] = {
     {&behavior.switch_on_new_workspace, "plugin:gloview:switch_on_new_workspace", 1},
     {&behavior.show_all_workspaces, "plugin:gloview:show_all_workspaces", 0},
     {&behavior.show_special, "plugin:gloview:show_special", 0},
+    // 0: the first alt-tab opens on the window that has focus and you press again
+    // to move. 1: the first press already lands on the next one.
+    {&behavior.alttab_advances, "plugin:gloview:alttab_advances", 0},
     {&behavior.hold_lift_ms, "plugin:gloview:hold_lift_ms", 400},
     {&layer.hide_top, "plugin:gloview:hide_top_layers", 0},
     {&layer.hide_overlay, "plugin:gloview:hide_overlay_layers", 0},

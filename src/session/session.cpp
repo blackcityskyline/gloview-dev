@@ -372,8 +372,14 @@ void Overview::toggleAllWorkspaces() {
 
 void Overview::altTabInvoke(bool reverse) {
   if (!(m_active && m_opening)) {
+    // Armed BEFORE open(), and consumed by the layout it triggers: stepping after
+    // open() would land the run on one window and swap it at the end, which is the
+    // discontinuous motion alttab_advances is supposed to avoid.
+    m_pendingStep =
+        cfg::behavior.alttab_advances != 0 ? (reverse ? -1 : 1) : 0;
     m_view.setAllOverride( 1);
     open();
+    m_pendingStep = 0;
     if (!m_active) {
       m_view.setAllOverride( -1);
       return;
