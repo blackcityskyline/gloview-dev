@@ -207,6 +207,9 @@ private:
   model::Drag m_drag; // pointer PRESS..RELEASE, both drag kinds
   LRect m_lastDragBox; // drag box at RELEASE, the `from` for landings
   bool m_altTabbing = false;
+  // A tap is shorter than the entry, so the release must ARM the commit rather than
+  // perform it: committing there cut the opening animation off partway through.
+  bool m_commitPending = false;
 
   CHyprSignalListener m_renderStageL;
   CHyprSignalListener m_mouseButtonL;

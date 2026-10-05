@@ -116,6 +116,16 @@ void Overview::renderStage(eRenderStage stage) {
   }
 
   updateHover();
+  // The armed commit waits for the motion it was meant to let finish. Both clocks:
+  // the master drives the chrome, the tile clock the cards, and a commit in the
+  // middle of either truncates what the user just tapped to watch.
+  if (m_commitPending && m_active && m_opening && !m_pendingDeactivate &&
+      m_clocks.master.done(leaf("open").ms) &&
+      m_clocks.tiles.done(glideDur())) {
+    m_commitPending = false;
+    activateSelection();
+    return;
+  }
   relayoutCarousel();
   syncTiles();
   updateSnapshots();
