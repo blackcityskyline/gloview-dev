@@ -12,8 +12,7 @@ namespace gloview::model {
 // to its new card, and workspaces created this session that must not be reaped
 // before close. The scene is REBUILT; these are appended to and pruned.
 //
-// Pruning is a predicate, not an exposed vector, so "drop this window's effects"
-// is one named operation rather than an erase_if lambda per site.
+
 class Effects {
   public:
     [[nodiscard]] const std::vector<Ghost> &ghosts() const { return m_ghosts; }
@@ -39,7 +38,6 @@ class Effects {
       return m_swapfx.empty() ? nullptr : &m_swapfx.back();
     }
 
-    // The clock is the only place these payloads change.
     template <class F> void eachPulse(F &&f) {
       for (auto &p : m_pulses)
         f(p);

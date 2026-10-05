@@ -2,6 +2,10 @@
 
 #include "../layout.hpp"
 
+#include <cstddef>
+#include <utility>
+#include <vector>
+
 namespace gloview::view {
 
 // Which view is on screen, which way it is moving, the monitor-to-preview
@@ -47,17 +51,31 @@ class State {
     [[nodiscard]] const CarouselLayout &carousel() const { return m_carousel; }
     [[nodiscard]] int carouselFor() const { return m_carouselFor; }
 
-    // One call, so "resolved for THIS selection" cannot be half true: a stale value
-    // skips the relayout and leaves the run off-centre.
+    // slot[k] = the card index that card slot k shows. The renderer needs this too,
+    // so it belongs with the geometry it was resolved with: card k is NOT tile k,
+    // and a renderer assuming otherwise draws the wrong window in every slot.
+    [[nodiscard]] const std::vector<std::size_t> &slot() const { return m_slot; }
+
+
+    [[nodiscard]] int slotOf(std::size_t tile) const {
+      for (std::size_t k = 0; k < m_slot.size(); ++k)
+        if (m_slot[k] == tile)
+          return static_cast<int>(k);
+      return -1;
+    }
+
     void setEngine(Engine e) { m_engine = e; }
     void clearCards() {
       m_carousel = {};
       m_carouselFor = -1;
+      m_slot.clear();
     }
-    void resolve(Engine engine, const CarouselLayout &carousel, int selected) {
+    void resolve(Engine engine, const CarouselLayout &carousel, int selected,
+                 std::vector<std::size_t> slot) {
       m_engine = engine;
       m_carousel = carousel;
       m_carouselFor = selected;
+      m_slot = std::move(slot);
     }
     void clearRun() {
       m_engine = Engine::Rows;
@@ -79,6 +97,7 @@ class State {
 
     Engine m_engine = Engine::Rows;
     CarouselLayout m_carousel;
+    std::vector<std::size_t> m_slot;
     int m_carouselFor = -1;
 };
 

@@ -330,9 +330,8 @@ int Overview::keyIndex(int keycode, uint32_t mods,
 void Overview::moveSelection(int dx, int dy) {
   if (m_scene.tiles().empty())
     return;
-  if (m_scene.selected() < 0 || m_scene.selected() >= static_cast<int>(m_scene.tiles().size())) {
+  if (!m_scene.hasSelection()) {
     m_scene.select((m_scene.hoveredTile() >= 0) ? m_scene.hoveredTile() : 0);
-    syncFocus();
     damage();
     return;
   }
@@ -340,9 +339,7 @@ void Overview::moveSelection(int dx, int dy) {
   // reacts to m_scene.selected().
   if (carouselMode()) {
     if (dx != 0) {
-      const int n = static_cast<int>(m_scene.tiles().size());
-      m_scene.select(((m_scene.selected() + dx) % n + n) % n);
-      syncFocus();
+      m_scene.stepSelection(dx);
       damage();
     }
     return;
@@ -371,17 +368,30 @@ void Overview::moveSelection(int dx, int dy) {
   }
   if (best >= 0) {
     m_scene.select(best);
-    syncFocus();
     damage();
   }
 }
 
+// Steps through the order the user SEES. In the run that is the slot order, not the
+// scene's array order: the cards are laid out most-recently-used first, so stepping
+// the array index would move the selection to a window that is not the next card on
+// screen. A grid has no slot order and keeps the array order it is drawn in.
 void Overview::stepAltTab(int dir) {
-  const int n = static_cast<int>(m_scene.tiles().size());
+  const int n = static_cast<int>(m_scene.size());
   if (n == 0)
     return;
-  m_scene.select(((m_scene.selected() + dir) % n + n) % n);
-  syncFocus();
+  const auto &slot = m_view.slot();
+  if (carouselMode() && m_scene.hasSelection() &&
+      slot.size() == static_cast<std::size_t>(n)) {
+    const int cur = m_view.slotOf(static_cast<std::size_t>(m_scene.selected()));
+    if (cur >= 0) {
+      const int nxt = ((cur + dir) % n + n) % n;
+      m_scene.select(static_cast<int>(slot[static_cast<std::size_t>(nxt)]));
+      damage();
+      return;
+    }
+  }
+  m_scene.stepSelection(dir);
   damage();
 }
 
@@ -392,20 +402,5 @@ void Overview::activateSelection() {
   focusAndClose(w, Desktop::FOCUS_REASON_KEYBIND);
 }
 
-// Real focus must track m_scene.selected(): a passthrough `killactive` would hit
-// the pre-open window. Guarded to the ACTIVE ws — a hidden one desyncs it.
-void Overview::syncFocus() const {
-  if (!m_active || m_scene.selected() < 0 ||
-      m_scene.selected() >= static_cast<int>(m_scene.tiles().size()))
-    return;
-  const auto m = m_monitor.lock();
-  const auto w = m_scene.tiles()[m_scene.selected()].win.lock();
-  if (!m || !w || !w->m_isMapped || w->isHidden())
-    return;
-  if (w->m_workspace !=
-      m->m_activeWorkspace)
-    return;
-  Desktop::focusState()->fullWindowFocus(w, Desktop::FOCUS_REASON_KEYBIND);
-}
 
 } // namespace gloview

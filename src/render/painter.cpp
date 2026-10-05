@@ -67,6 +67,9 @@ void Overview::renderStage(eRenderStage stage) {
   if (stage != RENDER_LAST_MOMENT)
     return;
 
+  // Before the layout: the run reads the order when it resolves its slots, and a
+  // focus change made this frame has to be visible to that resolution.
+  syncRecency();
   updateAnimation();
   if (!m_active)
     return;

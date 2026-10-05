@@ -113,14 +113,16 @@ int Overview::tileAt(double lx, double ly) const {
   if (carouselMode()) {
     // Cards overlap: first-match hits the wrong one, so scan front to back.
     int best = -1, bestDepth = 1 << 30;
-    for (size_t i = 0; i < m_scene.tiles().size(); ++i) {
-      if (i >= m_view.carousel().cards.size() || !m_view.carousel().cards[i].visible)
+    const auto &slot = m_view.slot();
+    for (size_t k = 0; k < m_view.carousel().cards.size() && k < slot.size(); ++k) {
+      const auto i = static_cast<int>(slot[k]);
+      if (!m_view.carousel().cards[k].visible)
         continue;
-      if (!currentBox(m_scene.tiles()[i], static_cast<int>(i)).contains(lx, ly))
+      if (!currentBox(m_scene.tiles()[static_cast<size_t>(i)], i).contains(lx, ly))
         continue;
-      if (m_view.carousel().cards[i].depth < bestDepth) {
-        bestDepth = m_view.carousel().cards[i].depth;
-        best = static_cast<int>(i);
+      if (m_view.carousel().cards[k].depth < bestDepth) {
+        bestDepth = m_view.carousel().cards[k].depth;
+        best = i;
       }
     }
     return best;
@@ -187,7 +189,6 @@ void Overview::updateHover() {
     if (newTile >= 0 && cfg::behavior.focus_follows_mouse != 0 &&
         !carouselMode()) {
       m_scene.select(newTile);
-      syncFocus(); // so passthrough keybinds hit it
     }
     const auto m = m_monitor.lock();
     if (m) {
@@ -255,9 +256,12 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       for (size_t i = 0; i < m_scene.tiles().size(); ++i) {
         if (static_cast<int>(i) == dragIdx)
           continue;
-        if (carouselMode() &&
-            (i >= m_view.carousel().cards.size() || !m_view.carousel().cards[i].visible))
-          continue; // off-run: nothing of it is drawn
+        if (carouselMode()) {
+          const int k = m_view.slotOf(i);
+          // off-run: nothing of it is drawn, so nothing of it can be hit
+          if (k < 0 || !m_view.carousel().cards[static_cast<size_t>(k)].visible)
+            continue;
+        }
         const LRect cur = currentBox(m_scene.tiles()[i], static_cast<int>(i));
         if (closeButtonRect(tileBox(i, cur)).contains(lx, ly)) {
           m_drag.press =
@@ -485,7 +489,6 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         press != m_scene.selected()) {
       debug::dbg("[REL] branch=Tile->carouselFocus idx=" + std::to_string(press));
       m_scene.select(press);
-      syncFocus();
       damage();
       return true;
     }

@@ -29,6 +29,7 @@ add_library(gloview SHARED
   src/input/keys.cpp
   src/actions/actions.cpp
   src/layout.cpp
+  src/model/recency.cpp
   src/cursor.cpp
   src/blur.cpp
   src/pixel/cache.cpp
@@ -79,6 +80,9 @@ install(TARGETS gloview LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 # three times (its progress read with the wrong sign) and a screenshot does not
 # tell a zero-size card from a small one.
 enable_testing()
+add_test(NAME recency
+         COMMAND ${CMAKE_COMMAND} -E env sh -c
+                 "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra ${CMAKE_SOURCE_DIR}/tests/recency_check.cpp ${CMAKE_SOURCE_DIR}/src/model/recency.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/recency_check && ${CMAKE_CURRENT_BINARY_DIR}/recency_check")
 add_test(NAME carousel_layout
          COMMAND ${CMAKE_COMMAND} -E env sh -c
                  "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/layout_carousel_check.cpp ${CMAKE_SOURCE_DIR}/src/layout.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/layout_check && ${CMAKE_CURRENT_BINARY_DIR}/layout_check")

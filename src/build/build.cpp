@@ -369,8 +369,7 @@ void Overview::layoutTiles() {
   // neighbours, which a grid of boxes cannot express. Slots are built AROUND
   // selection = relayout, not repaint.
   if (m_view.run()) {
-    const int sel =
-      m_scene.hasSelection() ? m_scene.selected() : 0;
+    const int sel = m_scene.hasSelection() ? m_scene.selected() : 0;
     const LRect usable{cfg.padLeft, cfg.padTop,
                        std::max(1.0, m->m_size.x - cfg.padLeft - cfg.padRight),
                        std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
@@ -386,30 +385,48 @@ void Overview::layoutTiles() {
       mt.boxW = std::min(static_cast<double>(w), m->m_size.x);
       mt.boxH = mt.boxW * m->m_size.y / m->m_size.x;
     }
-    m_view.resolve(m_view.engine(),
-                   computeCarousel(static_cast<int>(m_scene.edit().size()), sel, usable, mt),
-                   sel);
-    for (size_t i = 0; i < m_scene.edit().size(); ++i) {
-      const auto &c = m_view.carousel().cards[i];
-      // Zero target = off-run. Nothing paints an off-run card, so where it would
-      // have gone does not matter; a zeroed box keeps the glide from resizing it.
-      m_scene.edit()[i].target = c.visible ? LRect{usable.x + m_view.carousel().originX + c.x,
-                                            usable.y + m_view.carousel().originY +
-                                                m_view.carousel().stripY + c.y,
-                                            c.w, c.h}
-                                    : LRect{};
+    // SLOT ORDER, not a reordered array. `slot[k]` is the tile that gets card k:
+    // the focused one leads, the rest follow the recency service. The card array is
+    // addressed by position everywhere else, so this is the only place the mapping
+    // may live — sorting the array inside a layout pass is what broke the run once.
+    const auto n = static_cast<int>(m_scene.size());
+    std::vector<std::size_t> slot;
+    {
+      std::vector<const void *> keys;
+      keys.reserve(m_scene.size());
+      for (const auto &t : m_scene.tiles())
+        keys.push_back(t.win.lock().get());
+      m_recency.order(keys, slot);
+    }
+    if (const auto lead = std::find(slot.begin(), slot.end(),
+                                    static_cast<std::size_t>(sel));
+        lead != slot.end())
+      std::rotate(slot.begin(), lead, lead + 1);
+
+    // Slot 0 holds the focused window, so the run is centred on card 0.
+    m_view.resolve(m_view.engine(), computeCarousel(n, 0, usable, mt), sel,
+                   slot);
+    for (int k = 0; k < n; ++k) {
+      const auto i = slot[static_cast<std::size_t>(k)];
+      const auto &c = m_view.carousel().cards[static_cast<std::size_t>(k)];
+      auto &t = m_scene.edit()[i];
+      // Zero target = off-run: nothing paints it, and a zeroed box keeps the glide
+      // from resizing the card on its way out.
+      t.target = c.visible ? LRect{usable.x + m_view.carousel().originX + c.x,
+                                  usable.y + m_view.carousel().originY +
+                                      m_view.carousel().stripY + c.y,
+                                  c.w, c.h}
+                           : LRect{};
       // Capture the caption HERE, where the card width is known, cut to it. Paint
       // only reads: mid-pass text rendering is unsafe, and asking at paint time
       // measured the pill off the uncut entry.
-      if (c.visible) {
-        if (const auto w = m_scene.edit()[i].win.lock())
-          // The fitted box, not the card: a portrait window is drawn narrower than
-          // the standard card, and the pill is sized off what it actually covers.
-          m_scene.edit()[i].label = m_pixel.label(
-              w.get(), m_scene.edit()[i].labelText, cfg::colors.label.get(1.0), 15,
-              static_cast<int>(std::max(1.0, tileBox(i, m_scene.edit()[i].target).w -
-                                                 28.0)));
-      }
+      if (c.visible && t.win.lock())
+        // The fitted box, not the card: a portrait window is drawn narrower than
+        // the standard card, and the pill is sized off what it actually covers.
+        t.label = m_pixel.label(t.win.lock().get(), t.labelText,
+                                cfg::colors.label.get(1.0), 15,
+                                static_cast<int>(std::max(
+                                    1.0, tileBox(i, t.target).w - 28.0)));
     }
     return;
   }
@@ -523,6 +540,11 @@ void Overview::syncTiles() {
     }
   if (!diff)
     return;
+
+  // The recency service caches the live set, so it is pruned against the set the
+  // tiles were just measured against. A dead window's entry would otherwise hold a
+  // slot that Hyprland's next window at the same address inherits.
+  pruneRecency();
 
   auto oldBoxes = captureCurrentBoxes();
 

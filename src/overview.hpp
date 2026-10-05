@@ -33,6 +33,7 @@ class CGradientValueData; // general:col.active_border's real type
 #include "clock/clock.hpp"
 #include "view/state.hpp"
 #include "model/effects.hpp"
+#include "model/recency.hpp"
 #include "model/scene.hpp"
 #include "model/model.hpp"
 #include "pixel/cache.hpp"
@@ -73,12 +74,10 @@ public:
   void toggleCarousel();   // flip the run on/off; on_open picks the start
   void altTabInvoke(bool reverse); // opens+seeds if closed, else advances
 
-  // renderStage is the frame entry (BUILD); paint is the painter it schedules.
   void renderStage(eRenderStage stage);
   void paint();
 
   void renderBackdrop() const;
-  // `live` = playing video: re-blur every frame, no cache.
   SP<Render::ITexture> backdropSource(bool &live) const;
   SP<Render::ITexture> renderBackdropSource(int W, int H) const;
 
@@ -88,7 +87,6 @@ public:
   void renderStripButtons() const;
   void renderPulses(bool strip) const;
   void renderTiles() const;
-  // ONE pass: each overlapping card is a whole tile, chrome through content.
   void renderCarousel() const;
   void renderCarouselCounter() const;
   bool carouselMode() const;
@@ -103,7 +101,6 @@ public:
   void ensureAnimPump();
   SP<CEventLoopTimer> m_animPump; // null when no animation is running
 
-  // From the painter's tail; the immediate route reads the scene mid-draw.
   void finishPendingDeactivate();
 
   bool isAboveLayer(const std::string &ns) const;
@@ -143,11 +140,16 @@ private:
   // m_active off now skips the overlay.
   bool m_pendingDeactivate = false;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
-  // The cards in the main area, the focus and the cursor.
+  model::Recency m_recency;
+  PHLWINDOWREF m_lastFocus;
+  // The compositor's focus when the overlay opened, held for its whole lifetime.
+  // Inside, the run's selection is INTERNAL and never touches the compositor, so
+  // hovering a card cannot change what a passthrough bind acts on.
+  PHLWINDOWREF m_focusOutside;
+  void syncRecency();
+  void pruneRecency();
   model::Scene m_scene;
-  // Ghosts, pulses, thumbnail flights, workspaces held until close.
   model::Effects m_fx;
-  // Which view is on screen, where it is going, what the layout resolved.
   view::State m_view;
   clock::Clocks m_clocks;
   double m_progress = 0.0;
@@ -161,11 +163,8 @@ private:
   mutable pixel::PixelCache m_pixel;
   double m_scrollAccum = 0.0; // sub-card wheel leftover, so slow paging still moves
   std::vector<std::pair<PHLLSREF, float>> m_hiddenLayers; // + pre-hide alpha
-  // Committed focus target; a ws change re-asserts from its own history, which can
-  // still name the old window.
   PHLWINDOWREF m_pendingFocus;
 
-  // free-arrange: tiles at the real positions, drag floats the real window.
 
   int m_newCardId = 0;
   bool m_newCardAnim = false;
@@ -216,10 +215,7 @@ private:
 
   CCursorModule m_cursor; // KMS plane preferred, software erases-and-redraws
 
-  // Blur cache: frame one's blur lives in a persistent FBO, later frames blit it.
-  // srcId + recipe compared EVERY frame, outside a dirty guard.
   mutable render::BlurCache m_blur;
-  // Full-res FBO of a rendered desktop background when there is no direct texture.
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false;
   mutable std::chrono::steady_clock::time_point m_lastBackdropCapture{};
@@ -263,7 +259,6 @@ private:
   int draggedTile() const;
   void dropLiftIfNotMoved();
   void drawTile(size_t i, const TileLook &look) const;
-  // Every layout resolves its slot through this, and so does every hit-test.
   LRect tileBox(size_t i, const LRect &slot) const;
   void switchToWorkspace(const model::StripItem &it, bool instant = false);
   void dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
@@ -300,17 +295,11 @@ private:
   // the glide, so it aims at the real final position.
   void focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason);
   bool crossesRealWorkspace(const PHLWINDOW &w) const;
-  void syncFocus() const;
   void closeTileWindow(int i);
-  // Drop zone: opposite the strip's anchored edge. No hit test of its own: the
-  // release and the hover both go through killZoneRect, so drawn and accepted
-  // areas cannot drift.
   LRect killZoneRect() const;
   double killZoneGlow(double lx, double ly) const;
   void renderKillZone() const;
   double m_killGlow = 0.0; // 1 at the zone, 0 a screen-width away, while dragging
-  // Carousel on/off for the all-workspaces view. layoutTiles reads this, not the
-  // config, so a toggle is not overwritten by the next layout.
   std::vector<std::pair<PHLWINDOW, LRect>> captureCurrentBoxes(
       PHLWINDOW exclude = {}) const;
   void replayReflow(std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);
@@ -321,6 +310,7 @@ private:
   void restoreLayers();
   void restoreFill();
   void stepAltTab(int dir);
+  int tileOf(const PHLWINDOW &w) const;
   void dbg(const std::string &msg) const;
   void damage() const;
 };

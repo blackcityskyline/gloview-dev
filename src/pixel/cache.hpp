@@ -15,9 +15,9 @@ class IFramebuffer;
 namespace gloview::pixel {
 
 // Captions, the close glyph, entry snapshots. The job is the KEYING POLICY: a
-// caption is asked for whole and cut to the card, and sharing a slot between the
-// two measures one texture and draws the other. Keys are window addresses, safe
-// only because dead ones are pruned — Hyprland reuses addresses.
+// caption is asked for whole and cut to the card, and sharing a slot measures one
+// texture and draws the other. Keys are window addresses, safe only because dead
+// ones are pruned — Hyprland reuses addresses.
 class PixelCache {
   public:
     // maxW <= 0 = untruncated. renderText clips rather than ellipsizes, so a wide
@@ -26,7 +26,6 @@ class PixelCache {
                                const CHyprColor &col, int size,
                                int maxW = 0);
 
-    // Reads without rendering; paint creates nothing.
     [[nodiscard]] SP<Render::ITexture> peekLabel(void *key, int maxW) const;
 
     // The close glyph, shared by every card: glyph() renders, closeGlyph() reads.
@@ -41,7 +40,6 @@ class PixelCache {
     }
     void clearSnapshots() { m_snapshots.clear(); }
 
-    // Drops everything; the close path, where those windows are going away.
     void clear();
 
 

@@ -8,16 +8,12 @@ namespace gloview::model {
 
 // The cards in the main area, which one is focused, what the cursor is over.
 //
-// edit() is the only way to reach the tiles for WRITING. Greppable: six files —
-// the build paths, the close pinning, the swap, the desktop park, teardown, and
-// the clock pass that settles a finished entry. Every renderer and input handler
-// reads tiles() and cannot reorder the array. Recency ordering went wrong once by
-// sorting this array inside a layout pass, so the rule lives in the type: a reader
-// that wants to reorder has to type edit().
-//
-// That distinction is the whole point. The recency ordering went wrong once by
-// being applied to the array inside a layout pass, because layout and storage were
-// the same field. Ordering belongs to the slot layer; storage belongs here.
+// edit() is the only way to reach the tiles for WRITING, and the rule is greppable:
+// six files — the build paths, the close pinning, the swap, the desktop park,
+// teardown, and the clock pass that settles a finished entry. Every renderer and
+// input handler reads tiles() and cannot reorder the array. Recency ordering went
+// wrong once by sorting this array inside a layout pass, so a reader that wants to
+// reorder has to type edit().
 class Scene {
   public:
     [[nodiscard]] const std::vector<Tile> &tiles() const { return m_tiles; }

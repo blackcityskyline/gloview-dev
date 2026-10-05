@@ -200,16 +200,12 @@ std::string Overview::cursorMode() const {
 
 namespace {
 } // namespace
-// How far the glow reaches past the zone, in logical px.
 static constexpr double kKillZoneFalloff = 150.0;
 
-// The closing target sits on the edge OPPOSITE the strip, never under its cards.
 LRect Overview::killZoneRect() const {
   const auto m = m_monitor.lock();
   if (!m)
     return {};
-  // Full monitor width: a narrow target on a long edge is something the user has
-  // to aim at, and the glow reads as a figure, not as light.
   constexpr double kH = 40.0; // 50 * 0.8: 20% shorter
   const bool atTop = stripAnchor() == Anchor::Bottom;
   return LRect{0.0, atTop ? 0.0 : m->m_size.y - kH, m->m_size.x, kH};
@@ -383,10 +379,12 @@ void Overview::altTabInvoke(bool reverse) {
       return;
     }
     m_altTabbing = true; // armed AFTER open(): a plain open resets it
-    m_scene.select(m_scene.tiles().empty() ? -1 : 0);
-    if (carouselMode() && !m_scene.tiles().empty())
+    // open() already seeded the selection to the window that had the compositor
+    // focus. Selecting index 0 here threw that away and landed on whatever window
+    // happened to be first in the scene, which is why the same window came up on
+    // every invocation.
+    if (carouselMode() && !m_scene.empty())
       layoutTiles();
-    syncFocus();
     damage();
     return;
   }
@@ -564,6 +562,7 @@ void Overview::hardClose() {
   m_pixel.clearSnapshots();
   m_scene.clearHover();
   m_scene.select(-1);
+  m_focusOutside.reset();
 
   damage();
 }
@@ -614,6 +613,40 @@ bool Overview::isTileWindow(const PHLWINDOW &w) const {
         if (t.win.lock() == w)
             return true;
     return false;
+}
+
+// Feeds the recency service from the COMPOSITOR's focus, and only while the
+// overview is closed. Inside, the run's selection is internal, so nothing here may
+// read it: promoting on an internal hover would make the order depend on where the
+// pointer happened to be. Called every frame and deliberately cheap — one pointer
+// compare.
+void Overview::syncRecency() {
+  if (m_active)
+    return;
+  const auto now = Desktop::focusState()->window();
+  if (now == m_lastFocus)
+    return;
+  m_lastFocus = now;
+  if (now)
+    m_recency.promote(now.get());
+}
+
+int Overview::tileOf(const PHLWINDOW &w) const {
+  for (size_t i = 0; i < m_scene.size(); ++i)
+    if (m_scene.tiles()[i].win.lock() == w)
+      return static_cast<int>(i);
+  return -1;
+}
+
+// The recency service is a cache of the live window set and must never outlive it.
+// Hyprland reuses window addresses, so an entry for a closed window would hand its
+// rank to an unrelated window that lands on the same address.
+void Overview::pruneRecency() {
+  std::vector<const void *> live;
+  live.reserve(m_scene.size());
+  for (const auto &t : m_scene.tiles())
+    live.push_back(t.win.lock().get());
+  m_recency.forgetDead(live);
 }
 
 void Overview::deactivate() {

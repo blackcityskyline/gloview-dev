@@ -1,5 +1,3 @@
-// Cards overlap, so the run is painted in ONE pass, far -> selected, each card a
-// whole tile. This file gives the order and the boxes; drawTile the looks.
 
 #include <algorithm>
 #include <cmath>
@@ -28,7 +26,6 @@ constexpr double kDepthTaper = 0.8;
 
 } // namespace
 
-// What layoutTiles actually built, not what the config asks for.
 bool Overview::carouselMode() const {
   return m_view.run();
 }
@@ -41,8 +38,8 @@ void Overview::relayoutCarousel() {
   // window the user is carrying.
   if (draggedTile() >= 0 || m_drag.press == model::Drag::Press::StripWin)
     return;
-  // Never during a close: a relayout rewrites every natural, which for a run of
-  // maximized windows is one shared rectangle — all the cards land in one point.
+  // Never during a close: a relayout rewrites every natural, which for maximized
+  // windows is one shared rectangle — all the cards land in one point.
   if (!m_opening || m_pendingDeactivate)
     return;
   if (m_scene.selected() < 0 || m_scene.selected() >= static_cast<int>(m_scene.tiles().size()))
@@ -59,26 +56,27 @@ void Overview::renderCarousel() const {
   if (!m || m_scene.tiles().empty() || m_view.carousel().cards.size() != m_scene.tiles().size())
     return;
 
-  std::vector<int> order;
-  order.reserve(m_scene.tiles().size());
-  for (size_t i = 0; i < m_scene.tiles().size(); ++i)
-    order.push_back(static_cast<int>(i));
-  std::stable_sort(order.begin(), order.end(), [this](int a, int b) {
-    const auto &ca = m_view.carousel().cards[static_cast<size_t>(a)];
-    const auto &cb = m_view.carousel().cards[static_cast<size_t>(b)];
+  // Paint order is far -> near by DEPTH, but the cards are still the scene's tiles:
+  // slot k is m_view.slot()[k], so the run can be ordered by recency without the
+  // array itself being reordered.
+  const auto &slot = m_view.slot();
+  std::vector<int> paint;
+  paint.reserve(m_scene.size());
+  for (size_t k = 0; k < m_view.carousel().cards.size(); ++k)
+    paint.push_back(static_cast<int>(slot[k]));
+  std::stable_sort(paint.begin(), paint.end(), [this](int a, int b) {
+    const auto &ca = m_view.carousel().cards[static_cast<size_t>(m_view.slot()[static_cast<size_t>(a)])];
+    const auto &cb = m_view.carousel().cards[static_cast<size_t>(m_view.slot()[static_cast<size_t>(b)])];
     if (ca.visible != cb.visible)
       return !ca.visible;
     return ca.depth > cb.depth;
   });
 
-  for (const int i : order) {
-    const auto &card = m_view.carousel().cards[static_cast<size_t>(i)];
-    // A card off the run has no box; the one it is shown at is its slot from
-    // before it left, and painting it there sails it across the backdrop.
+  for (const int i : paint) {
+    const auto &card =
+        m_view.carousel().cards[static_cast<size_t>(slot[static_cast<size_t>(i)])];
     if (!card.visible)
       continue;
-    // The dragged card is already on screen under the cursor; painting its slot
-    // too showed the preview twice.
     if (i == draggedTile())
       continue;
 
