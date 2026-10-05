@@ -149,8 +149,6 @@ private:
   // motion plays for the target window instead of landing on one and swapping to
   // another at the end. Consumed by layoutTiles, never by a key path.
   int m_pendingStep = 0;
-  int m_autoStep = 0;
-  double m_stepSpeed = 1.0;
   void syncRecency();
   void pruneRecency();
   model::Scene m_scene;

@@ -235,9 +235,7 @@ struct behavior {
   Int switch_on_new_workspace;
   Int show_all_workspaces;
   Int show_special;
-  Int alttab_fast;    // one press lands on the next window (fast mode)
-  Int alttab_autostep;// the second step plays itself when the entry finishes
-  Float alttab_step_speed;
+  Int alttab_advances; // the entry is aimed at the next window
   Int hold_lift_ms;
   Str tile_layout;
 };

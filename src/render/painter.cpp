@@ -116,15 +116,6 @@ void Overview::renderStage(eRenderStage stage) {
   }
 
   updateHover();
-  const bool entrySettled =
-      m_clocks.master.done(leaf("open").ms) && m_clocks.tiles.done(glideDur());
-  if (m_autoStep != 0 && m_opening && !m_pendingDeactivate && entrySettled) {
-    const int dir = m_autoStep;
-    m_autoStep = 0;
-    m_stepSpeed =
-        std::max(0.05, static_cast<double>(cfg::behavior.alttab_step_speed.get()));
-    stepAltTab(dir);
-  }
   relayoutCarousel();
   syncTiles();
   updateSnapshots();

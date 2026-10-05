@@ -372,14 +372,12 @@ void Overview::toggleAllWorkspaces() {
 
 void Overview::altTabInvoke(bool reverse) {
   if (!(m_active && m_opening)) {
-    // Armed BEFORE open(), and consumed by the layout it triggers: stepping after
-    // open() would land the run on one window and swap it at the end, which is the
-    // discontinuous motion alttab_advances is supposed to avoid.
+    // Armed BEFORE open() and consumed by the layout it triggers, so the entry is
+    // aimed at the target from its first frame: ONE motion of ONE duration, landing
+    // on the window you are going to get. A step played AFTER open() instead is a
+    // second motion behind a first one, which costs time and breaks the continuity.
     m_pendingStep =
-        cfg::behavior.alttab_fast != 0 ? (reverse ? -1 : 1) : 0;
-    m_autoStep = (m_pendingStep == 0 && cfg::behavior.alttab_autostep != 0)
-                     ? (reverse ? -1 : 1)
-                     : 0;
+        cfg::behavior.alttab_advances != 0 ? (reverse ? -1 : 1) : 0;
     m_view.setAllOverride( 1);
     open();
     m_pendingStep = 0;
