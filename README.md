@@ -308,12 +308,17 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   downwards reads as cards hanging off one.
 - **On close the run leaves as a deck.** The focused card flies home and grows
   into the real window, staying whole for the handoff; every other card shrinks
-  the rest shrink to their own centres over the first half of the close and are
-  gone before it starts growing. They cannot fly home: a maximized window, and
-  every window on a workspace that is not the one on screen, all share one
-  geometry, so their returns are the same rectangle and the whole run lands on
-  top of the focused card, which is drawn last. That is why the exit read as no
-  exit at all — it was drawn, exactly under the landing, for the whole close.
+  to its own centre and is gone well before it starts growing. They cannot fly
+  home: a maximized window, and every window on a workspace that is not the one
+  on screen, all share one geometry, so their returns are the same rectangle and
+  the whole run lands on top of the focused card, which is drawn last. That is
+  why the exit read as no exit at all — it was drawn, exactly under the landing,
+  for the whole close.
+- **The landing is the same motion everywhere.** The focused tile is never
+  staggered and never given a private lerp: it rides the ordinary
+  `natural → target` lerp on the close curve, identically in the carousel and in
+  one-workspace mode. Both of those used to exist separately, which is why the
+  same window landed differently depending on the view it came from.
 - **Preview windows are always opaque.** Every preview goes through one render
   path that pins the surface alpha to 1, so the desktop's own `active_opacity` /
   `inactive_opacity` rules never make a preview see-through; depth is carried by

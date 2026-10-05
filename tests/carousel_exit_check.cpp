@@ -30,20 +30,18 @@ void yes(bool cond, const char *what, double p) {
   }
 }
 
-constexpr double kDeckExit = 0.5;  // unfocused cards are gone by this fraction
-constexpr double kHoldEnd = 0.5;   // the focused card waits this long
+constexpr double kDeckExit = 0.5; // unfocused cards are gone by this fraction
 
 } // namespace
 
 int main() {
-  double prevK = -1.0, prevF = -1.0;
+  double prevK = -1.0;
   // 201 samples across the whole close: m_progress 1 -> 0, exitT 0 -> 1.
   for (int step = 0; step <= 200; ++step) {
     const double p = 1.0 - static_cast<double>(step) / 200.0;
     const double exitT = 1.0 - p;
     // Exactly what renderCarousel computes, from the one shared exitT.
     const double k = std::clamp(1.0 - exitT / kDeckExit, 0.0, 1.0);
-    const double f = std::clamp((exitT - kHoldEnd) / (1.0 - kHoldEnd), 0.0, 1.0);
 
     // An unfocused card that is still meant to be seen has size.
     if (exitT < kDeckExit)
@@ -53,17 +51,7 @@ int main() {
     if (prevK >= 0.0 && exitT <= kDeckExit)
       yes(k <= prevK + 1e-9, "unfocused shrink is monotonic", p);
 
-    // The focused card holds on the deck for the whole first half, so the deck's
-    // exit is not hidden under it.
-    if (exitT <= kHoldEnd)
-      yes(f == 0.0, "focused card holds at its card box first", p);
-    if (exitT > kHoldEnd)
-      yes(f > 0.0, "focused card flies only after the deck left", p);
-    if (prevF >= 0.0 && exitT > kHoldEnd)
-      yes(f >= prevF - 1e-9, "focused flight is monotonic", p);
-
     prevK = k;
-    prevF = f;
   }
 
   // Halfway through its exit a card is half size — a jump to zero on the first
@@ -71,9 +59,15 @@ int main() {
   yes(std::abs(std::clamp(1.0 - (kDeckExit / 2.0) / kDeckExit, 0.0, 1.0) - 0.5) <
           1e-9,
       "a card halfway through its exit is half size", 0.0);
-  // At the moment the deck finishes, the focused card still has not moved.
-  yes(std::clamp((kHoldEnd - kHoldEnd) / (1.0 - kHoldEnd), 0.0, 1.0) == 0.0,
-      "the focused card has not moved when the deck finishes", 0.0);
+  // The focused tile is never staggered: its progress IS the close progress, in
+  // every layout. staggered() assumes a rising 0..1, so on close it would run
+  // backwards and the same window would land differently per view.
+  for (int step = 0; step <= 200; ++step) {
+    const double p = 1.0 - static_cast<double>(step) / 200.0;
+    const double exitT = 1.0 - p;
+    yes(std::abs(exitT - std::clamp((p - 0.02) / (1.0 - 0.06), 0.0, 1.0)) > 1e-12,
+        "no per-tile stagger is applied to the landing", p);
+  }
 
   if (g_failed) {
     std::printf("\n%d carousel exit check(s) FAILED\n", g_failed);
