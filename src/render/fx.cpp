@@ -172,12 +172,12 @@ void Overview::renderKillZone() const {
 void Overview::kickPulse(const PHLWINDOW &w) {
   if (!w || !leaf("pulse").on)
     return;
-  std::erase_if(m_pulses, [&w](const model::WinPulse &p) { return p.w.lock() == w; });
-  m_pulses.push_back(model::WinPulse{w, 0.0, std::chrono::steady_clock::now()});
+  m_fx.dropPulse([&w](const model::WinPulse &p) { return p.w.lock() == w; });
+  m_fx.addPulse(model::WinPulse{w, 0.0, std::chrono::steady_clock::now()});
 }
 
 void Overview::renderPulses(bool strip) const {
-  if (m_pulses.empty())
+  if (m_fx.pulses().empty())
     return;
   const auto m = m_monitor.lock();
   if (!m)
@@ -185,7 +185,7 @@ void Overview::renderPulses(bool strip) const {
   const double s = m->m_scale;
   const float roundPow = cfg::look.preview_round_power;
   const auto col = cfg::colors.hover_border.get(1.0);
-  for (const auto &p : m_pulses) {
+  for (const auto &p : m_fx.pulses()) {
     const auto w = p.w.lock();
     if (!w)
       continue;
@@ -237,7 +237,7 @@ void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
 // Flying windows, lerped to the CURRENT slot box (which may itself be gliding).
 // Slots are suppressed while the flight is live, take over invisibly at t=1.
 void Overview::renderSwapFX() const {
-  if (m_swapfx.empty())
+  if (m_fx.swapfx().empty())
     return;
   const auto m = m_monitor.lock();
   if (!m)
@@ -247,7 +247,7 @@ void Overview::renderSwapFX() const {
   const int  round     = cfg::look.preview_round;
   const float roundPow = cfg::look.preview_round_power;
 
-  for (const auto &fx : m_swapfx) {
+  for (const auto &fx : m_fx.swapfx()) {
     const auto w = fx.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;

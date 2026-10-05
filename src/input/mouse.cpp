@@ -590,8 +590,8 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
                       parseSwapStyle(cfg::animStyle("strip_swap")),
                       leaf("drag").ms, leaf("drag").curve);
           // beginSwapFX may reuse a slot: force `from` on the entry it just pushed.
-          if (!m_swapfx.empty())
-            m_swapfx.back().from = fromBox;
+          if (!m_fx.swapfx().empty())
+            m_fx.lastSwap()->from = fromBox;
           kickPulse(w);
           damage();
           return true;

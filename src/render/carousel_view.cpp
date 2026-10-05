@@ -1,5 +1,5 @@
 // Cards overlap, so the run is painted in ONE pass, far -> selected, each card a
-// whole tile. This file supplies the order and the boxes; drawTile the looks.
+// whole tile. This file gives the order and the boxes; drawTile the looks.
 
 #include <algorithm>
 #include <cmath>
@@ -90,8 +90,7 @@ void Overview::renderCarousel() const {
     const double exitT = m_opening ? 0.0 : 1.0 - m_progress;
     // The focused card keeps currentBox's own lerp, as in every other layout — one
     // motion, one implementation. An unfocused card is pinned by close() (its real
-    // geometry IS the focused card's, so flying home drops it under the landing),
-    // so it only shrinks away on the close curve.
+    // geometry IS the focused card's), so it only shrinks on the close curve.
     if (!m_opening && card.depth != 0) {
       const double k = std::clamp(1.0 - exitT / 0.5, 0.0, 1.0);
       const double cx = look.box.cx(), cy = look.box.cy();

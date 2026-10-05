@@ -458,13 +458,13 @@ void Overview::startTileGlide(
       newcomers |= !matched;
     }
     // Every removed tile fades out where it was — never vanishes one frame.
-    m_ghosts.clear();
+    m_fx.clearGhosts();
     for (const auto &[oldWin, oldBox] : oldBoxes) {
       bool kept = false;
       for (auto &t : m_tiles)
         if (t.win.lock() == oldWin) { kept = true; break; }
       if (!kept)
-        m_ghosts.push_back(model::Ghost{oldWin, oldBox});
+        m_fx.addGhost(model::Ghost{oldWin, oldBox});
     }
   } else
     for (auto &t : m_tiles)
@@ -472,7 +472,7 @@ void Overview::startTileGlide(
   m_clocks.tiles.begin();
   m_clocks.tileMs    = m_glide.ms;    // snapshot: glideDur() must return THIS value
   m_clocks.tileCurve = m_glide.curve; // snapshot: currentBox() must use THIS curve
-  if (newcomers || !m_ghosts.empty()) {
+  if (newcomers || !m_fx.ghosts().empty()) {
     m_clocks.rebuild.begin();
     ensureAnimPump(); // frames must keep coming while population runs
   }

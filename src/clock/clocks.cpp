@@ -159,8 +159,7 @@ void Overview::updateAnimation() {
         m_clocks.newCard.compensateStall(gapMs, newCardDur());
       if (m_drag.lifted)
         m_clocks.dragLift.compensateStall(gapMs, leaf("drag").ms);
-      for (auto &fx : m_swapfx)
-        fx.clock.compensateStall(gapMs, fx.ms);
+      m_fx.eachSwap([&](auto &fx) { fx.clock.compensateStall(gapMs, fx.ms); });
     }
   }
   m_lastAnimTick = now;
@@ -191,8 +190,8 @@ void Overview::updateAnimation() {
   else
     m_stripScroll = m_stripScrollTarget;
 
-  if (!m_ghosts.empty() && m_clocks.rebuild.done(m_ghost.ms))
-    m_ghosts.clear();
+  if (!m_fx.ghosts().empty() && m_clocks.rebuild.done(m_ghost.ms))
+    m_fx.clearGhosts();
   // entries must settle explicitly or they keep evaluating curves forever
   if (m_clocks.rebuild.done(m_entry.ms) &&
       std::any_of(m_tiles.begin(), m_tiles.end(),
@@ -201,17 +200,18 @@ void Overview::updateAnimation() {
       t.appear = 1.0;
 
   const auto pulse = leaf("pulse");
-  for (auto &p : m_pulses) {
+  m_fx.eachPulse([&](auto &p) {
     if (p.w.expired())
-      continue;
+      return;
     p.p += std::min(34.0, std::chrono::duration<double, std::milli>(now - p.last)
                               .count()) /
            pulse.ms;
     p.last = now;
-  }
-  std::erase_if(m_pulses, [](const model::WinPulse &p) {
-    return p.w.expired() || p.p >= 1.0;
   });
+  // Pruned on each pulse's own accumulated fraction: a live config change must not
+  // shorten a ring that is already running.
+  m_fx.dropPulse(
+      [](const model::WinPulse &p) { return p.w.expired() || p.p >= 1.0; });
 
   if (m_clocks.rebuild.done(m_ghost.ms) && m_clocks.rebuild.done(m_entry.ms)) {
     m_view.setWsSlideDir( 0);
@@ -228,12 +228,9 @@ void Overview::updateAnimation() {
   }
 
   // prune on each flight's own clock; live config would cut landings short
-  for (auto it = m_swapfx.begin(); it != m_swapfx.end();) {
-    if (it->win.expired() || it->clock.raw(it->ms) >= 1.0)
-      it = m_swapfx.erase(it);
-    else
-      ++it;
-  }
+  m_fx.dropSwap([](const model::SwapFX &fx) {
+    return fx.win.expired() || fx.clock.raw(fx.ms) >= 1.0;
+  });
 
   const double t = m_clocks.master.raw(dur);
   m_progress = m_opening ? t : 1.0 - t;
@@ -251,7 +248,7 @@ void Overview::updateAnimation() {
 bool Overview::animBusy() const {
   return m_active &&
          (secondaryAnimsActive() || !m_clocks.tiles.done(glideDur()) ||
-          m_newCardAnim || m_drag.lifted || !m_swapfx.empty() ||
+          m_newCardAnim || m_drag.lifted || !m_fx.swapfx().empty() ||
           m_pendingJumpClose || m_pendingDeactivate ||
           (m_opening && m_progress < 1.0) || (!m_opening && m_progress > 0.0));
 }

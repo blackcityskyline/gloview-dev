@@ -9,9 +9,8 @@ namespace gloview::view {
 //
 // The resolved layout lives here because the renderer must ask what was produced,
 // never the config: free-arrange, the all/one flip and the carousel switch each
-// override what `layout` says. Keeping it together with the selection it was
-// resolved for makes that one question of one object — it used to be three fields
-// in a header, and the renderer compared them by hand.
+// override what `layout` says. Keeping it with the selection it was resolved for
+// makes that one question of one object; it was four fields compared by hand.
 class State {
   public:
     [[nodiscard]] bool desktop() const { return m_desktop; }
@@ -44,15 +43,14 @@ class State {
       m_oy = oy;
     }
 
-    // --- what layoutTiles resolved ------------------------------------
     [[nodiscard]] Engine engine() const { return m_engine; }
     [[nodiscard]] const CarouselLayout &carousel() const { return m_carousel; }
     [[nodiscard]] int carouselFor() const { return m_carouselFor; }
 
-    // One call, so "resolved for THIS selection" cannot be half true: slots are
-    // built around the selection, and a stale value skips the relayout.
+    // One call, so "resolved for THIS selection" cannot be half true: a stale value
+    // skips the relayout and leaves the run off-centre.
     void setEngine(Engine e) { m_engine = e; }
-    // Drops the run's geometry, keeps the already-resolved engine.
+    // Drops the run's geometry, keeps the resolved engine.
     void clearCards() {
       m_carousel = {};
       m_carouselFor = -1;

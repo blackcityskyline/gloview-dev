@@ -32,6 +32,7 @@ class CGradientValueData; // general:col.active_border's real type
 #include "clock/clocks.hpp"
 #include "clock/clock.hpp"
 #include "view/state.hpp"
+#include "model/effects.hpp"
 #include "model/model.hpp"
 #include "pixel/cache.hpp"
 #include "render/backdrop.hpp"
@@ -143,6 +144,8 @@ private:
   // m_active off now skips the overlay: one blank frame.
   bool m_pendingDeactivate = false;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
+  // Ghosts, pulses, thumbnail flights, workspaces held until close.
+  model::Effects m_fx;
   // Which view is on screen, where it is going, what the layout resolved.
   view::State m_view;
   // The domain of time: every tween lives here and nowhere else.
@@ -172,13 +175,11 @@ private:
 
   int m_newCardId = 0;
   bool m_newCardAnim = false;
-  std::vector<PHLWORKSPACEREF> m_newWorkspaces;
   double m_stripScroll = 0.0;    // animated card-group offset on its main axis
   double m_stripScrollMax = 0.0;
   double m_stripScrollTarget = 0.0;
   double m_stripScrollFrom = 0.0;
   void animateStripTo(double from, double to);
-  std::vector<model::Ghost> m_ghosts;
   anim::AnimCfg m_glide, m_entry, m_ghost, m_lift;
   std::string m_enterStyle, m_exitStyle;
   bool animBusy() const;
@@ -280,8 +281,6 @@ private:
   void swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it);
   void swapTiles(int a, int b);
   bool swapWindows(const PHLWINDOW &a, const PHLWINDOW &b);
-  std::vector<model::WinPulse> m_pulses;
-  std::vector<model::SwapFX> m_swapfx; // strip thumbnails' flight machinery
   void drawPulseRing(const CBox &boxPx, int round, float roundPow,
                      const CHyprColor &col, double p) const;
   void addWorkspace();

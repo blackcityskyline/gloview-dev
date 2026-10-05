@@ -254,7 +254,7 @@ void Overview::renderTiles() const {
 }
 
 void Overview::renderGhosts() const {
-  if (m_ghosts.empty() || m_clocks.rebuild.done(m_ghost.ms))
+  if (m_fx.ghosts().empty() || m_clocks.rebuild.done(m_ghost.ms))
     return;
   const auto m = m_monitor.lock();
   if (!m)
@@ -265,7 +265,7 @@ void Overview::renderGhosts() const {
   const double p    = std::min(1.0, m_clocks.rebuild.raw(m_ghost.ms));
   const double eOut = curves::eval(m_ghost.curve, p); // 0..1 gone
 
-  for (const auto &g : m_ghosts) {
+  for (const auto &g : m_fx.ghosts()) {
     const auto w = g.win.lock();
     if (!w || !w->m_isMapped || w->isHidden())
       continue;

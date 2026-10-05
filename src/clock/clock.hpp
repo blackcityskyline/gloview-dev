@@ -6,18 +6,18 @@
 
 namespace gloview::clock {
 
-// One animation clock: begin, seek, pin, query. The raw anchor and last-sample
-// state stay inside, so moving a re-targeted animation has one spelling.
+// One animation clock: begin, seek, pin, query. The anchor stays inside, so moving
+// a re-targeted animation has one spelling.
 class Clock {
   public:
     void begin() { m_t.begin(); }
-    // Drops the anchor, so raw() reads 0 again.
+
     void reset() { m_t = anim::Tween{}; }
     void seek(double frac, double durMs) { m_t.seek(frac, durMs); }
     void pinEnd(double durMs) { m_t.pinEnd(durMs); }
     bool done(double durMs) const { return m_t.done(durMs); }
     double raw(double durMs) const { return m_t.raw(durMs); }
-    // Rewinds to the last sampled fraction after a stalled frame.
+
     void compensateStall(double gapMs, double durMs) {
       m_t.compensateStall(gapMs, durMs);
     }
@@ -31,8 +31,6 @@ class Clock {
 // each call site. Read-only during paint.
 class Clocks {
   public:
-    // Open/close: 0 at the start of a close, 1 when settled, so every exit fraction
-    // derives from one named value instead of inverting progress.
     Clock master;
     Clock tiles;    // the glide every tile rides; retargeted on any layout change
     Clock rebuild;  // entries and ghost exits share this one
@@ -45,8 +43,8 @@ class Clocks {
     double tileMs = 0.0;
     std::string tileCurve;
 
-    // The SECONDARY clocks only — those that outlive the master. Folding the
-    // master in here would report busy during every close, forever.
+    // The SECONDARY clocks only. Folding the master in would report busy during
+    // every close, forever.
     [[nodiscard]] bool anyRunning(double rebuildEntryMs, double rebuildGhostMs,
                                   double stripMs) const;
 };

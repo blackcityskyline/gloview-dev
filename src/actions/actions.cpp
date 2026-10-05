@@ -114,7 +114,7 @@ void Overview::dropOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
       target = State::workspaceState()->create(it.id, m->m_id);
     if (target) {
       target->setPersistent(true);
-      m_newWorkspaces.push_back(target);
+      m_fx.addNewWorkspace(target);
       m_newCardId = it.id;
       m_clocks.newCard.begin();
       m_newCardAnim = true;
@@ -189,7 +189,7 @@ void Overview::beginSwapFX(const PHLWINDOW &w, const LRect &from,
                            const std::string &curve) {
   if (!w || !w->m_isMapped || w->isHidden())
     return;
-  std::erase_if(m_swapfx, [&w](const model::SwapFX &f) { return f.win.lock() == w; });
+  m_fx.dropSwap([&w](const model::SwapFX &f) { return f.win.lock() == w; });
   model::SwapFX fx;
   fx.win   = w;
   fx.from  = from;
@@ -197,13 +197,13 @@ void Overview::beginSwapFX(const PHLWINDOW &w, const LRect &from,
   fx.ms    = ms;
   fx.curve = curve;
   fx.clock.begin();
-  m_swapfx.push_back(std::move(fx));
+  m_fx.addSwap(std::move(fx));
   ensureAnimPump();
   damage();
 }
 
 bool Overview::swapfxActive(const PHLWINDOW &w) const {
-  for (const auto &l : m_swapfx)
+  for (const auto &l : m_fx.swapfx())
     if (l.win.lock() == w)
       return true;
   return false;
@@ -323,7 +323,7 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
       return;
     ws->setPersistent(
         true);
-    m_newWorkspaces.push_back(ws);
+    m_fx.addNewWorkspace(ws);
   } else if (const auto target = it.ws.lock()) {
     ws = target;
     if (ws == m_workspace.lock())
@@ -349,7 +349,7 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
   if (instant) {
     m_view.setWsSlideDir( 0);
     m_view.setJumpMode( true);
-    m_ghosts.clear();
+    m_fx.clearGhosts();
     for (auto &t : m_tiles)
       t.appear = 1.0;
     m_clocks.rebuild.pinEnd(std::max(m_entry.ms, m_ghost.ms));
@@ -363,13 +363,13 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
   }
   for (auto &t : m_tiles)
     t.appear = 0.0;
-  m_ghosts.clear();
+  m_fx.clearGhosts();
   for (const auto &[oldWin, oldBox] : oldBoxes) {
     bool kept = false;
     for (const auto &t : m_tiles)
       if (t.win.lock() == oldWin) { kept = true; break; }
     if (!kept)
-      m_ghosts.push_back(model::Ghost{oldWin, oldBox});
+      m_fx.addGhost(model::Ghost{oldWin, oldBox});
   }
   m_clocks.rebuild.begin();
   ensureAnimPump();
@@ -423,7 +423,7 @@ void Overview::addWorkspace() {
     return;
   // Persistent, or a new empty workspace is reaped within a frame.
   ws->setPersistent(true);
-  m_newWorkspaces.push_back(ws);
+  m_fx.addNewWorkspace(ws);
   m_newCardId = id;
   m_clocks.newCard.begin();
   m_newCardAnim = true;

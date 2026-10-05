@@ -20,17 +20,16 @@ namespace gloview::pixel {
 // only because dead ones are pruned — Hyprland reuses addresses.
 class PixelCache {
   public:
-    // maxW <= 0 = untruncated. renderText clips rather than ellipsizes, so a title
-    // too wide for its card is shortened and re-rendered to fit.
+    // maxW <= 0 = untruncated. renderText clips rather than ellipsizes, so a wide
+    // title is shortened here and re-rendered to fit.
     SP<Render::ITexture> label(void *key, const std::string &text,
                                const CHyprColor &col, int size,
                                int maxW = 0);
 
-    // Reads without rendering; paint must not create entries.
+    // Reads without rendering; paint creates nothing.
     [[nodiscard]] SP<Render::ITexture> peekLabel(void *key, int maxW) const;
 
-    // The close glyph, shared by every card that shows one. glyph() renders,
-    // closeGlyph() reads.
+    // The close glyph, shared by every card: glyph() renders, closeGlyph() reads.
     SP<Render::ITexture> glyph(const std::string &icon, const CHyprColor &col);
     [[nodiscard]] SP<Render::ITexture> closeGlyph() const;
 
@@ -42,10 +41,10 @@ class PixelCache {
     }
     void clearSnapshots() { m_snapshots.clear(); }
 
-    // Drops everything; the close path, where the keys' windows are going away.
+    // Drops everything; the close path, where those windows are going away.
     void clear();
 
-    // Keys whose window is not in `live`.
+
     void prune(const std::vector<void *> &live);
 
   private:
