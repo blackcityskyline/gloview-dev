@@ -474,13 +474,9 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       }
       debug::dbg("[REL] branch=Tile->flyback");
       replayReflow(oldBoxes);
-      if (press < static_cast<int>(m_scene.tiles().size())) {
-        auto &t = m_scene.edit()[press];
-        t.natural = t.target;
-        t.appear = 1.0;
-      }
-      beginSwapFX(w, m_lastDragBox, model::SwapStyle::Horizontal,
-                  leaf("drag").ms, leaf("drag").curve);
+      // natural := target parked the tile at the destination while beginSwapFX flew a
+      // second copy from the release point: the animation over a static card.
+      landAfterMove(w, m_lastDragBox, leaf("drag").ms, leaf("drag").curve);
       ensureAnimPump();
       damage();
       return true;

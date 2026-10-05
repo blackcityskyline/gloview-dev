@@ -226,8 +226,8 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
 
     const double boxW = std::max(1.0, mt.boxW);
     const double boxH = std::max(1.0, mt.boxH);
-    // The centred card is the standard box; every step out is a fraction of it,
-    // so the run tapers without any card changing its proportions.
+    // The centred card is the standard box; every step out is a fraction of it, so the
+    // run tapers without any card changing its proportions.
     const auto sizeAt = [&](int depth) {
         if (depth <= 0)
             return 1.0;
@@ -235,7 +235,7 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
             return mt.nearK;
         return mt.farK * std::pow(mt.taper, static_cast<double>(depth - 2));
     };
-    // Cards OVERLAP, the step being a fraction of the neighbour's OWN width.
+    // Cards OVERLAP: the step is a fraction of the neighbour's OWN width.
     const auto wAt = [&](int depth) { return boxW * sizeAt(depth); };
     const auto pitchAt = [&](int depth) { return wAt(depth) * mt.pitchK; };
     // Symmetric extent: the wider side decides, so even counts still fit.
@@ -266,8 +266,7 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.panelW = L.stripW;
     L.panelH = mt.countH + mt.sectionGap + L.stripH;
     L.stripY = mt.countH + mt.sectionGap;
-    // Card x is already absolute inside the usable rect, so originX stays 0. The
-    // run may hang past an edge, the price of the exact centre.
+    // Card x is absolute inside the usable rect, so originX stays 0.
     L.originX = 0.0;
     L.originY = std::round((screen.h - L.panelH) * 0.5);
     L.countX = std::round((screen.w - mt.countW) * 0.5);
@@ -284,8 +283,7 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
         // x reads c.w, so it has to come after it.
         c.x = (screen.w - c.w) * 0.5 +
               static_cast<double>(slot) * pitchAt(std::abs(slot)) * kCard;
-        // Symmetric about the focused card.
-        c.y = (boxH * kCard - c.h) * 0.5;
+            c.y = (boxH * kCard - c.h) * 0.5;
     }
     return L;
 }
