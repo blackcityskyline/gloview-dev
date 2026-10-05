@@ -118,6 +118,10 @@ int Overview::tileAt(double lx, double ly) const {
       const auto i = static_cast<int>(slot[k]);
       if (!m_view.carousel().cards[k].visible)
         continue;
+      // slot is a cache that outlives a shrink of the tile array and can point past its
+      // end; unguarded, that aborted the session inside std::vector::operator[].
+      if (i < 0 || i >= static_cast<int>(m_scene.tiles().size()))
+        continue;
       if (!currentBox(m_scene.tiles()[static_cast<size_t>(i)], i).contains(lx, ly))
         continue;
       if (m_view.carousel().cards[k].depth < bestDepth) {

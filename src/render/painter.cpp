@@ -202,8 +202,6 @@ void Overview::paint() {
   renderCursorOnTop();
 
   rearmanim(); // tail: damage() here hits already-committed damage
-  // Tail, not mid-frame: earlier this returned before painting, so the compositor got
-  // an empty frame — the desktop flashed, then the exit started.
   if (m_commitPending && m_active && m_opening && !m_pendingDeactivate &&
       entrySettled()) {
     m_commitPending = false;
