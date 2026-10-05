@@ -6,8 +6,7 @@
 
 namespace gloview::clock {
 
-// One animation clock: begin, seek, pin, query. The anchor stays inside, so moving
-// a re-targeted animation has one spelling.
+// One animation clock: begin, seek, pin, query. The anchor stays inside.
 class Clock {
   public:
     void begin() { m_t.begin(); }
@@ -43,8 +42,7 @@ class Clocks {
     double tileMs = 0.0;
     std::string tileCurve;
 
-    // The SECONDARY clocks only. Folding the master in would report busy during
-    // every close, forever.
+    // The SECONDARY clocks only; folding the master in reports busy forever.
     [[nodiscard]] bool anyRunning(double rebuildEntryMs, double rebuildGhostMs,
                                   double stripMs) const;
 };

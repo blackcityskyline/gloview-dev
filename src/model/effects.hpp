@@ -35,7 +35,6 @@ class Effects {
     void clearGhosts() { m_ghosts.clear(); }
     void clearNewWorkspaces() { m_newWorkspaces.clear(); }
 
-    // A flight retargets while it runs: the newest is reachable for mutation.
     [[nodiscard]] SwapFX *lastSwap() {
       return m_swapfx.empty() ? nullptr : &m_swapfx.back();
     }

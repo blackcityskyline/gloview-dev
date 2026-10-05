@@ -99,12 +99,11 @@ public:
   void renderDragWindow() const;
   void renderCursorOnTop() const;
 
-  // An EVENT-LOOP timer: build-time damage raced the damage snapshot.
   void rearmanim() const;
   void ensureAnimPump();
   SP<CEventLoopTimer> m_animPump; // null when no animation is running
 
-  // From the painter's tail; the immediate route reads m_tiles mid-draw.
+  // From the painter's tail; the immediate route reads the scene mid-draw.
   void finishPendingDeactivate();
 
   bool isAboveLayer(const std::string &ns) const;
@@ -120,7 +119,6 @@ public:
 
   [[nodiscard]] bool active() const { return m_active; }
   [[nodiscard]] bool opening() const { return m_opening; } // entry anim only
-  // Monotonic RENDER_LAST_MOMENT count, ticked while inactive.
   [[nodiscard]] std::uint64_t frameTick() const { return m_frameTick; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
   [[nodiscard]] bool blurEnabled() const;
@@ -151,18 +149,15 @@ private:
   model::Effects m_fx;
   // Which view is on screen, where it is going, what the layout resolved.
   view::State m_view;
-  // The domain of time: every tween lives here and nowhere else.
   clock::Clocks m_clocks;
   double m_progress = 0.0;
   mutable std::chrono::steady_clock::time_point m_lastAnimTick{};
-  // Any layout change is "retarget + restart". Empty oldBoxes = fresh naturals.
   void startTileGlide(
       const std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);
   PHLMONITORREF m_monitor;
   PHLWORKSPACEREF m_workspace;
   PHLWORKSPACEREF m_liveWsAtOpen; // for exit_on_switch
   std::vector<model::StripItem> m_strip;
-  // mutable: capture is lazy, the first caller of a width renders it.
   mutable pixel::PixelCache m_pixel;
   double m_scrollAccum = 0.0; // sub-card wheel leftover, so slow paging still moves
   std::vector<std::pair<PHLLSREF, float>> m_hiddenLayers; // + pre-hide alpha
@@ -303,12 +298,12 @@ private:
   void moveSelection(int dx, int dy);
   void activateSelection();
   // A target off the DISPLAYED workspace collapses onto it and rebuilds BEFORE
-  // the glide, so the glide aims at the real final position.
+  // the glide, so it aims at the real final position.
   void focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason);
   bool crossesRealWorkspace(const PHLWINDOW &w) const;
   void syncFocus() const;
   void closeTileWindow(int i);
-  // Drop zone: opposite the strip's anchored edge. No hit test of its own — the
+  // Drop zone: opposite the strip's anchored edge. No hit test of its own: the
   // release and the hover both go through killZoneRect, so drawn and accepted
   // areas cannot drift.
   LRect killZoneRect() const;

@@ -5,7 +5,7 @@
 namespace gloview {
 
 // What a layout says about a tile, never how it is drawn. The ring is ONE fixed
-// size, so a covering box carries the window's own aspect.
+// size, so a covering box carries the window's aspect.
 struct TileLook {
   LRect box;
   double round = -1.0;   // <0 = look.preview_round

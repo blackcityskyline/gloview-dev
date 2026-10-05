@@ -50,7 +50,6 @@ class State {
     // One call, so "resolved for THIS selection" cannot be half true: a stale value
     // skips the relayout and leaves the run off-centre.
     void setEngine(Engine e) { m_engine = e; }
-    // Drops the run's geometry, keeps the resolved engine.
     void clearCards() {
       m_carousel = {};
       m_carouselFor = -1;
@@ -64,7 +63,6 @@ class State {
       m_engine = Engine::Rows;
       clearCards();
     }
-    // Marks the run stale; renderStage relayouts on the mismatch.
     void invalidateRun() { m_carouselFor = -1; }
 
   private:
