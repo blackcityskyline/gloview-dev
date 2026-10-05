@@ -24,9 +24,8 @@ using Render::GL::g_pHyprOpenGL;
 
 namespace gloview {
 
-// roundPx is the corner radius the CONTENT carries, in monitor pixels, and nothing
-// else: matching it to the ring is the caller's job (contentRadiusPx). destPx must
-// carry the window's own aspect, or the content reaches past the ring.
+// roundPx is the corner radius the CONTENT carries, in monitor px; matching it to
+// the ring is the caller's job. destPx must carry the window's own aspect.
 void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
                       const CBox &destPx, const CBox &clipPx, float alpha,
                       const Time::steady_tp &when, int roundPx,

@@ -40,17 +40,15 @@ bool Overview::onMouseAxis(const IPointer::SAxisEvent &e) {
     overStrip = band.contains(lx, ly);
   }
 
-  // The carousel run pages on the wheel: notches * carousel_scroll_speed = cards
-  // moved, so 1 is one card per notch, 0.5 one card every two notches, 3 three
-  // per notch. Its own switch, not scroll_switches_workspace: that one is about
-  // WORKSPACES, and gating the run on it meant a config with workspace scrolling
-  // off got a wheel that did nothing at all.
+  // The run pages on the wheel: notches * carousel_scroll_speed = cards moved. Its
+  // own switch, not scroll_switches_workspace — that one is about WORKSPACES, and
+  // gating the run on it meant a config with workspace scrolling off got a dead
+  // wheel.
   if (!overStrip && carouselMode()) {
     const double speed =
         std::clamp(static_cast<double>(cfg::carousel.scroll_speed), 0.05, 20.0);
     const double cards = notches * speed;
-    // Below one card per notch the leftover is carried, so a slow setting still
-    // moves, just a fraction of a card at a time instead of stalling.
+    // Below one card per notch the leftover is carried, so a slow setting moves.
     m_scrollAccum += cards;
     const int whole = static_cast<int>(std::trunc(m_scrollAccum));
     if (whole != 0) {
@@ -86,10 +84,8 @@ void Overview::onMouseMove() {
     updateHover();
     return;
   }
-  // The closing zone's glow, recomputed with the cursor. BEFORE the
-  // hardware-cursor return below: that path returns without touching it, so the
-  // zone stayed dark for anyone with a hardware cursor. Damaged on change only,
-  // and only while a card is actually in flight.
+  // The closing zone's glow. BEFORE the hardware-cursor return below, which leaves
+  // it untouched and kept the zone dark for anyone with a hardware cursor.
   {
     double g = 0.0;
     if (m_active && (draggedTile() >= 0 ||
@@ -97,7 +93,7 @@ void Overview::onMouseMove() {
       const auto mc = g_pInputManager->getMouseCoordsInternal();
       g = killZoneGlow(mc.x - m->m_position.x, mc.y - m->m_position.y);
     }
-    // A card held still just outside the falloff must not repaint every frame.
+    // Held just outside the falloff must not repaint every frame.
     if (std::abs(g - m_killGlow) > 0.02) {
       m_killGlow = g;
       damage();
@@ -217,7 +213,7 @@ void Overview::updateHover() {
 }
 
 namespace {
-// close_trigger=doubleclick: max gap; a touchpad double-tap is that pair.
+// close_trigger=doubleclick: a touchpad double-tap is the pair.
 constexpr auto DBLCLICK_WINDOW = std::chrono::milliseconds(400);
 } // namespace
 

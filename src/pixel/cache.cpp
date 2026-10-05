@@ -8,8 +8,7 @@ namespace gloview::pixel {
 
 namespace {
 
-// U+2026. renderText takes a maxWidth but clips instead of ellipsizing, so the
-// string is shortened before it is handed over.
+// U+2026, added by hand because renderText clips instead of ellipsizing.
 constexpr char kEllipsis[] = "\xE2\x80\xA6";
 
 } // namespace
@@ -29,8 +28,8 @@ std::string PixelCache::truncate(const std::string &text,
   const auto probe = render(text, col, size);
   if (!probe || probe->m_size.x <= maxW)
     return text;
-  // Binary search on the character count: rendering each candidate is far more
-  // expensive than the comparison, so the count is what gets searched.
+  // Binary search on the character count, not the width: rendering a candidate
+  // costs far more than the comparison.
   int lo = 1, hi = static_cast<int>(text.size()) - 1, best = 0;
   while (lo <= hi) {
     const int mid = (lo + hi) / 2;
@@ -52,9 +51,8 @@ SP<Render::ITexture> PixelCache::label(void *key, const std::string &text,
                                        const CHyprColor &col, int size,
                                        int maxW) {
   auto &e = m_labels[key];
-  // Hit first: the entry already holds the rendered texture, so there is nothing
-  // to measure. Probing before the lookup meant rendering the full string on
-  // every frame just to discover that nothing changed.
+  // Hit first: nothing to measure. Probing before the lookup rendered the full
+  // string every frame to discover that nothing had changed.
   if (e.tex && e.text == text && e.maxW == maxW)
     return e.tex;
   e = LabelEntry{truncate(text, col, size, maxW), maxW, nullptr};

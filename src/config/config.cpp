@@ -20,9 +20,8 @@ namespace gloview::cfg {
 
 namespace {
 
-// Hex-literal grammar (verified, was parseHexColor): optional whitespace,
-// `0x`/`0X`/`#` prefix, then 6 (RRGGBB → opaque) or 8 (AARRGGBB) hex digits.
-// Anything unparseable → `fallback`.
+// Hex literal: optional whitespace, `0x`/`0X`/`#`, then 6 (RRGGBB → opaque) or 8
+// (AARRGGBB) digits. Anything unparseable → `fallback`.
 uint64_t parseHex(std::string s, uint64_t fallback) {
   while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
     s.erase(s.begin());
@@ -53,10 +52,9 @@ CHyprColor parseColor(std::string s, const char *fallback) {
   return CHyprColor(r, g, b, a);
 }
 
-// Per-option parse cache, keyed by the handle's address (Color handles are
-// inline globals — one stable instance per option). A string compare per
-// frame beats a re-parse plus a temporary std::string by a wide margin.
-// Main thread only (config writes and paint both run there).
+// Per-option parse cache, keyed by the handle's address (Color handles are inline
+// globals — one stable instance per option). Main thread only: config writes and
+// paint both run there.
 std::unordered_map<const Color *, std::pair<std::string, CHyprColor>>
     g_colorCache;
 
@@ -75,11 +73,13 @@ CHyprColor Color::get(float alphaMul) const {
 }
 
 // ---- registration -------------------------------------------------------------
-// THE SCHEMA. One row per option: handle, FULL config key, default.
-// The key MUST be a string LITERAL: CIntValue/CStringValue keep the
-// name as a const char* — a c_str() of a temporary std::string dangles
-// and commence() aborts on it at registration (session-fatal). Grouped and commented by domain — this table
-// is the documentation of record for what exists and what it defaults to.
+// THE SCHEMA: handle, FULL config key, default. Grouped by domain — the table is
+// the documentation of record for what exists and what it defaults to.
+//
+// The key MUST be a string LITERAL: CIntValue/CStringValue keep it as a
+// const char*, so a c_str() of a temporary dangles and commence() aborts on it at
+// registration. Session-fatal, which is why the leaf keys below are built into a
+// deque rather than made on the spot.
 
 namespace {
 
@@ -222,9 +222,9 @@ constexpr ColorSpec kColors[] = {
 } // namespace
 
 // ---- animation leaves ---------------------------------------------------------
-// One row per leaf: handles, built-in base duration (what speed 1.0 means) and
-// the default curve. The resolver (anim/clocks.cpp) reads ONLY this table and
-// the imperative rules — adding a leaf is one row here plus consumers.
+// One row per leaf: handles, built-in base duration (what speed 1.0 means) and the
+// default curve. The resolver (anim/clocks.cpp) reads ONLY this table and the
+// imperative rules.
 constexpr LeafSpec kLeaves[] = {
     {"open", &anim::open, 300, "easeout"},         {"close", &anim::close, 300, "easeout"},
     {"glide", &anim::glide, 300, "easeout"},       {"appear", &anim::appear, 250, "easeout"},
@@ -239,8 +239,8 @@ constexpr LeafSpec kLeaves[] = {
 };
 
 void registerLeaf(HANDLE handle, const LeafSpec &l) {
-  // deque: element addresses stay valid across appends — the keys MUST
-  // outlive registration (CIntValue/CStringValue keep them as const char*).
+  // deque: element addresses stay valid across appends, and the keys must outlive
+  // registration (CIntValue keeps them as const char*).
   static std::deque<std::string> keys;
   const auto key = [&](const char *suffix) {
     keys.emplace_back(std::string("plugin:gloview:") + l.name + "_" + suffix);
@@ -292,10 +292,7 @@ void registerAll(HANDLE handle) {
     s.h->def = s.def;
     HyprlandAPI::addConfigValueV2(handle, s.h->v);
   }
-  // Leaf keys are BUILT here, not written as literals — but the names are
-  // kept alive in a deque (stable element addresses) because CIntValue stores
-  // the key as const char*; a dangling c_str() of a temporary is the
-  // session-fatal trap documented at the schema tables above.
+  // Leaf keys are BUILT here, kept alive in a deque for the reason above.
   for (const auto &l : kLeaves)
     registerLeaf(handle, l);
 }
@@ -322,9 +319,8 @@ std::string animStyle(const std::string &thing) {
   return it == k.end() ? std::string() : it->second->get();
 }
 
-// gloview.animation({ leaf = "...", enabled = bool, speed = n, ms = n,
-//                     curve = "...", style = "..." }) — an imperative rule
-// layered over the schema keys; whatever it sets wins.
+// gloview.animation({ leaf, enabled, speed, ms, curve, style }) — an imperative
+// rule layered over the schema keys; whatever it sets wins.
 int luaSetAnimRule(::lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);
   lua_settop(L, 1);

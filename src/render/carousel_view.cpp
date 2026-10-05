@@ -1,6 +1,5 @@
-// Cards overlap, so the run is painted in ONE pass sorted far -> selected, each
-// card a whole tile. This file supplies the order and the boxes; drawTile the
-// looks.
+// Cards overlap, so the run is painted in ONE pass, far -> selected, each card a
+// whole tile. This file supplies the order and the boxes; drawTile the looks.
 
 #include <algorithm>
 #include <cmath>
@@ -30,9 +29,8 @@ constexpr double kDepthTaper = 0.8;
 
 } // namespace
 
-// What layoutTiles actually built, not what the config asks for: free-arrange,
-// the all/one flip and the carousel switch each override it, and a renderer that
-// read the config would reach for an arrangement that was never produced.
+// What layoutTiles actually built, not what the config asks for: free-arrange, the
+// all/one flip and the carousel switch each override the config.
 bool Overview::carouselMode() const {
   return m_run;
 }
@@ -45,10 +43,9 @@ void Overview::relayoutCarousel() {
   // window the user is carrying.
   if (draggedTile() >= 0 || m_drag.press == model::Drag::Press::StripWin)
     return;
-  // Never during a close. layoutTiles() rewrites every tile's natural from the
-  // window's own geometry, which for a run of maximized windows is one and the
-  // same rectangle — so relayout mid-exit put all four cards back on that shared
-  // box and the run played the landing animation four times into one point.
+  // Never during a close: a relayout rewrites every natural from the window's own
+  // geometry, which for a run of maximized windows is one shared rectangle, so
+  // all the cards would play the landing into one point.
   if (!m_opening || m_pendingDeactivate)
     return;
   if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
@@ -79,34 +76,26 @@ void Overview::renderCarousel() const {
 
   for (const int i : order) {
     const auto &card = m_carousel.cards[static_cast<size_t>(i)];
-    // A card off the run is not part of the carousel: it has no box, and the
-    // one it is shown at is its slot from before it left. Painting it there is
-    // what made a window sail across the backdrop on every selection change.
+    // A card off the run has no box; the one it is shown at is its slot from
+    // before it left, and painting it there sails it across the backdrop.
     if (!card.visible)
       continue;
-    // The card being dragged is already on screen under the cursor (renderDragTile
-    // + renderDragWindow). Painting its slot too is what showed the preview twice:
-    // one copy following the pointer, one stranded in the run.
+    // The dragged card is already on screen under the cursor; painting its slot
+    // too showed the preview twice.
     if (i == draggedTile())
       continue;
 
     const auto &t = m_tiles[static_cast<size_t>(i)];
     TileLook look;
     look.box = currentBox(t, i);
-    // ONCE, with a name: m_progress runs DOWN on close (1 open -> 0 closed), so
-    // every exit fraction reads it through this. Written inline it has been read
-    // backwards three times, and backwards means the unfocused cards are at size
-    // zero from the first close frame — which looks exactly like no animation.
+    // m_progress runs DOWN on close (1 open -> 0 closed); every exit fraction
+    // reads it through exitT. Read backwards it puts the unfocused cards at size
+    // zero from the first close frame, which looks exactly like no animation.
     const double exitT = m_opening ? 0.0 : 1.0 - m_progress;
-    // The focused card keeps currentBox's own lerp, exactly as in every other
-    // layout — same curve, same duration, same method. It used to get a private
-    // lerp with a baked-in delay here, which made the landing read differently
-    // from the one-workspace landing for no reason other than that it was a
-    // second implementation of the same motion.
-    //
-    // An unfocused card is pinned to its own box by close() (its real geometry
-    // is the focused card's, so flying home would drop it right underneath the
-    // landing), so all it needs is to shrink away on the close curve.
+    // The focused card keeps currentBox's own lerp, as in every other layout —
+    // one motion, one implementation. An unfocused card is pinned to its own box
+    // by close() (its real geometry IS the focused card's, so flying home would
+    // drop it under the landing), so it only shrinks away on the close curve.
     if (!m_opening && card.depth != 0) {
       const double k = std::clamp(1.0 - exitT / 0.5, 0.0, 1.0);
       const double cx = look.box.cx(), cy = look.box.cy();

@@ -51,8 +51,8 @@ bool Overview::closeOnDoubleClick() const {
   return cfg::look.close_trigger.get() == "doubleclick";
 }
 
-// One rule for every layout, and the hit-test reads this same function, so the
-// ✕ can never appear where a click will not close.
+// One rule for every layout, read by the hit-test too, so the ✕ can never appear
+// where a click will not close.
 bool Overview::tileCloseButtons() const {
   return !closeOnDoubleClick() && (m_desktopMode || closeButtonsAlwaysOn());
 }
@@ -86,10 +86,9 @@ double Overview::entryFade(size_t i) const {
   return tileAppear(static_cast<int>(i));
 }
 
-// A preview always wears the window's own aspect: the surface covers its box
-// from the centre, so only a matching aspect lets the content's corner arcs meet
-// the ring's. Every layout resolves its slot through here, and so does every
-// hit-test — a second way to compute a tile box is a second way to be wrong.
+// A preview always wears the window's own aspect: the surface covers its box from
+// the centre, so only a matching aspect lets the content's arcs meet the ring's.
+// A second way to compute a tile box is a second way to be wrong.
 LRect Overview::tileBox(size_t i, const LRect &slot) const {
   if (m_desktopMode)
     return slot;
@@ -104,10 +103,9 @@ LRect Overview::tileBox(size_t i, const LRect &slot) const {
   return fitInside(slot, aspect);
 }
 
-// THE tile. Shadow, ring, focus ring, transition frost, content, pill, ✕ — in
-// this order, each under the next, for every layout. A layout contributes a box
-// and flags only; the ring width handed to contentRadiusPx is the one actually
-// stroked below, so the content cannot come out with corners of another shape.
+// THE tile: shadow, ring, focus ring, frost, content, pill, ✕ — each under the
+// next, for every layout. A layout contributes a box and flags only; the ring
+// width handed to contentRadiusPx is the one actually stroked below.
 void Overview::drawTile(size_t i, const TileLook &look) const {
   const auto m = m_monitor.lock();
   if (!m || i >= m_tiles.size())
@@ -152,10 +150,8 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
                  ringW, round, roundPow);
   }
 
-  // Transition frost: the cached blur at CONSTANT alpha (fading it leaks C*e*(1-e)
-  // of the sharp desktop) plus the dim rect at the GLOBAL alpha e. Opening only:
-  // on close e falls too, and a flat frost at constant alpha then covers every
-  // card, so shrinking and fading the content under it changes nothing on screen.
+  // Transition frost: the cached blur at CONSTANT alpha (fading it leaks
+  // C*e*(1-e) of the sharp desktop) plus the dim rect at the GLOBAL alpha e.
   const double apNow = t.appear < 1.0 ? tileAppear(static_cast<int>(i)) : 1.0;
   if (m_opening && (e < 0.999 || apNow < 0.999)) {
     if (const auto btex = backdropBlurTexture(); btex && btex->ok()) {
@@ -191,15 +187,10 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
                               {.round = pxr(round, s), .roundingPower = roundPow});
 
   if ((framed || selected) && !look.lift && t.label && t.label->m_size.x > 0) {
-    // Never wider than the card it sits under: a long title is shortened with an
-    // ellipsis instead of stretching the pill past the tile's own edges.
     const double padX = 14.0, padY = 6.0;
-    // Never wider than the card it sits under: a long title is shortened with an
-    // ellipsis instead of stretching the pill past the tile's own edges.
-    // The caption was captured to the card's own width during layout, so the
-    // pill measures the texture it actually draws. Measuring t.label instead used
-    // the untruncated width while drawing the cut one, which is how the pill came
-    // out wider than the card it sits on.
+    // The caption was captured to the card's own width during layout, so the pill
+    // measures the texture it draws. Measuring the untruncated entry while drawing
+    // the cut one made the pill wider than its card.
     const double lw   = t.label->m_size.x;
     const double lh   = t.label->m_size.y;
     const double pw   = lw + 2 * padX;
@@ -233,8 +224,8 @@ void Overview::renderTiles() const {
   const auto m = m_monitor.lock();
   if (!m)
     return;
-  // Defensive: GL_BLEND left off by a previous pass makes the ✕ glyph's
-  // transparent padding write through as opaque black; restore the exact func.
+  // GL_BLEND left off by a previous pass writes the ✕ glyph's transparent padding
+  // through as opaque black; restore the exact func.
   const bool wantButtons = tileCloseButtons();
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, 0);

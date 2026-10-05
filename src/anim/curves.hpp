@@ -10,7 +10,7 @@ using NativeFn = double (*)(double);
 
 void registerBuiltins();
 
-// hl.plugin.gloview.curve(name, fn); re-registering a name replaces it.
+// hl.plugin.gloview.curve(name, fn); re-registering replaces.
 int luaRegister(lua_State *L);
 
 double eval(std::string_view id, double t);

@@ -107,7 +107,7 @@ void Overview::drawDragStripChrome() const {
       e * 0.18);
 
   // A stroke, not a filled underlay: a fill shows through the window's own
-  // transparency as a solid wash instead of a frame.
+  // transparency as a solid wash.
   const int th = cfg::look.hover_border_size; // 0 = no ring
   const Config::CGradientValueData grad(hoverCol);
   g_pHyprOpenGL->renderBorder(pxb(lb, s), grad,
@@ -139,17 +139,13 @@ void Overview::renderDragWindow() const {
                    roundPow);
 }
 
-// The zone's affordance: the bar itself glowing, and a halo bleeding off its
-// inner edge into the screen.
+// The zone's affordance: the bar glowing, and a halo bleeding off its inner edge.
 //
 // Brightness tracks how close the CURSOR is (m_killGlow, a smoothstepped
-// distance), so it guides the drop instead of switching on once you are already
-// on top of it. renderRect takes a flat colour only, so everything is stepped at
-// one pixel — a dozen fat bands read as stripes.
-//
-// No stacked rounded rectangles: concentric layers have visible edges of their
-// own and read as geometry, not light. Both parts are a single per-pixel ramp
-// whose alpha reaches ZERO at the far end, so there is no silhouette to see.
+// distance), so it guides the drop instead of switching on once you are on top of
+// it. renderRect takes a flat colour only, so it is stepped per pixel — fat bands
+// read as stripes. One ramp whose alpha reaches ZERO at the far end: stacked
+// rounded rectangles have edges of their own and read as geometry, not light.
 void Overview::renderKillZone() const {
   const auto m = m_monitor.lock();
   if (!m || m_killGlow <= 0.004)
@@ -163,11 +159,8 @@ void Overview::renderKillZone() const {
   const auto   col  = cfg::colors.select_border.get(eased());
   // Strip at the bottom puts the zone at the top of the screen, and vice versa.
   const bool zoneAtTop = stripAnchor() == Anchor::Bottom;
-  // ONE continuous falloff measured from the SCREEN edge, through the band and
-  // on into the screen. Two ramps — a band and a halo — put a step where they
-  // met: the band's inner end faded to nothing while the halo's first row was
-  // already at 0.39, and that step read as a second line across the bottom.
-  // A single ramp cannot have a seam.
+  // ONE falloff from the SCREEN edge, through the band and into the screen. Two
+  // ramps — band and halo — put a step where they met that read as a second line.
   constexpr int kReach = 160; // 200 * 0.8: the glow is 20% shorter
   for (int d = 0; d < kReach; ++d) {
     const double f = static_cast<double>(d) / kReach;
@@ -244,9 +237,9 @@ void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
                roundPow);
 }
 
-// Flying windows, lerped to the CURRENT slot box (which may itself be
-// gliding, so the flight bends toward a moving destination). Slot rendering is
-// suppressed while the flight is live and takes over invisibly at t=1.
+// Flying windows, lerped to the CURRENT slot box (which may itself be gliding, so
+// the flight bends toward a moving destination). Slots are suppressed while the
+// flight is live and take over invisibly at t=1.
 void Overview::renderSwapFX() const {
   if (m_swapfx.empty())
     return;
@@ -377,9 +370,9 @@ bool Overview::isAboveLayer(const std::string &ns) const {
   return false;
 }
 
-// renderLayer is renderer-protected, so opted-in TOP/OVERLAY surfaces go
-// through the immediate leaf like window content; damageBox forces a composite
-// when the client itself has no damage.
+// renderLayer is renderer-protected, so opted-in TOP/OVERLAY surfaces go through
+// the immediate leaf like window content; damageBox forces a composite when the
+// client has no damage of its own.
 void Overview::renderAboveLayers() const {
   const auto m = m_monitor.lock();
   if (!m || !g_pHyprRenderer)

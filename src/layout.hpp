@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <vector>
 
-// pure geometry, monitor-local LOGICAL px
+// pure geometry, monitor-local LOGICAL px, no Hyprland and no GL
 namespace gloview {
 
 struct LRect {
@@ -46,16 +46,15 @@ struct LayoutCfg {
     bool   preserveOrder = false;
 };
 
-// result parallel to `naturals`, inside `area`
+// parallel to `naturals`, inside `area`
 std::vector<LRect> computeLayout(const std::vector<LRect>& naturals, const LRect& area, const LayoutCfg& cfg);
 
 Engine parseEngine(const char* s);
 
 // ONE standard box for every card: the size a fullscreen window occupies, to the
-// pixel. Every window is drawn inside that same box — a smaller one fitted whole,
-// neither deformed — so the run's geometry never depends on which window is
-// centred, and no window ever spills past a ring (which no corner radius could
-// hide). The centred card is the only one framed.
+// pixel, so the geometry never depends on which window is centred and nothing
+// spills past a ring. A smaller window is fitted whole, not deformed. Only the
+// centred card is framed.
 struct CarouselMetrics {
     double boxW          = 0.0; // standard card width; 0 = fill the usable area
     double boxH          = 0.0; // standard card height; 0 = follow boxW
@@ -89,7 +88,7 @@ struct CarouselLayout {
     LRect area;
 };
 
-// `selected` = centered card index, wrapped
+// `selected` = centred card index, wrapped
 CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
                                const CarouselMetrics& mt = {});
 

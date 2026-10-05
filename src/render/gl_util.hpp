@@ -1,6 +1,6 @@
 #pragma once
 
-// in: LOGICAL; projectBoxToTarget: PIXEL, so pre-scale
+// in: LOGICAL, except projectBoxToTarget: PIXEL, so pre-scale
 #include <algorithm>
 #include <cmath>
 
@@ -13,7 +13,7 @@
 
 namespace gloview {
 
-// round() needed: pixman truncates the border's scissor
+// round(): pixman truncates the border's scissor
 inline CBox pxb(const CBox &b, double s) {
   return CBox{b.x * s, b.y * s, b.w * s, b.h * s}.round();
 }
@@ -57,13 +57,13 @@ inline void strokeRing(const LRect &lb, double s, const CHyprColor &col,
        .outerRound = outerRoundPx(round, size, roundPow, s)});
 }
 
-// renderWindowLive over-covers an unsettled box by this much so sub-pixel snapping
-// cannot open a seam; the content radius has to follow it out.
+// renderWindowLive over-covers by this much so sub-pixel snapping cannot open a
+// seam; the content radius follows it out.
 inline constexpr float kSeamPadPx = 1.5F;
 
 // The corner radius a tile's CONTENT must carry so its arc lands on the ring's
-// outer edge, from the ring's OWN inputs — a tile whose content and ring disagree
-// shows square content inside a round frame. +1: Hyprland subtracts one.
+// outer edge, from the ring's OWN inputs — disagreement shows square content in a
+// round frame. +1: Hyprland subtracts one.
 // overCovers false = a contained window, whose arc does not walk outward.
 inline int contentRadiusPx(int round, int width, float roundPow, double scale,
                            bool overCovers = true) {
