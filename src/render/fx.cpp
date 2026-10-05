@@ -140,50 +140,65 @@ void Overview::renderDragWindow() const {
 }
 
 // The zone's affordance. renderRect takes a flat colour only, so the ramp is
-// stepped — but ONE PIXEL per step, not a dozen fat bands, which read as stripes.
-// The silhouette is rounded by insetting each row by its own corner circle, so it
-// is a soft lozenge rather than a hard rectangle.
+// stepped, one pixel per step — a dozen fat bands read as stripes.
 //
-// Direction: soft at the zone's inner edge, densest at the SCREEN edge — where the
-// eye already is on the way out. Rows are counted from the inner edge outward, so
-// one formula serves both anchors and only the placement flips. Hover only, so it
-// costs nothing at rest.
+// Three things at once: brightness tracks how close the CURSOR is (m_killGlow,
+// a smoothstepped distance — blank until you were on top of it told you nothing
+// while you were still aiming), the ramp runs soft at the zone's inner edge to
+// densest at the screen edge, and a short tail bleeds onto the inner side so it
+// reads as glowing rather than as a lit rectangle sitting on the bezel.
+//
+// Rows are counted from the inner edge outward, so one formula serves both
+// anchors and only the placement flips.
 void Overview::renderKillZone() const {
   const auto m = m_monitor.lock();
-  if (!m || !m_killZoneHover)
+  if (!m || m_killGlow <= 0.004)
     return;
   const LRect z = killZoneRect();
   if (z.w < 1.0 || z.h < 1.0)
     return;
 
-  const double s   = m->m_scale;
-  const double e   = eased();
-  const auto   col = cfg::colors.hover_border.get(e);
+  const double s     = m->m_scale;
+  const double glow  = m_killGlow;
+  const auto   col   = cfg::colors.hover_border.get(eased());
   // Strip at the bottom puts the zone at the top of the screen, and vice versa.
   const bool zoneAtTop = stripAnchor() == Anchor::Bottom;
   const int  rows      = std::max(1, static_cast<int>(std::round(z.h)));
-  const double radius  = std::min(z.h * 0.5, std::min(z.w * 0.5, 24.0));
+  // Barely rounded: it is a bar on the bezel, not a pill.
+  const double radius  = std::min(z.h * 0.5, 10.0);
 
   for (int k = 0; k < rows; ++k) {
     const double f = (static_cast<double>(k) + 0.5) / static_cast<double>(rows);
-    const double a = std::pow(f, 2.2) * 0.8 * e;
+    const double a = std::pow(f, 2.0) * 0.75 * glow;
     if (a < 0.004)
       continue;
-    // k = 0 is the row at the INNER edge, so the dense end always lands on the
-    // screen edge regardless of which side that is.
     const double y = zoneAtTop ? z.y + z.h - (k + 1) : z.y + k;
     // Corner inset: full radius on the outermost row, zero by the radius itself.
-    const double dy = std::min(static_cast<double>(k),
-                               static_cast<double>(rows - 1 - k));
+    const double dy =
+        std::min(static_cast<double>(k), static_cast<double>(rows - 1 - k));
     const double inset =
         dy >= radius ? 0.0
-                     : radius - std::sqrt(std::max(0.0, radius * radius -
-                                                          (radius - dy) * (radius - dy)));
+                     : radius - std::sqrt(std::max(
+                                     0.0, radius * radius - (radius - dy) * (radius - dy)));
     const double w = z.w - 2.0 * inset;
     if (w <= 0.5)
       continue;
+    g_pHyprOpenGL->renderRect(pxb(LRect{z.x + inset, y, w, 1.0}, s),
+                              argb(col, a), {});
+  }
+
+  // The glow itself: a tail on the inner side, brightest where it touches the
+  // zone. Without it the zone is a lit bar, not something that emits.
+  constexpr int kTail = 22;
+  for (int b = kTail; b >= 1; --b) {
+    const double f = 1.0 - static_cast<double>(b) / kTail;
+    const double a = std::pow(f, 2.5) * 0.3 * glow;
+    if (a < 0.004)
+      continue;
+    const double y = zoneAtTop ? z.y + z.h + (b - 1) : z.y - b;
     g_pHyprOpenGL->renderRect(
-        pxb(LRect{z.x + inset, y, w, 1.0}, s), argb(col, a), {});
+        pxb(LRect{z.x + radius, y, z.w - 2.0 * radius, 1.0}, s), argb(col, a),
+        {});
   }
 }
 

@@ -330,9 +330,11 @@ window set. With `carousel = 0` the layout runs untouched in both views.
 - **A drop zone at the opposite edge closes.** A card dragged from the run onto
   the 300×50 area at the centre of the edge opposite the strip's anchor closes
   that window, in the carousel and in any plain layout alike. It is invisible at
-  rest; while a card is over it the zone lights up in stepped bands, soft at its
-  inner edge and densest at the screen edge, so the affordance shows up exactly
-  where the eye already is on the way out.
+  rest. While a card is in flight the zone glows in proportion to how close the
+  cursor is — full inside, nothing ~150px away, smoothstepped in between — so it
+  guides the drop instead of appearing only once you are already on top of it.
+  The ramp itself runs soft at the zone's inner edge to densest at the screen
+  edge, with a short tail bleeding onto the inner side so it reads as emitting.
 - **Only the centred card is framed.** The rest carry no ring, and the ring is
   one fixed size everywhere rather than scaled down to suit a smaller card.
 - **Card count is yours.** `carousel_cards` sets how many cards the run shows —

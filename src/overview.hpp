@@ -352,8 +352,9 @@ private:
   // its own is exported — the drag release and the hover pass both go through
   // killZoneRect so the drawn area and the accepted area cannot drift apart.
   LRect killZoneRect() const;
+  double killZoneGlow(double lx, double ly) const;
   void renderKillZone() const;
-  bool m_killZoneHover = false; // cursor inside the zone while dragging
+  double m_killGlow = 0.0; // 1 at the zone, 0 a screen-width away, while dragging
   std::vector<std::pair<PHLWINDOW, LRect>> captureCurrentBoxes(
       PHLWINDOW exclude = {}) const;
   void replayReflow(std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes);

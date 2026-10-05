@@ -86,18 +86,22 @@ void Overview::onMouseMove() {
     updateHover();
     return;
   }
-  // Hover state for the closing zone, recomputed with the cursor. BEFORE the
+  // The closing zone's glow, recomputed with the cursor. BEFORE the
   // hardware-cursor return below: that path returns without touching it, so the
-  // flag stayed false and the zone never lit. It only lights while a card is
-  // over it, and clears on the way out or the band stays painted.
-  if (m_active && (draggedTile() >= 0 ||
-                   m_drag.press == model::Drag::Press::StripWin)) {
-    const auto mc = g_pInputManager->getMouseCoordsInternal();
-    const bool was = m_killZoneHover;
-    m_killZoneHover =
-        killZoneRect().contains(mc.x - m->m_position.x, mc.y - m->m_position.y);
-    if (was != m_killZoneHover)
+  // zone stayed dark for anyone with a hardware cursor. Damaged on change only,
+  // and only while a card is actually in flight.
+  {
+    double g = 0.0;
+    if (m_active && (draggedTile() >= 0 ||
+                     m_drag.press == model::Drag::Press::StripWin)) {
+      const auto mc = g_pInputManager->getMouseCoordsInternal();
+      g = killZoneGlow(mc.x - m->m_position.x, mc.y - m->m_position.y);
+    }
+    // A card held still just outside the falloff must not repaint every frame.
+    if (std::abs(g - m_killGlow) > 0.02) {
+      m_killGlow = g;
       damage();
+    }
   }
   if (m_cursor.hasHardwareCursor(m)) {
     updateHover();
@@ -339,12 +343,13 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
   case model::Drag::Press::Consumed: { // handled on press
     debug::dbg("[REL] press=Consumed");
     m_drag = {};
-    m_killZoneHover = false;
+    m_killGlow = 0.0;
+    damage();
     return true;
   }
   case model::Drag::Press::Tile: {
     const int press = m_drag.idx;
-    m_killZoneHover = false; // a stale band would stay painted after the drop
+    m_killGlow = 0.0; // a stale glow would stay painted after the drop
     const auto w = m_tiles[press].win.lock();
     const double grabDX = m_drag.grabDX, grabDY = m_drag.grabDY;
     debug::dbg("[REL] press=Tile lifted=" + std::to_string(m_drag.lifted) +

@@ -245,6 +245,9 @@ SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
   return c.tex;
 }
 
+// How far the glow reaches past the zone, in logical px.
+static constexpr double kKillZoneFalloff = 150.0;
+
 // The closing target sits at the centre of the edge OPPOSITE the strip, so it
 // is never under the strip's own cards. Width/height are fixed by request.
 LRect Overview::killZoneRect() const {
@@ -254,6 +257,21 @@ LRect Overview::killZoneRect() const {
   constexpr double kW = 300.0, kH = 50.0;
   const bool atTop = stripAnchor() == Anchor::Bottom;
   return LRect{(m->m_size.x - kW) * 0.5, atTop ? 0.0 : m->m_size.y - kH, kW, kH};
+}
+
+// Full brightness inside the zone, nothing by kKillZoneFalloff px away, and
+// smoothstepped in between so the glow eases off instead of popping at the edge.
+// A distance, not a bool: the zone was blank until the cursor crossed it, which
+// told the user nothing about where it was while they were still aiming.
+double Overview::killZoneGlow(double lx, double ly) const {
+  const LRect z = killZoneRect();
+  if (z.w < 1.0 || z.h < 1.0)
+    return 0.0;
+  const double dx = std::max({z.x - lx, 0.0, lx - (z.x + z.w)});
+  const double dy = std::max({z.y - ly, 0.0, ly - (z.y + z.h)});
+  const double d  = std::sqrt(dx * dx + dy * dy);
+  const double t  = std::clamp(1.0 - d / kKillZoneFalloff, 0.0, 1.0);
+  return t * t * (3.0 - 2.0 * t);
 }
 
 Overview::Anchor Overview::stripAnchor() const {
