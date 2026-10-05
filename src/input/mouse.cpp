@@ -627,26 +627,16 @@ void Overview::focusAndClose(const PHLWINDOW &w, Desktop::eFocusReason reason) {
   if (w) {
     if (const auto ws = w->m_workspace;
         ws && (showAllWorkspaces() || ws != m_workspace.lock())) {
-      // Capture boxes BEFORE collapsing m_tiles: close() glides from rebuilt slots.
-      std::unordered_map<void *, LRect> oldBoxes;
-      oldBoxes.reserve(m_tiles.size());
-      for (size_t i = 0; i < m_tiles.size(); ++i)
-        if (const auto win = m_tiles[i].win.lock())
-          oldBoxes.emplace(win.get(), currentBox(m_tiles[i], static_cast<int>(i)));
-
+      // Nothing is rebuilt or relaid out here, on purpose. focusAndClose runs
+      // DURING the close, and layoutTiles() recomputes m_run from
+      // showAllWorkspaces(): with m_allOverride already 0 the deck stopped being a
+      // carousel BEFORE close() read it, so every card flew to its own window
+      // box, all of which are the same fullscreen rectangle — the run played the
+      // landing animation four times over and met in one point. The commit only
+      // has to name a window; the exit keeps the layout it already has.
       m_allOverride = 0;
       m_workspace = ws;
       m_hovered = m_hoveredStrip = -1;
-      buildTiles();
-      buildStrip();
-      layoutTiles();
-      for (auto &t : m_tiles) {
-        if (const auto win = t.win.lock()) {
-          const auto it = oldBoxes.find(win.get());
-          if (it != oldBoxes.end())
-            t.target = it->second;
-        }
-      }
       m_selected = -1;
       for (size_t i = 0; i < m_tiles.size(); ++i)
         if (m_tiles[i].win.lock() == w) {

@@ -14,6 +14,7 @@
 #include "tile_look.hpp"
 #include "window_content.hpp"
 #include "../config/config.hpp"
+#include "../debug/log.hpp"
 #include "../overview.hpp"
 
 using Render::GL::g_pHyprOpenGL;
@@ -39,6 +40,12 @@ bool Overview::carouselMode() const {
 // A selection move is a relayout + glide, detected once: renderStage vs m_carouselFor.
 void Overview::relayoutCarousel() {
   if (!carouselMode() || m_tiles.empty())
+    return;
+  // Never during a close. layoutTiles() rewrites every tile's natural from the
+  // window's own geometry, which for a run of maximized windows is one and the
+  // same rectangle — so relayout mid-exit put all four cards back on that shared
+  // box and the run played the landing animation four times into one point.
+  if (!m_opening || m_pendingDeactivate)
     return;
   if (m_selected < 0 || m_selected >= static_cast<int>(m_tiles.size()))
     return; // not a selection change; layoutTiles settles it next
@@ -82,22 +89,15 @@ void Overview::renderCarousel() const {
     // backwards three times, and backwards means the unfocused cards are at size
     // zero from the first close frame — which looks exactly like no animation.
     const double exitT = m_opening ? 0.0 : 1.0 - m_progress;
-    // The landing waits for the deck. It is the biggest card on screen and it
-    // grows to the whole monitor, so from the first close frame it covers every
-    // other card: whatever they do, nobody sees it. Holding it at its card box
-    // for the first third of the close is what makes their exit visible at all,
-    // and the handoff lands on an empty stage instead.
-    if (!m_opening && card.depth == 0) {
-      const double f = std::clamp((exitT - 0.5) / 0.5, 0.0, 1.0);
-      // target first: at f=0 the card is where the deck is, at f=1 it is at its
-      // real box. natural -> target would start it fullscreen and shrink it.
-      const auto &from = t.target, &to = t.natural;
-      look.box = LRect{from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f,
-                       from.w + (to.w - from.w) * f, from.h + (to.h - from.h) * f};
-    }
-    // An unfocused card leaves by shrinking to its own centre over the first
-    // third of the close: its natural box is shared with the focused card's, so
-    // flying home would drop it exactly underneath the landing.
+    // The focused card keeps currentBox's own lerp, exactly as in every other
+    // layout — same curve, same duration, same method. It used to get a private
+    // lerp with a baked-in delay here, which made the landing read differently
+    // from the one-workspace landing for no reason other than that it was a
+    // second implementation of the same motion.
+    //
+    // An unfocused card is pinned to its own box by close() (its real geometry
+    // is the focused card's, so flying home would drop it right underneath the
+    // landing), so all it needs is to shrink away on the close curve.
     if (!m_opening && card.depth != 0) {
       const double k = std::clamp(1.0 - exitT / 0.5, 0.0, 1.0);
       const double cx = look.box.cx(), cy = look.box.cy();

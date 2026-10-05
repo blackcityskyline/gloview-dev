@@ -88,13 +88,16 @@ double Overview::animDuration() const {
 // Read m_tileClockMs, not m_glide.ms: a glideLeaf() flip jumps progress.
 double Overview::tileProgress(int i) const {
   const double glideMs = (m_tileClockMs > 0) ? m_tileClockMs : m_glide.ms;
+  // currentBox lerps natural -> target as e RISES, so close feeds it m_progress
+  // as-is (falling 1 -> 0): the card starts on its box and flies to its real
+  // one. Flipping it here put every card on its natural box on the first close
+  // frame — the whole deck became one fullscreen blob before shrinking away.
   const double base = m_opening ? m_tileClock.raw(glideMs) : m_progress;
-  // Entering, the carousel shares one clock: cards pass each other, never
-  // stagger. Leaving, it uses the same per-card stagger as every other layout —
-  // the entry's own motion, run backwards, which is the one exit that has ever
-  // been seen to work here. A deck that leaves all at once is one frame of
-  // motion, and that is indistinguishable from no motion at all.
-  if (carouselMode() && m_opening)
+  // The SELECTED tile is never staggered, in any layout. stagger() assumes a
+  // rising 0..1, so on close (base falling) it would run backwards and delay the
+  // landing — the same flight, timed differently in one-workspace and in the
+  // carousel. The other tiles keep their stagger.
+  if (carouselMode() || i == m_selected)
     return base;
   return staggered(base, i, static_cast<int>(m_tiles.size()));
 }

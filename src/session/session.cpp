@@ -461,6 +461,20 @@ void Overview::close() {
 
   // close: target = shown, natural = real geometry
   if (const auto m = m_monitor.lock()) {
+    // Two passes on purpose. The unfocused cards are pinned to their own box
+    // only when their real geometry COLLIDES with the focused card's, and the
+    // loop assigns naturals as it goes — so comparing against
+    // m_tiles[m_selected].natural inside the same loop reads the value from
+    // BEFORE this close, and every card looked distinct and got no pin at all.
+    LRect selNat{};
+    if (m_selected >= 0 && m_selected < static_cast<int>(m_tiles.size())) {
+      if (const auto w = m_tiles[static_cast<size_t>(m_selected)].win.lock()) {
+        const auto p = w->positionAnimation()->goal();
+        const auto s = w->sizeAnimation()->goal();
+        selNat = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
+                       std::max(1.0, s.x), std::max(1.0, s.y)};
+      }
+    }
     for (auto &t : m_tiles) {
       t.target = currentBox(t, static_cast<int>(&t - m_tiles.data()));
       // The natural box is where the tile RETURNS TO. When several windows share
@@ -476,16 +490,12 @@ void Overview::close() {
         const auto s = w->sizeAnimation()->goal();
         t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
                           std::max(1.0, s.x), std::max(1.0, s.y)};
-        if (m_run && static_cast<int>(&t - m_tiles.data()) != m_selected &&
-            m_selected >= 0 &&
-            m_selected < static_cast<int>(m_tiles.size())) {
-          const auto &sel = m_tiles[static_cast<size_t>(m_selected)].natural;
-          if (std::abs(t.natural.x - sel.x) < 1.0 &&
-              std::abs(t.natural.y - sel.y) < 1.0 &&
-              std::abs(t.natural.w - sel.w) < 1.0 &&
-              std::abs(t.natural.h - sel.h) < 1.0)
-            t.natural = t.target; // leaves by shrinking in place, not by vanishing
-        }
+        if (carouselMode() && static_cast<int>(&t - m_tiles.data()) != m_selected &&
+            selNat.w >= 1.0 && std::abs(t.natural.x - selNat.x) < 1.0 &&
+            std::abs(t.natural.y - selNat.y) < 1.0 &&
+            std::abs(t.natural.w - selNat.w) < 1.0 &&
+            std::abs(t.natural.h - selNat.h) < 1.0)
+          t.natural = t.target; // leaves by shrinking in place, not by vanishing
       }
     }
   }
