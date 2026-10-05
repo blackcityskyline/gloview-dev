@@ -86,16 +86,12 @@ void Overview::onMouseMove() {
     updateHover();
     return;
   }
-  if (m_cursor.hasHardwareCursor(m)) {
-    updateHover();
-    return;
-  }
-  const CBox unionBox = m_cursor.moveDamage(m);
-  updateHover();
-  // Hover state for the closing zone, recomputed with the cursor: it only lights
-  // up while a card is actually over it, and it has to clear again on the way
-  // out or the band stays painted after the drag leaves.
-  if (draggedTile() >= 0 || m_drag.press == model::Drag::Press::StripWin) {
+  // Hover state for the closing zone, recomputed with the cursor. BEFORE the
+  // hardware-cursor return below: that path returns without touching it, so the
+  // flag stayed false and the zone never lit. It only lights while a card is
+  // over it, and clears on the way out or the band stays painted.
+  if (m_active && (draggedTile() >= 0 ||
+                   m_drag.press == model::Drag::Press::StripWin)) {
     const auto mc = g_pInputManager->getMouseCoordsInternal();
     const bool was = m_killZoneHover;
     m_killZoneHover =
@@ -103,6 +99,12 @@ void Overview::onMouseMove() {
     if (was != m_killZoneHover)
       damage();
   }
+  if (m_cursor.hasHardwareCursor(m)) {
+    updateHover();
+    return;
+  }
+  const CBox unionBox = m_cursor.moveDamage(m);
+  updateHover();
   if (!m_active || unionBox.w <= 0 || unionBox.h <= 0)
     return;
   if (g_pHyprRenderer)

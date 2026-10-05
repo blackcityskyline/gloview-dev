@@ -157,9 +157,10 @@ void Overview::renderKillZone() const {
   const auto col = cfg::colors.hover_border.get(e);
   constexpr int kBands = 12;
   for (int i = 0; i < kBands; ++i) {
-    // 0 at the zone's inner edge, 1 at the screen edge.
-    const double f = static_cast<double>(i) / (kBands - 1);
-    const double a = std::pow(f, 2.0) * 0.5 * e;
+    // Densest at the SCREEN edge: the last band's y lands on it for either
+    // anchor, so the ramp is the same for both and only the placement flips.
+    const double f = (static_cast<double>(i) + 0.5) / kBands;
+    const double a = std::pow(f, 2.0) * 0.75 * e;
     if (a < 0.01)
       continue;
     const double bandH = z.h / kBands;
