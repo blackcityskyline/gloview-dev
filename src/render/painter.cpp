@@ -117,10 +117,6 @@ void Overview::renderStage(eRenderStage stage) {
 
   updateHover();
   relayoutCarousel();
-  // BOTH clocks, not just the entry's: the run's own glide is a separate clock and
-  // the step restarts it. Firing while that glide is still in flight rewinds it
-  // from partway to zero, which reads as the card shuddering — motion a manual step
-  // never produces, because there the previous glide has already finished.
   const bool entrySettled =
       m_clocks.master.done(leaf("open").ms) &&
       (m_clocks.tileMs <= 0.0 || m_clocks.tiles.done(m_clocks.tileMs));
