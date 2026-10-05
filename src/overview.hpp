@@ -140,7 +140,7 @@ private:
   std::uint64_t m_frameTick = 0;
 
   // The close hit 0 THIS frame and shouldRenderWindow already ran, so flipping
-  // m_active off now skips the overlay: one blank frame.
+  // m_active off now skips the overlay.
   bool m_pendingDeactivate = false;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
   // The cards in the main area, the focus and the cursor.
@@ -161,8 +161,8 @@ private:
   mutable pixel::PixelCache m_pixel;
   double m_scrollAccum = 0.0; // sub-card wheel leftover, so slow paging still moves
   std::vector<std::pair<PHLLSREF, float>> m_hiddenLayers; // + pre-hide alpha
-  // Committed focus target: a ws change re-asserts focus from its own history,
-  // which can still name the old window.
+  // Committed focus target; a ws change re-asserts from its own history, which can
+  // still name the old window.
   PHLWINDOWREF m_pendingFocus;
 
   // free-arrange: tiles at the real positions, drag floats the real window.
@@ -177,8 +177,8 @@ private:
   anim::AnimCfg m_glide, m_entry, m_ghost, m_lift;
   std::string m_enterStyle, m_exitStyle;
   bool animBusy() const;
-  // The clocks that outlive the master: the pump has to name every clock or the
-  // next one added never arms it.
+  // Clocks that outlive the master: the pump must name every clock or the next one
+  // added never arms it.
   bool secondaryAnimsActive() const {
     return m_clocks.anyRunning(leaf(entryLeaf()).ms, leaf(ghostLeaf()).ms,
                                leaf("strip_step").ms);
@@ -198,7 +198,7 @@ private:
   void renderSwapFX() const;
 
   // close_trigger == "doubleclick": the first click waits behind a timer, and that
-  // armed timer IS the record. A second click before it fires closes the window.
+  // armed timer IS the record. A second click before it fires closes it.
   PHLWINDOWREF m_pendingClickWin;
   SP<CEventLoopTimer> m_clickTimer;
 
@@ -219,8 +219,7 @@ private:
   // Blur cache: frame one's blur lives in a persistent FBO, later frames blit it.
   // srcId + recipe compared EVERY frame, outside a dirty guard.
   mutable render::BlurCache m_blur;
-  // Full-res FBO holding a rendered desktop background when there is no direct
-  // texture to blur.
+  // Full-res FBO of a rendered desktop background when there is no direct texture.
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false;
   mutable std::chrono::steady_clock::time_point m_lastBackdropCapture{};
