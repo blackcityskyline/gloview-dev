@@ -31,6 +31,7 @@ add_library(gloview SHARED
   src/layout.cpp
   src/cursor.cpp
   src/blur.cpp
+  src/pixel/cache.cpp
   src/anim/clocks.cpp
   src/anim/curves.cpp
   src/config/config.cpp

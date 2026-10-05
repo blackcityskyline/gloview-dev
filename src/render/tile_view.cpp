@@ -196,15 +196,10 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
     const double padX = 14.0, padY = 6.0;
     // Never wider than the card it sits under: a long title is shortened with an
     // ellipsis instead of stretching the pill past the tile's own edges.
-    const int maxText = static_cast<int>(std::max(1.0, box.w - 2 * padX));
-    SP<Render::ITexture> label = t.label;
-    if (t.labelKey && !t.labelText.empty()) {
-      if (const auto fit =
-              cachedLabel(t.labelKey, t.labelText, cfg::colors.label.get(1.0), 15,
-                          maxText);
-          fit && fit->m_size.x > 0)
-        label = fit;
-    }
+    // The caption was captured to the card's own width during layout, so the
+    // pill measures the texture it actually draws. Measuring t.label instead used
+    // the untruncated width while drawing the cut one, which is how the pill came
+    // out wider than the card it sits on.
     const double lw   = t.label->m_size.x;
     const double lh   = t.label->m_size.y;
     const double pw   = lw + 2 * padX;
@@ -214,19 +209,20 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
     g_pHyprOpenGL->renderRect(pxb(CBox(px, py, pw, ph), s),
                               cfg::colors.title_pill.get(e * f),
                               {.round = pxr(ph / 2.0, s)});
-    g_pHyprOpenGL->renderTexture(label, pxb(CBox(px + padX, py + padY, lw, lh), s),
+    g_pHyprOpenGL->renderTexture(t.label, pxb(CBox(px + padX, py + padY, lw, lh), s),
                                  {.a = static_cast<float>(e * f)});
   }
 
-  if (look.button && !look.lift && m_closeGlyph && m_closeGlyph->m_size.x > 0) {
+  const auto closeGlyph = m_pixel.closeGlyph();
+    if (look.button && !look.lift && closeGlyph && closeGlyph->m_size.x > 0) {
     const LRect br = closeButtonRect(box);
     g_pHyprOpenGL->renderRect(pxb(br, s), cfg::colors.close_button.get(e),
                               {.round = pxr(br.h / 2.0, s)});
-    const double gw = m_closeGlyph->m_size.x, gh = m_closeGlyph->m_size.y;
+    const double gw = closeGlyph->m_size.x, gh = closeGlyph->m_size.y;
     const double gs = std::min((br.w * 0.62) / std::max(1.0, gw),
                                (br.h * 0.62) / std::max(1.0, gh));
     g_pHyprOpenGL->renderTexture(
-        m_closeGlyph,
+        closeGlyph,
         pxb(LRect{br.x + (br.w - gw * gs) / 2.0, br.y + (br.h - gh * gs) / 2.0,
                   gw * gs, gh * gs}, s),
         {.a = static_cast<float>(e)});

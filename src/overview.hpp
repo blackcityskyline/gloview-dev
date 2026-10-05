@@ -31,6 +31,7 @@ class CGradientValueData; // general:col.active_border's real type
 
 #include "anim/clocks.hpp"
 #include "model/model.hpp"
+#include "pixel/cache.hpp"
 #include "render/backdrop.hpp"
 #include "render/tile_look.hpp"
 #include "blur.hpp"
@@ -133,7 +134,7 @@ public:
   }
   [[nodiscard]] const std::unordered_map<void *, SP<Render::ITexture>> &
   snapshots() const {
-    return m_snapshots;
+    return m_pixel.snapshots();
   }
   [[nodiscard]] bool snapshotMode() const;
 
@@ -162,14 +163,10 @@ private:
   PHLWORKSPACEREF m_liveWsAtOpen; // for exit_on_switch
   std::vector<model::Tile> m_tiles;
   std::vector<model::StripItem> m_strip;
-  // mutable: cachedLabel() is const-callable and caching is its whole job.
-  mutable std::unordered_map<void *, model::LabelTex> m_labelCache;
+  // Captions, the close glyph, entry snapshots. mutable because capture happens
+  // lazily: the first caller of a width renders it, everyone after reads it.
+  mutable pixel::PixelCache m_pixel;
   double m_scrollAccum = 0.0; // sub-card wheel leftover, so slow paging still moves
-  // maxW <= 0 = no truncation. The pill's max is the card it belongs to, so a
-  // long window title cannot grow the pill wider than the card under it.
-  SP<Render::ITexture> cachedLabel(void *key, const std::string &text,
-                                   const CHyprColor &col, int size,
-                                   int maxW = 0) const;
   std::vector<std::pair<PHLLSREF, float>> m_hiddenLayers; // + pre-hide alpha
   int m_hovered = -1;      // index into m_tiles
   int m_hoveredStrip = -1;
@@ -184,9 +181,6 @@ private:
   double m_desktopS = 1.0;  // monitor->preview scale (inverse for drops)
   double m_desktopOx = 0.0;
   double m_desktopOy = 0.0;
-  std::unordered_map<void *, SP<Render::ITexture>> m_snapshots;
-  mutable SP<Render::ITexture> m_closeGlyph;
-  mutable std::string m_closeGlyphIcon;
 
   int m_newCardId = 0;
   bool m_newCardAnim = false;

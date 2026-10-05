@@ -137,7 +137,7 @@ void Overview::renderCarouselCounter() const {
   const double s = m->m_scale;
   const std::string text =
       std::to_string(m_selected + 1) + " / " + std::to_string(m_tiles.size());
-  if (auto tex = cachedLabel(const_cast<char *>("/carousel/count"), text,
+  if (auto tex = m_pixel.label(const_cast<char *>("/carousel/count"), text,
                              cfg::colors.label.get(eased()), 15);
       tex && tex->m_size.x > 0) {
     const double bw = m_carousel.countW, bh = m_carousel.countH;

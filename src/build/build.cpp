@@ -71,17 +71,12 @@ void Overview::buildTiles() {
         text = text.substr(0, 79) + "…";
       t.labelKey  = w.get();
       t.labelText = text;
-      t.label = cachedLabel(w.get(), text, lblCol, 15);
+      t.label = m_pixel.label(w.get(), text, lblCol, 15);
     }
     // glyph pre-rendered: text rendering mid-pass is unsafe
     const std::string closeIcon =
         cfg::look.close_button_icon.get();
-    if (!m_closeGlyph || m_closeGlyphIcon != closeIcon) {
-      m_closeGlyph = g_pHyprRenderer->renderText(closeIcon,
-          cfg::colors.close_glyph.get(), 16,
-          false, "", 0, 800);
-      m_closeGlyphIcon = closeIcon;
-    }
+    m_pixel.glyph(closeIcon, cfg::colors.close_glyph.get());
   }
 }
 
@@ -205,7 +200,7 @@ void Overview::buildStrip() {
       if (it.kind == model::StripItem::Kind::Plus)
         continue;
       if (it.kind == model::StripItem::Kind::All) {
-        it.label = cachedLabel((void *)-2, "All workspaces", lblCol, 13);
+        it.label = m_pixel.label((void *)-2, "All workspaces", lblCol, 13);
         continue;
       }
       const auto ws = it.ws.lock();
@@ -216,7 +211,7 @@ void Overview::buildStrip() {
           });
       const std::string text = numeric ? ("Workspace " + nm) : nm;
       it.label =
-          cachedLabel(ws ? (void *)ws.get() : (void *)(intptr_t)it.id, text,
+          m_pixel.label(ws ? (void *)ws.get() : (void *)(intptr_t)it.id, text,
                       lblCol, 13);
     }
   }
@@ -412,6 +407,21 @@ void Overview::layoutTiles() {
                                                 m_carousel.stripY + c.y,
                                             c.w, c.h}
                                     : LRect{};
+      // Capture the caption HERE, where the card width is known, cut to that
+      // width. Paint only reads it: rendering text mid-pass is unsafe (see the
+      // glyph note above), and asking at paint time re-ran the whole binary
+      // search every frame. It also measured the pill off the UNTUNCATED entry
+      // while drawing the cut texture, which is how the pill came out wider than
+      // the card it sits on.
+      if (c.visible) {
+        if (const auto w = m_tiles[i].win.lock())
+          // The fitted box, not the card: a portrait window is drawn narrower than
+          // the standard card, and the pill is sized off what it actually covers.
+          m_tiles[i].label = m_pixel.label(
+              w.get(), m_tiles[i].labelText, cfg::colors.label.get(1.0), 15,
+              static_cast<int>(std::max(1.0, tileBox(i, m_tiles[i].target).w -
+                                                 28.0)));
+      }
     }
     return;
   }

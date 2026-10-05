@@ -380,11 +380,12 @@ void Overview::renderStripButtons() const {
           pxb(box(br), s),
           cfg::colors.close_button.get(e),
           {.round = pxr(rad, s)});
-      if (m_closeGlyph && m_closeGlyph->m_size.x > 0) {
-        const double gw = m_closeGlyph->m_size.x * 0.62,
-                     gh = m_closeGlyph->m_size.y * 0.62;
+      const auto closeGlyph = m_pixel.closeGlyph();
+      if (closeGlyph && closeGlyph->m_size.x > 0) {
+        const double gw = closeGlyph->m_size.x * 0.62,
+                     gh = closeGlyph->m_size.y * 0.62;
         g_pHyprOpenGL->renderTexture(
-            m_closeGlyph,
+            closeGlyph,
             pxb(CBox(br.cx() - gw / 2.0, br.cy() - gh / 2.0, gw, gh), s),
             {.a = static_cast<float>(e)});
       }

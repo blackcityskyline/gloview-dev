@@ -202,49 +202,6 @@ std::string Overview::cursorMode() const {
 namespace {
 // Alpha FIRST (0xAARRGGBB), NOT rgba(RRGGBBAA)
 } // namespace
-
-SP<Render::ITexture> Overview::cachedLabel(void *key, const std::string &text,
-                                           const CHyprColor &col,
-                                           int size, int maxW) const {
-  // maxW <= 0 = untruncated. renderText takes a maxWidth, but it clips rather
-  // than ellipsizes, so the string is shortened here and re-rendered at the size
-  // that fits. Binary search on the character count: the result is cached per
-  // key, so this runs once per label per width, not per frame.
-  const auto render = [&](const std::string &s) {
-    return g_pHyprRenderer->renderText(s, col, size, false, "", 0,
-                                       size >= 15 ? 700 : 600);
-  };
-  if (maxW > 0 && text.size() > 4 && g_pHyprRenderer) {
-    const auto probe = render(text);
-    if (probe && probe->m_size.x > maxW) {
-      int lo = 1, hi = static_cast<int>(text.size()) - 1, best = 0;
-      while (lo <= hi) {
-        const int mid = (lo + hi) / 2;
-        auto t = render(text.substr(0, static_cast<size_t>(mid)) + "\xE2\x80\xA6");
-        if (t && t->m_size.x <= maxW) {
-          best = mid;
-          lo = mid + 1;
-        } else {
-          hi = mid - 1;
-        }
-      }
-      if (best > 0) {
-        const std::string cut = text.substr(0, static_cast<size_t>(best)) +
-                                "\xE2\x80\xA6";
-        auto &c = m_labelCache[key];
-        if (c.text != cut || !c.tex)
-          c = model::LabelTex{cut, render(cut)};
-        return c.tex;
-      }
-    }
-    // Fits as-is: fall through to the plain path below with the original text.
-  }
-  auto &c = m_labelCache[key];
-  if ((!c.tex || c.text != text) && g_pHyprRenderer)
-    c = model::LabelTex{text, render(text)};
-  return c.tex;
-}
-
 // How far the glow reaches past the zone, in logical px.
 static constexpr double kKillZoneFalloff = 150.0;
 
@@ -629,7 +586,7 @@ void Overview::hardClose() {
   m_altTabbing = false;
   m_tiles.clear();
   m_strip.clear();
-  m_snapshots.clear();
+  m_pixel.clearSnapshots();
   m_hovered = m_hoveredStrip = -1;
   m_selected = -1;
 
@@ -729,7 +686,7 @@ void Overview::deactivate() {
   m_progress = 0.0;
   m_tiles.clear();
   m_strip.clear();
-  m_snapshots.clear();
+  m_pixel.clearSnapshots();
   m_hovered = m_hoveredStrip = -1;
   m_selected = -1;
   damage();
@@ -803,7 +760,7 @@ void Overview::updateSnapshots() {
   const auto grab = [this](const PHLWINDOW &w) {
     if (!w || !w->wlSurface() || !w->wlSurface()->resource())
       return;
-    if (m_snapshots.contains(w.get()))
+    if (m_pixel.snapshot(w.get()))
       return;
     const auto tex = w->wlSurface()->resource()->m_current.texture;
     if (!tex || !tex->ok())
@@ -844,7 +801,7 @@ void Overview::updateSnapshots() {
     g_pHyprOpenGL->setViewport(0, 0, PMON ? (int)PMON->m_pixelSize.x : W, PMON ? (int)PMON->m_pixelSize.y : H);
     guard.reset();
 
-    m_snapshots[w.get()] = fb->getTexture();
+    m_pixel.putSnapshot(w.get(), fb->getTexture());
   };
   for (const auto &t : m_tiles)
     if (const auto w = t.win.lock())
