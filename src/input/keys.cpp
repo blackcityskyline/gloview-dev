@@ -58,8 +58,6 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
         wantBit = HL_MODIFIER_SHIFT;
       if (modBitForKeycode(e.keycode) == wantBit) {
         m_altTabbing = false;
-        // Armed, not done. A tap releases long before the entry finishes, and
-        // activating here truncated it; the frame loop commits once it settles.
         m_commitPending = true;
         cancel = true;
         return;
