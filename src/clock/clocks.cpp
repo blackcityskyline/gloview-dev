@@ -3,6 +3,7 @@
 
 #include "../clock/curves.hpp"
 #include "../config/config.hpp"
+#include "../debug/log.hpp"
 #include "../overview.hpp"
 
 namespace gloview {
@@ -99,6 +100,16 @@ double Overview::blurFadeDur() const {
   return std::max(1.0, base > 0.0 ? base : static_cast<double>(cfg::blur.entry_fade));
 }
 
+// WINDOWED exit: hold the backdrop until our own tiles are done AND Hyprland has spent the
+// forced full frames close() asked for — those are the frames it rebuilds its blur in.
+// Asking when the windows reached their goal geometry does NOT work: in the plain
+// open/close the real windows never move (the plugin draws previews and hides them), so
+// that test is true on frame 0 and holds nothing.
+bool Overview::backdropSettled() const {
+  const auto m = m_monitor.lock();
+  return m_clocks.tiles.done(animDuration()) && (!m || m->m_forceFullFrames <= 0);
+}
+
 // The one place the backdrop ramp's shape lives. EMPTY workspace: entry ramps UP from 0
 // over blur_entry_fade and exit back DOWN over blur_exit_fade — the immersive fade.
 // Windowed: entry still ramps, but over kWindowedFadeMs, and exit HOLDS at full strength
@@ -113,7 +124,9 @@ double Overview::blurAlpha() const {
     return f;
   if (m_landingEmpty)
     return m_blurFade0 * (1.0 - f);
-  return m_clocks.tiles.done(animDuration()) ? 0.0 : m_blurFade0;
+  // Ceiling: a window whose geometry animation never reaches its goal would hold the
+  // overlay forever. Two fade durations and we let go regardless.
+  return backdropSettled() ? 0.0 : m_blurFade0;
 }
 
 double Overview::animDuration() const {
@@ -283,9 +296,11 @@ void Overview::updateAnimation() {
   // on the windows that have just landed. Windowed exits have no ramp to wait for — the
   // backdrop is released the moment the tiles land, and lingering would leave a
   // transparent overlay over a sharp desktop, which is the gap all over again.
-  const bool backdropSettled =
-      m_landingEmpty ? m_clocks.blurFade.done(blurFadeDur()) : true;
-  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur) && backdropSettled)
+  // Windowed: the backdrop is released when the windows arrive, and that is also when the
+  // overlay may go -- lingering would leave a transparent overlay over a sharp desktop.
+  const bool settled =
+      m_landingEmpty ? m_clocks.blurFade.done(blurFadeDur()) : backdropSettled();
+  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur) && settled)
     m_pendingDeactivate = true;
 }
 

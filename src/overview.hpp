@@ -191,6 +191,8 @@ private:
   // The predicate build.cpp/actions.cpp each re-spelled: a window that really occupies
   // the desktop. First true one on `ws` is what tells an empty workspace from a busy one.
   static bool workspaceHasWindows(const PHLWORKSPACE &ws);
+  // Windowed exit is done: tiles landed and Hyprland has spent the forced blur frames.
+  bool backdropSettled() const;
   // Landing workspace empty? Re-read on every open and close: the landing workspace can
   // change while the overview is up (all-workspaces, digit jump).
   mutable bool m_landingEmpty = true;

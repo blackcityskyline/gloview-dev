@@ -506,6 +506,11 @@ void Overview::close() {
   // Re-read: the landing workspace can have changed while the overview was up, and it is
   // THIS one we land back on, so it decides whether the exit may be a slow fade.
   m_landingEmpty = !workspaceHasWindows(m_workspace.lock());
+  // Ask Hyprland for the frames in which it rebuilds its own blur, and keep the overlay
+  // up until they are spent: blur under a still-moving window is not rendered yet, so
+  // releasing earlier just uncovers a sharp desktop.
+  if (const auto m = m_monitor.lock())
+    m->m_forceFullFrames = std::max(m->m_forceFullFrames, 8);
   debug::dbg("close: landing empty=" + std::to_string(m_landingEmpty ? 1 : 0));
   m_clocks.blurFade.begin();
   m_opening = false;
