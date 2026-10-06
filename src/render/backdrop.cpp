@@ -330,8 +330,8 @@ void Overview::renderBackdrop() const {
       // Never leave currentFB exposed: it can hold a solitary fullscreen window.
       m_blur.valid = false;
       debug::dbg("backdrop FALLBACK: blur unavailable / no source");
-      static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
-      g_pHyprOpenGL->renderRect(fullPx, argb(*PBG, 1.0), {});
+      // No fill. The entry base is already on screen, and misc:background_color is black
+      // whenever the wallpaper is a layer surface -- filling here IS the flash.
       g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, e), {});
       return;
     }
@@ -342,11 +342,16 @@ void Overview::renderBackdrop() const {
   const auto tex = m_blur.fb ? m_blur.fb->getTexture() : nullptr;
   const float kk = m_opening ? k : std::pow(k, 0.45F);
   if (tex && tex->ok()) {
+    // Measured: blending is OFF here on the frames where the entry lands, so the blit
+    // ignores kk and the texture goes down opaque. The blur texture is black on exactly
+    // those frames (its source composite was rejected as black), so the frame went black
+    // instead of fading in at 3% alpha.
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = kk});
   } else {
+    // Keep the entry base, same reason as the fallback above.
     m_blur.valid = false;
-    static auto PBG2 = CConfigValue<Config::INTEGER>("misc:background_color");
-    g_pHyprOpenGL->renderRect(fullPx, argb(*PBG2, 1.0), {});
   }
 
 
