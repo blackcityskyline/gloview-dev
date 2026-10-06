@@ -117,6 +117,7 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
   }
 
   const double s = m->m_scale;
+  int drew = 0;
   for (const int li : {0, 1}) { // LAYER_BACKGROUND, LAYER_BOTTOM
     for (const auto &lr : m->m_layerSurfaceLayers[li]) {
       const auto layer = lr.lock();
@@ -138,7 +139,18 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
                    sz.y},
               s),
           {.a = a});
+      drew++;
     }
+  }
+  // Measured: the wallpaper layer texture is sometimes mid-recreation — the draw happens,
+  // the viewport is right, blending is on — and the composite still comes out black.
+  // Cached, that black composite became the entry base and the frame went black. One pixel
+  // decides; a frame without a source is reported rather than painted over the desktop.
+  unsigned char q[4] = {0, 0, 0, 0};
+  glReadPixels(W / 4, H / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, q);
+  if (!drew || (q[0] < 8 && q[1] < 8 && q[2] < 8)) {
+    m_backdropDrawn = false;
+    return nullptr;
   }
 
   m_backdropDrawn = true;
@@ -168,7 +180,36 @@ void Overview::renderBackdrop() const {
     const bool blurCacheReady = m_blur.valid && m_blur.fb &&
         m_blur.fb->isAllocated() && m_blur.fb->m_size == Vector2D(W, H);
     const auto cachedTex = blurCacheReady ? m_blur.fb->getTexture() : nullptr;
-    if (cachedTex && cachedTex->ok()) {
+    // Reading m_blur.fb directly returns multisample garbage, so the cache is sampled
+    // through a 1x1 framebuffer instead. Measured: the cache is black on the first frame
+    // after a stale open, and it is the entry base, so the frame goes black.
+    static auto probeFB = g_pHyprRenderer->createFB("gloview cache probe");
+    bool cachedUsable = false;
+    unsigned char q[4] = {0, 0, 0, 0};
+    if (cachedTex && cachedTex->ok() && probeFB) {
+      if (!probeFB->isAllocated())
+        probeFB->alloc(1, 1);
+      GLint bnd = 0;
+      GLint vp[4] = {0, 0, 0, 0};
+      glGetIntegerv(GL_FRAMEBUFFER_BINDING, &bnd);
+      glGetIntegerv(GL_VIEWPORT, vp);
+      probeFB->bind();
+      g_pHyprOpenGL->setViewport(0, 0, 1, 1);
+      // Three samples: a single one can land in a legitimately dark corner.
+      const CBox spots[3] = {CBox(0, 0, 1, 1), CBox(0.25F, 0.25F, 1, 1),
+                             CBox(0.75F, 0.75F, 1, 1)};
+      int lit = 0;
+      for (const auto &spot : spots) {
+        g_pHyprOpenGL->renderTexture(cachedTex, spot, {.a = 1.0F});
+        glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, q);
+        if (!(q[0] < 8 && q[1] < 8 && q[2] < 8))
+          lit++;
+      }
+      glBindFramebuffer(GL_FRAMEBUFFER, bnd);
+      glViewport(vp[0], vp[1], vp[2], vp[3]);
+      cachedUsable = lit > 0;
+    }
+    if (cachedUsable) {
       g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = 1.0F});
     } else {
 
@@ -180,8 +221,16 @@ void Overview::renderBackdrop() const {
       const auto comp = renderBackdropSource(W, H);
       g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
       g_pHyprRenderer->setProjectionType(oldProj);
-      if (comp && comp->ok())
+      if (comp && comp->ok()) {
         g_pHyprOpenGL->renderTexture(comp, fullPx, {.a = 1.0F});
+      } else if (m_blur.fb && m_blur.fb->isAllocated()) {
+        // No source this frame. The stale blur FB still holds the previous, correct
+        // backdrop — an outdated frame beats a black one, and m_blur.valid only gates
+        // recomputation, not the contents.
+        const auto stale = m_blur.fb->getTexture();
+        if (stale && stale->ok())
+          g_pHyprOpenGL->renderTexture(stale, fullPx, {.a = 1.0F});
+      }
     }
   }
 
@@ -205,7 +254,7 @@ void Overview::renderBackdrop() const {
     g_pHyprRenderer->setProjectionType(oldProj);
   }
 
-  if (k <= 0.0F)
+  if (!src || k <= 0.0F)
     return;
 
   const void *srcId = src ? src.get() : nullptr;
