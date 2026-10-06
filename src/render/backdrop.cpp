@@ -227,7 +227,7 @@ void Overview::renderBackdrop() const {
   // hold is exactly the moment the real desktop would otherwise show through under the
   // band. Measured without it: the band pixel stepped 171,175,148 -> 124,129,112 on the
   // frame the exit started holding, and stayed there.
-  if (m_opening || (!m_landingEmpty && !backdropSettled())) {
+  if (baseA > 0.0F) {
     // NOT gated on m_blur.valid: valid drives RECOMPUTATION, the FB still holds the last
     // good blur. open() clears valid whenever the cache goes stale, and gating on it left
     // the windowed entry on a sharp composite for its first ~40ms (measured: baseBlur=0
