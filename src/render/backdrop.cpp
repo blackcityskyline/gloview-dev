@@ -68,6 +68,9 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
     m_backdropSrcFB->alloc(W, H);
     needRedraw = true;
     m_backdropDrawn = false;
+    // A realloc discards the contents, so the "there is a good composite" promise the
+    // reject path serves no longer holds. Left set, it hands back a fresh black buffer.
+    m_backdropGood = false;
   }
 
   if (m_backdropDrawn && !needRedraw)
