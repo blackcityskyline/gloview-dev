@@ -61,7 +61,12 @@ void Overview::renderStrip() const {
   // contents, and it is still one gesture with them rather than a second one.
   // Written out rather than curves::eval("easeinout", ...): that call returns garbage on
   // its FIRST invocation (measured bandE=6.727 for e=0.025, where the curve is 6.25e-5).
-  const double bandE = e * e * (3.0 - 2.0 * e);
+  // m_progress, NOT e: a shaped curve is directional. Front loaded on the way in (the
+  // numbers above), and slow-then-collapsing on the way out, where the alpha fell
+  // 0.96 -> 0.20 in a couple of frames and the paint read as switched off. m_progress is
+  // elapsed/duration by construction -- linear in time, symmetric both ways -- so the band
+  // fades evenly in and evenly out, which is what "the paint vanishes in one frame" is not.
+  const double bandE = std::clamp(m_progress, 0.0, 1.0);
   const auto bandCol = cfg::colors.strip_band.get(bandE);
   const LRect bandR  = stripBand();
   const Vector2D slide  = stripSlide(e);
