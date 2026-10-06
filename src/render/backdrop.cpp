@@ -50,7 +50,6 @@ SP<Render::ITexture> Overview::backdropSource(bool &live) const {
       }
     }
   }
-  // Not returned: renderBackdropSource() composites it under the live layers.
   return nullptr;
 }
 
@@ -77,10 +76,17 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
   const auto oldFB = g_pHyprRenderer->m_renderData.currentFB;
   GLint oldVp[4];
   glGetIntegerv(GL_VIEWPORT, oldVp);
+  // As updateSnapshots does for its private FB. Measured NOT the black-backdrop cause.
+  const auto oldTransformDmg = g_pHyprRenderer->m_renderData.transformDamage;
+  const auto oldModif        = g_pHyprRenderer->m_renderData.renderModif;
+  g_pHyprRenderer->m_renderData.transformDamage = false;
+  g_pHyprRenderer->m_renderData.renderModif     = Render::SRenderModifData{};
   m_backdropSrcFB->bind();
   g_pHyprRenderer->m_renderData.currentFB = m_backdropSrcFB;
   g_pHyprOpenGL->setViewport(0, 0, W, H);
   Hyprutils::Utils::CScopeGuard guard([&] {
+    g_pHyprRenderer->m_renderData.transformDamage = oldTransformDmg;
+    g_pHyprRenderer->m_renderData.renderModif     = oldModif;
     g_pHyprRenderer->m_renderData.currentFB = oldFB;
     if (oldFB)
       oldFB->bind();

@@ -205,7 +205,6 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     L.countW = mt.countW;
     L.countH = mt.countH;
 
-    // Even counts allowed: centerSlot leaves the selected card one slot off.
     const int want = std::max(1, mt.visibleCards);
     const int shown = std::min(want, count);
     L.visibleCards = shown;
@@ -226,7 +225,6 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
 
     const double boxW = std::max(1.0, mt.boxW);
     const double boxH = std::max(1.0, mt.boxH);
-    // The centred card is the standard box; every step out is a fraction of it.
     const auto sizeAt = [&](int depth) {
         if (depth <= 0)
             return 1.0;
@@ -248,7 +246,6 @@ CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
     const double availW = std::max(1.0, screen.w - mt.screenMargin * 2.0);
     const double availH = std::max(1.0, screen.h - mt.screenMargin * 2.0 -
                                              mt.countH - mt.sectionGap);
-    // The user's zoom rides on top of the fit; past 1.0 it overflows deliberately.
     const double k =
         std::min({1.0, availW / std::max(1.0, stripW),
                   availH / std::max(1.0, stripH)}) * mt.scale;

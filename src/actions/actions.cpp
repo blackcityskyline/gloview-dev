@@ -340,7 +340,29 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
     m_view.setWsSlideDir( ws->m_id > oldWs->m_id ? 1 : -1);
   // The frozen backdrop belongs to the PREVIOUS ws — do NOT invalidate it.
   const auto oldBoxes = captureCurrentBoxes();
+  // The strip is the workspace axis and the run is the window axis inside it, so a
+  // selection cannot survive the switch: the two tile sets are disjoint, and keeping
+  // the INDEX just centres an arbitrary window. Land on the new workspace's most
+  // recent one — the window a plain workspace switch would have focused.
   buildTiles();
+  // The centred card has to be a window OF the chosen workspace. Measured: in
+  // all-workspaces buildTiles does NOT filter by workspace, so nothing left the tile set.
+  {
+    std::vector<const void *> keys;
+    std::vector<int> idx;
+    for (size_t i = 0; i < m_scene.size(); ++i) {
+      const auto w = m_scene.tiles()[i].win.lock();
+      if (w && w->m_workspace == ws) {
+        keys.push_back(w.get());
+        idx.push_back(static_cast<int>(i));
+      }
+    }
+    if (!keys.empty()) {
+      std::vector<std::size_t> recent;
+      m_recency.order(keys, recent);
+      m_scene.select(idx[recent.front()]);
+    }
+  }
   buildStrip();
   layoutTiles();
   debug::dbg("SWITCH ->" + std::to_string(ws ? ws->m_id : -1) + " tiles=" +
@@ -364,6 +386,7 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
   for (auto &t : m_scene.edit())
     t.appear = 0.0;
   m_fx.clearGhosts();
+  bool sameSet = true;
   for (const auto &[oldWin, oldBox] : oldBoxes) {
     bool kept = false;
     for (const auto &t : m_scene.tiles())
@@ -371,9 +394,15 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
     if (!kept)
       m_fx.addGhost(model::Ghost{oldWin, oldBox});
   }
-  m_clocks.rebuild.begin();
+  // A ws slide is a CONTENT change; with the set identical it left frame one empty.
+  if (sameSet && !oldBoxes.empty()) {
+    m_view.setWsSlideDir(0);
+    startTileGlide(oldBoxes);
+  } else
+    m_clocks.rebuild.begin();
   ensureAnimPump();
-  m_clocks.tiles.pinEnd(glideDur());
+  if (!sameSet || oldBoxes.empty())
+    m_clocks.tiles.pinEnd(glideDur());
   m_progress = 1.0;
   m_opening = true;
   m_clocks.master.pinEnd(animDuration());
