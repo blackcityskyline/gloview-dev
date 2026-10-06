@@ -54,7 +54,15 @@ void Overview::renderStrip() const {
 
   // Never blur-sample currentFB here: a solitary fullscreen window bypasses
   // shouldRenderWindow and would leak into the band.
-  const auto bandCol = cfg::colors.strip_band.get(e);
+  // smoothstep, not e: e is the raw easeout, which is front-loaded enough that it went
+  // 0.03 -> 0.33 between two frames, and a band at 0.141 alpha therefore covered its whole
+  // range in four -- one frame, perceptually, while everything it sits behind arrived on
+  // its own slower curves. Same duration, softer attack: the band no longer outruns its
+  // contents, and it is still one gesture with them rather than a second one.
+  // Written out rather than curves::eval("easeinout", ...): that call returns garbage on
+  // its FIRST invocation (measured bandE=6.727 for e=0.025, where the curve is 6.25e-5).
+  const double bandE = e * e * (3.0 - 2.0 * e);
+  const auto bandCol = cfg::colors.strip_band.get(bandE);
   const LRect bandR  = stripBand();
   const Vector2D slide  = stripSlide(e);
   const Vector2D scroll = stripScroll();
