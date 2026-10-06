@@ -45,7 +45,13 @@ void Overview::renderStrip() const {
   if (!m || m_strip.empty())
     return;
   const double e = eased();
-  if (e <= 0.01)
+  // A windowed exit holds the overlay PAST the animation, waiting for Hyprland to rebuild
+  // its blur, and m_progress is already 1e-6 by then. Gating on e alone stopped drawing
+  // the whole strip while the overlay was still up: measured e=0.000 with active=1, so
+  // the band vanished in one frame. While the overlay is still holding, the strip keeps
+  // being drawn at full strength -- it is still on screen.
+  const double stripE = blurAlpha();
+  if (stripE <= 0.01)
     return;
   const double s = m->m_scale;
   const int   previewRound = cfg::look.preview_round;
@@ -71,7 +77,7 @@ void Overview::renderStrip() const {
   // the band's opacity changed in one frame, to exactly the empty-workspace value. The
   // band is chrome, not backdrop: it follows the animation and knows nothing about
   // windows, so its opacity is the same number on every workspace in every state.
-  const double bandE = std::clamp(eased(), 0.0, 1.0);
+  const double bandE = stripE;
   auto bandCol       = cfg::colors.strip_band.get(bandE);
   // strip_band_opacity is the single source of the band's alpha; the colour string's own
   // alpha is ignored. Below ~60% the band reads at two different densities on the same
