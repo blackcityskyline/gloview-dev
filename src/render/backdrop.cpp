@@ -215,6 +215,11 @@ void Overview::renderBackdrop() const {
   // the blend target is currentFB, whose stale wallpaper blinks dark on frame 0.
   // baseIsBlur: the base is already the blurred texture, so the ramp must not blend it
   // again on top of itself.
+  // The base fades with the blur, not at a=1. Pinned opaque it survived the whole exit
+  // while the blur and the dim ramped to zero, and the frame the base stopped being painted
+  // was a visible step -- measured on an empty workspace, the band pixel dropping in one
+  // frame. Base and blur are one material and now share one alpha.
+  const float baseA = static_cast<float>(blurAlpha());
   bool baseIsBlur = false;
   // Also while a windowed exit holds: the opaque base is what the blur sits on, and the
   // hold is exactly the moment the real desktop would otherwise show through under the
@@ -266,7 +271,7 @@ void Overview::renderBackdrop() const {
     // gives the ramp something to reveal.
     if (cachedUsable) {
       baseIsBlur = true;
-      g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = 1.0F});
+      g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = baseA});
     } else {
       const auto oldProj = g_pHyprRenderer->m_renderData.projectionType;
       const auto oldFbSz = g_pHyprRenderer->m_renderData.fbSize;
@@ -276,7 +281,7 @@ void Overview::renderBackdrop() const {
       g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
       g_pHyprRenderer->setProjectionType(oldProj);
       if (comp && comp->ok()) {
-        g_pHyprOpenGL->renderTexture(comp, fullPx, {.a = 1.0F});
+        g_pHyprOpenGL->renderTexture(comp, fullPx, {.a = baseA});
       } else if (m_blur.fb && m_blur.fb->isAllocated()) {
         // No source this frame. The stale blur FB still holds the previous, correct
         // backdrop — an outdated frame beats a black one, and m_blur.valid only gates
@@ -284,7 +289,7 @@ void Overview::renderBackdrop() const {
         const auto stale = m_blur.fb->getTexture();
         if (stale && stale->ok()) {
           baseIsBlur = true;
-          g_pHyprOpenGL->renderTexture(stale, fullPx, {.a = 1.0F});
+          g_pHyprOpenGL->renderTexture(stale, fullPx, {.a = baseA});
         }
       }
     }
