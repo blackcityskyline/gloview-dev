@@ -310,7 +310,8 @@ void Overview::renderBackdrop() const {
         // not there yet, and the frame is black because nothing was painted at all.
         // backdrop_color, NOT misc:background_color: that one is black under a layer-shell
         // wallpaper, which is how this same frame was black in the first place.
-        g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, 1.0), {});
+        g_pHyprOpenGL->renderRect(fullPx,
+                                  CHyprColor{baseCol.r, baseCol.g, baseCol.b, 1.0F}, {});
       }
     }
   }
