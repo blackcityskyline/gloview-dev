@@ -203,6 +203,12 @@ void Overview::renderBackdrop() const {
   const auto baseCol  = cfg::blur.backdrop.get();
 
   const float k = static_cast<float>(e);
+  // The dim is the same material as the blur, so on an empty desktop it has to ride the
+  // same clock: both used to ride the 300ms open animation, the dim finished long before
+  // the blur did, and the exit laid down wrong because the two parted halfway. Windowed
+  // exits keep the tight 300ms dim -- their backdrop hands over to Hyprland's blur in a
+  // single cut, and stretching the dim across that cut would only make it visible.
+  const double dimK = m_landingEmpty ? blurAlpha() : e;
   debug::dbg(std::string("backdrop e=") + std::to_string(e).substr(0, 5) +
       " opening=" + std::to_string(m_opening) +
       " k=" + std::to_string(k).substr(0, 5));
@@ -213,9 +219,12 @@ void Overview::renderBackdrop() const {
   // again on top of itself.
   bool baseIsBlur = false;
   if (m_opening) {
-    // valid, not merely allocated: open() clears m_blur.valid when the cache goes stale.
-    const bool blurCacheReady = m_blur.valid && m_blur.fb &&
-        m_blur.fb->isAllocated() && m_blur.fb->m_size == Vector2D(W, H);
+    // NOT gated on m_blur.valid: valid drives RECOMPUTATION, the FB still holds the last
+    // good blur. open() clears valid whenever the cache goes stale, and gating on it left
+    // the windowed entry on a sharp composite for its first ~40ms (measured: baseBlur=0
+    // on frames 1-2) — the exact gap the blurred base exists to avoid.
+    const bool blurCacheReady = m_blur.fb && m_blur.fb->isAllocated() &&
+        m_blur.fb->m_size == Vector2D(W, H);
     const auto cachedTex = blurCacheReady ? m_blur.fb->getTexture() : nullptr;
     // Reading m_blur.fb directly returns multisample garbage, so the cache is sampled
     // through a 1x1 framebuffer instead. Measured: the cache is black on the first frame
@@ -246,13 +255,14 @@ void Overview::renderBackdrop() const {
       glViewport(vp[0], vp[1], vp[2], vp[3]);
       cachedUsable = lit > 0;
     }
-    // The blurred cache is the preferred base, and it is not a stylistic choice: whatever
-    // blurred the screen before the overview opened was HYPRLAND's own blur under a window,
-    // and that stops the instant the window starts flying. A base that ramps from sharp
-    // therefore leaves the desktop unblurred for the whole ramp — measured a clear window
-    // for as long as it ran. Blurred at full strength from frame 0 hands over blurred to
-    // blurred. The sharp composite is only the fallback when there is no cache at all.
-    if (cachedUsable) {
+    // WHICH base depends on the landing desktop, and it is the whole difference between the
+    // two behaviours. WINDOWED: whatever blurred the screen a moment ago was Hyprland's
+    // own blur under those windows, and it stops the instant they start flying — so the
+    // base must already be blurred, handing over blurred to blurred. A sharp base there
+    // leaves the desktop clear for the whole ramp (measured). EMPTY: nothing was blurring
+    // it and nothing takes over afterwards, so the SHARP composite is safe, and it is what
+    // gives the ramp something to reveal.
+    if (cachedUsable && !m_landingEmpty) {
       baseIsBlur = true;
       g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = 1.0F});
     } else {
@@ -280,7 +290,7 @@ void Overview::renderBackdrop() const {
 
 
   if (!blurEnabled()) {
-    const auto col = argb(baseCol, e);
+    const auto col = argb(baseCol, dimK);
     if (col.a <= 0.0)
       return;
     g_pHyprOpenGL->renderRect(fullPx, col, {});
@@ -342,7 +352,7 @@ void Overview::renderBackdrop() const {
       debug::dbg("backdrop FALLBACK: blur unavailable / no source");
       // No fill. The entry base is already on screen, and misc:background_color is black
       // whenever the wallpaper is a layer surface -- filling here IS the flash.
-      g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, e), {});
+      g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, dimK), {});
       return;
     }
     m_blur.valid = true;
@@ -371,9 +381,10 @@ void Overview::renderBackdrop() const {
   
 
 
-  const auto dimCol = argb(baseCol, e);
+  const auto dimCol = argb(baseCol, dimK);
   if (dimCol.a > 0.0)
     g_pHyprOpenGL->renderRect(fullPx, dimCol, {});
+
 
 }
 
