@@ -254,12 +254,19 @@ void Overview::renderBackdrop() const {
       const CBox spots[3] = {CBox(0, 0, 1, 1), CBox(0.25F, 0.25F, 1, 1),
                              CBox(0.75F, 0.75F, 1, 1)};
       int lit = 0;
+      // glReadPixels obeys the scissor: outside the box it leaves the destination alone, so
+      // an unread pixel keeps the previous q and reads as black. With scissor on this probe
+      // can report a perfectly good cache black.
+      const bool scissorOn = glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE;
+      glDisable(GL_SCISSOR_TEST);
       for (const auto &spot : spots) {
         g_pHyprOpenGL->renderTexture(cachedTex, spot, {.a = 1.0F});
         glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, q);
         if (!(q[0] < 8 && q[1] < 8 && q[2] < 8))
           lit++;
       }
+      if (scissorOn)
+        glEnable(GL_SCISSOR_TEST);
       glBindFramebuffer(GL_FRAMEBUFFER, bnd);
       glViewport(vp[0], vp[1], vp[2], vp[3]);
       cachedUsable = lit > 0;
