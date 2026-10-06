@@ -231,8 +231,6 @@ private:
 
   mutable render::BlurCache m_blur;
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
-  mutable SP<Render::IFramebuffer> m_backdropTmpFB;
-  mutable bool m_backdropGood = false; // the composite FB has held a usable picture
   mutable bool m_backdropDrawn = false;
   mutable const void *m_lastLayerTex = nullptr;
   mutable int m_layerStable = 0;
