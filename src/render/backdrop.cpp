@@ -289,7 +289,9 @@ void Overview::renderBackdrop() const {
       const auto comp = renderBackdropSource(W, H);
       g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
       g_pHyprRenderer->setProjectionType(oldProj);
+      bool painted = false;
       if (comp && comp->ok()) {
+        painted = true;
         g_pHyprOpenGL->renderTexture(comp, fullPx, {.a = baseA});
       } else if (m_blur.fb && m_blur.fb->isAllocated()) {
         // No source this frame. The stale blur FB still holds the previous, correct
@@ -298,8 +300,17 @@ void Overview::renderBackdrop() const {
         const auto stale = m_blur.fb->getTexture();
         if (stale && stale->ok()) {
           baseIsBlur = true;
+          painted    = true;
           g_pHyprOpenGL->renderTexture(stale, fullPx, {.a = baseA});
         }
+      }
+      if (!painted) {
+        // Measured: once per open, on the first frame, when the wallpaper layer texture is
+        // mid-recreation — renderBackdropSource rejects the composite as black, the cache is
+        // not there yet, and the frame is black because nothing was painted at all.
+        // backdrop_color, NOT misc:background_color: that one is black under a layer-shell
+        // wallpaper, which is how this same frame was black in the first place.
+        g_pHyprOpenGL->renderRect(fullPx, argb(baseCol, 1.0), {});
       }
     }
   }
