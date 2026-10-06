@@ -73,6 +73,35 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
   if (m_backdropDrawn && !needRedraw)
     return m_backdropSrcFB->getTexture();
 
+  // A layer texture whose identity just changed is still being re-created: compositing it
+  // on that frame yields a black source, and a black source means a black entry frame.
+  // Hold the previous composite until the texture has settled.
+  {
+    const void *tex = nullptr;
+    for (const int li : {0, 1})
+      for (const auto &lr : m->m_layerSurfaceLayers[li]) {
+        const auto layer = lr.lock();
+        if (!layer || !layer->m_mapped || !layer->visible() ||
+            !layer->wlSurface() || !layer->wlSurface()->resource())
+          continue;
+        const auto surf = layer->wlSurface()->resource();
+        if (!surf->m_current.texture || !surf->m_current.texture->ok())
+          continue;
+        tex = surf->m_current.texture.get();
+        break;
+      }
+    if (tex && tex == m_lastLayerTex)
+      m_layerStable++;
+    else {
+      m_lastLayerTex = tex;
+      m_layerStable = 0;
+    }
+    if (!needRedraw && m_layerStable < 3 && m_backdropSrcFB->isAllocated()) {
+      m_backdropDrawn = true;
+      return m_backdropSrcFB->getTexture();
+    }
+  }
+
   const auto oldFB = g_pHyprRenderer->m_renderData.currentFB;
   GLint oldVp[4];
   glGetIntegerv(GL_VIEWPORT, oldVp);
@@ -93,8 +122,13 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
     g_pHyprOpenGL->setViewport(oldVp[0], oldVp[1], oldVp[2], oldVp[3]);
   });
 
-  static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
-  g_pHyprOpenGL->renderRect(CBox(0, 0, W, H), argb(*PBG, 1.0), {});
+  // Only on a fresh FB. On a redraw the previous composite is a usable picture; filling
+  // black here is what turns "the layer texture was not ready this frame" into a frame with
+  // no source at all.
+  if (needRedraw) {
+    static auto PBG = CConfigValue<Config::INTEGER>("misc:background_color");
+    g_pHyprOpenGL->renderRect(CBox(0, 0, W, H), argb(*PBG, 1.0), {});
+  }
 
   if (m->m_background && m->m_background->ok()) {
     const double MONRATIO = static_cast<double>(W) / H;
@@ -234,6 +268,7 @@ void Overview::renderBackdrop() const {
     }
   }
 
+
   if (!blurEnabled()) {
     const auto col = argb(baseCol, e);
     if (col.a <= 0.0)
@@ -313,6 +348,8 @@ void Overview::renderBackdrop() const {
     static auto PBG2 = CConfigValue<Config::INTEGER>("misc:background_color");
     g_pHyprOpenGL->renderRect(fullPx, argb(*PBG2, 1.0), {});
   }
+
+
   const auto dimCol = argb(baseCol, e);
   if (dimCol.a > 0.0)
     g_pHyprOpenGL->renderRect(fullPx, dimCol, {});

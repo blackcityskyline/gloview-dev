@@ -222,6 +222,8 @@ private:
   mutable render::BlurCache m_blur;
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
   mutable bool m_backdropDrawn = false;
+  mutable const void *m_lastLayerTex = nullptr;
+  mutable int m_layerStable = 0;
   mutable std::chrono::steady_clock::time_point m_lastBackdropCapture{};
   mutable CBlurFilter m_blurFilter; // independent of decoration:blur:*
   void updateSnapshots();
