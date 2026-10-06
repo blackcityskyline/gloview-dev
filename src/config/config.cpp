@@ -119,6 +119,7 @@ constexpr IntSpec kInts[] = {
     {&strip.card_round, "plugin:gloview:strip_card_round", 10},
     {&strip.all_card, "plugin:gloview:strip_all_card", 0},
     {&strip.wallpaper, "plugin:gloview:strip_wallpaper", 1},
+    {&strip.band_opacity, "plugin:gloview:strip_band_opacity", 70},
     {&look.preview_round, "plugin:gloview:preview_round", 12},
     {&look.show_border, "plugin:gloview:show_border", 0},
     {&look.show_focus_border, "plugin:gloview:show_focus_border", 1},

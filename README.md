@@ -204,6 +204,7 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `strip_card_round` | int (px) | `10` | Workspace card corner radius |
 | `backdrop_color` | color/role | `"0x73070a10"` | Dim + blur fill over the desktop |
 | `strip_band_color` | color/role | `"0x24ffffff"` | Band behind the cards |
+| `strip_band_opacity` | int `0`..`100` | `70` | Opacity of the strip band, in percent. This is the band's ONLY alpha source — `strip_band_color` supplies the RGB. Below ~60 the band reads at two different densities depending on whether a blurred or a sharp backdrop sits behind it (the backdrop is sharp on an empty landing workspace, blurred when windows are present) |
 | `strip_card_color` | color/role | `"0x3a0e131c"` | Inactive workspace card fill |
 | `strip_active_color` | color/role | `"0x4d1c2c44"` | Active workspace card fill |
 | `strip_active_border` | color/role | `"0xf0ffffff"` | Active card outline |

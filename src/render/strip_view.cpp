@@ -67,7 +67,12 @@ void Overview::renderStrip() const {
   // elapsed/duration by construction -- linear in time, symmetric both ways -- so the band
   // fades evenly in and evenly out, which is what "the paint vanishes in one frame" is not.
   const double bandE = blurAlpha();
-  const auto bandCol = cfg::colors.strip_band.get(bandE);
+  auto bandCol       = cfg::colors.strip_band.get(bandE);
+  // strip_band_opacity is the single source of the band's alpha; the colour string's own
+  // alpha is ignored. Below ~60% the band reads at two different densities on the same
+  // screen depending on whether a blurred or a sharp backdrop is behind it, which is the
+  // instability this removes.
+  bandCol.a = std::clamp(cfg::strip.band_opacity.get() / 100.0, 0.0, 1.0) * bandE;
   const LRect bandR  = stripBand();
   const Vector2D slide  = stripSlide(e);
   const Vector2D scroll = stripScroll();

@@ -89,6 +89,10 @@ struct strip {
   Str empty_mode;
   Int all_card;
   Int wallpaper;
+  // Percent. The band's OWN alpha comes from here and nowhere else -- strip_band_color
+  // supplies RGB only. Two sources of alpha made its density depend on which string was
+  // configured, and how it read depended on what was behind it.
+  Int band_opacity;
 };
 
 inline strip strip;
