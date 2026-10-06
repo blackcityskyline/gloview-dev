@@ -66,7 +66,7 @@ void Overview::renderStrip() const {
   // 0.96 -> 0.20 in a couple of frames and the paint read as switched off. m_progress is
   // elapsed/duration by construction -- linear in time, symmetric both ways -- so the band
   // fades evenly in and evenly out, which is what "the paint vanishes in one frame" is not.
-  const double bandE = std::clamp(m_progress, 0.0, 1.0);
+  const double bandE = blurAlpha();
   const auto bandCol = cfg::colors.strip_band.get(bandE);
   const LRect bandR  = stripBand();
   const Vector2D slide  = stripSlide(e);
