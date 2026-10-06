@@ -110,8 +110,17 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
   const auto oldModif        = g_pHyprRenderer->m_renderData.renderModif;
   g_pHyprRenderer->m_renderData.transformDamage = false;
   g_pHyprRenderer->m_renderData.renderModif     = Render::SRenderModifData{};
-  m_backdropSrcFB->bind();
-  g_pHyprRenderer->m_renderData.currentFB = m_backdropSrcFB;
+  // Compose into a scratch framebuffer and only promote it over the good one. Drawn
+  // straight into m_backdropSrcFB, a layer texture that comes back black DESTROYS the last
+  // good composite, and with the cache black too there is then nothing to paint an entry
+  // frame with: measured one such frame per 2-3s, every source dead at once.
+  if (!m_backdropTmpFB)
+    m_backdropTmpFB = g_pHyprRenderer->createFB("gloview backdrop scratch");
+  if (!m_backdropTmpFB->isAllocated() ||
+      m_backdropTmpFB->m_size != Vector2D(W, H))
+    m_backdropTmpFB->alloc(W, H);
+  m_backdropTmpFB->bind();
+  g_pHyprRenderer->m_renderData.currentFB = m_backdropTmpFB;
   g_pHyprOpenGL->setViewport(0, 0, W, H);
   Hyprutils::Utils::CScopeGuard guard([&] {
     g_pHyprRenderer->m_renderData.transformDamage = oldTransformDmg;
@@ -181,13 +190,37 @@ SP<Render::ITexture> Overview::renderBackdropSource(int W, int H) const {
   // Cached, that black composite became the entry base and the frame went black. One pixel
   // decides; a frame without a source is reported rather than painted over the desktop.
   unsigned char q[4] = {0, 0, 0, 0};
-  glReadPixels(W / 4, H / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, q);
+  {
+    // glReadPixels obeys the scissor: outside the box it leaves the destination alone, so
+    // an unread pixel is indistinguishable from a black one. Every black-frame count taken
+    // without this was wrong.
+    const bool sc = glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE;
+    glDisable(GL_SCISSOR_TEST);
+    glReadPixels(W / 4, H / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, q);
+    if (sc)
+      glEnable(GL_SCISSOR_TEST);
+  }
   if (!drew || (q[0] < 8 && q[1] < 8 && q[2] < 8)) {
     m_backdropDrawn = false;
+    // The scratch kept the last GOOD composite intact, so there is something to serve
+    // rather than nothing. Reporting "no source" here is what left the entry frame with
+    // no base at all when the cache was black too: measured one dead frame per 2-3s.
+    if (m_backdropGood)
+      return m_backdropSrcFB->getTexture();
     return nullptr;
   }
 
+  // Promote: the scratch composite is good, so it becomes the cached one.
+  const auto scratch = m_backdropTmpFB->getTexture();
+  if (scratch && scratch->ok()) {
+    m_backdropSrcFB->bind();
+    g_pHyprRenderer->m_renderData.currentFB = m_backdropSrcFB;
+    g_pHyprOpenGL->setViewport(0, 0, W, H);
+    g_pHyprOpenGL->renderTexture(scratch, CBox(0, 0, W, H), {.a = 1.0F});
+  }
+
   m_backdropDrawn = true;
+  m_backdropGood = true;
   return m_backdropSrcFB->getTexture();
 }
 
