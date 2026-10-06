@@ -81,6 +81,10 @@ double Overview::eased() const {
   return curves::eval(leaf(leaf_name).curve, m_progress);
 }
 
+double Overview::blurFadeDur() const {
+  return std::max(1.0, static_cast<double>(cfg::blur.entry_fade));
+}
+
 double Overview::animDuration() const {
   if (m_view.jumpMode() && !m_opening) return leaf("jump_out").ms;
   return leaf(m_opening ? "open" : "close").ms;
@@ -157,6 +161,7 @@ void Overview::updateAnimation() {
       m_clocks.tiles.compensateStall(gapMs, glideMs);
       m_clocks.rebuild.compensateStall(gapMs, std::max(m_entry.ms, m_ghost.ms));
       m_clocks.strip.compensateStall(gapMs, leaf("strip_step").ms);
+      m_clocks.blurFade.compensateStall(gapMs, blurFadeDur());
       if (m_newCardAnim)
         m_clocks.newCard.compensateStall(gapMs, newCardDur());
       if (m_drag.lifted)

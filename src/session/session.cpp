@@ -474,6 +474,7 @@ void Overview::open() {
   m_progress = 0.0;
   m_clocks.master.begin();
   m_clocks.tiles.begin();
+  m_clocks.blurFade.begin();
   m_lastAnimTick = {};
   hideLayers();
   m_cursor.onOpen(m, cursorMode());

@@ -3,9 +3,9 @@
 namespace gloview::clock {
 
 bool Clocks::anyRunning(double rebuildEntryMs, double rebuildGhostMs,
-                        double stripMs) const {
+                        double stripMs, double blurFadeMs) const {
   return !rebuild.done(rebuildEntryMs) || !rebuild.done(rebuildGhostMs) ||
-         !strip.done(stripMs);
+         !strip.done(stripMs) || !blurFade.done(blurFadeMs);
 }
 
 } // namespace gloview::clock

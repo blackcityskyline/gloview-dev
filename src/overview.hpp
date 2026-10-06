@@ -183,8 +183,10 @@ private:
   // added never arms it.
   bool secondaryAnimsActive() const {
     return m_clocks.anyRunning(leaf(entryLeaf()).ms, leaf(ghostLeaf()).ms,
-                               leaf("strip_step").ms);
+                               leaf("strip_step").ms, blurFadeDur());
   }
+  // Read on the call site: a config edit mid-fade retimes the rest of the ramp.
+  double blurFadeDur() const;
   double tileAppear(int i) const; // staggered 0..1 for tile i
   const char *entryLeaf() const;
   const char *ghostLeaf() const;

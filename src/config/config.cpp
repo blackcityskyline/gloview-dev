@@ -130,6 +130,9 @@ constexpr IntSpec kInts[] = {
     {&blur.resolution, "plugin:gloview:blur_resolution", 4},
     {&blur.fullscreen_background, "plugin:gloview:fullscreen_background", 0},
     {&blur.frost_underlay, "plugin:gloview:frost_underlay", 0}, // DEPRECATED no-op
+    // Longer than the open animation on purpose: the blur rides its own clock so it
+    // ramps in over a second instead of landing with the 300ms open.
+    {&blur.entry_fade, "plugin:gloview:blur_entry_fade", 1000},
     {&anim::enabled, "plugin:gloview:animations_enabled", 1},
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     {&behavior.focus_follows_mouse, "plugin:gloview:focus_follows_mouse", 1},

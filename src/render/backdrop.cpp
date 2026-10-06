@@ -13,6 +13,7 @@
 #include <hyprutils/utils/ScopeGuard.hpp>
 
 #include "gl_util.hpp"
+#include "../clock/curves.hpp"
 #include "../config/config.hpp"
 #include "../debug/log.hpp"
 #include "../overview.hpp"
@@ -340,7 +341,14 @@ void Overview::renderBackdrop() const {
   }
 
   const auto tex = m_blur.fb ? m_blur.fb->getTexture() : nullptr;
-  const float kk = m_opening ? k : std::pow(k, 0.45F);
+  // ENTRY rides its own clock, not the open animation: the open is 300ms of easeout,
+  // which puts the blur at ~full strength within one or two frames and reads as a hard
+  // cut. The fade outlives the open by design, so the anim pump keeps frames coming
+  // (named in secondaryAnimsActive) until it reaches 1.
+  const float kk = m_opening
+      ? static_cast<float>(
+            curves::eval("easeinout", m_clocks.blurFade.raw(blurFadeDur())))
+      : std::pow(k, 0.45F);
   if (tex && tex->ok()) {
     // Measured: blending is OFF here on the frames where the entry lands, so the blit
     // ignores kk and the texture goes down opaque. The blur texture is black on exactly

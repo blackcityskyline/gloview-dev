@@ -36,6 +36,7 @@ class Clocks {
     Clock strip;    // animated card-group offset
     Clock dragLift; // a dragged tile's raise
     Clock newCard;  // a freshly added workspace card
+    Clock blurFade; // backdrop blur ramping in; outlives master by design
 
     // The glide's recipe, snapshotted at its start: a config edit mid-flight must
     // not change the duration of an animation already running.
@@ -43,7 +44,7 @@ class Clocks {
     std::string tileCurve;
 
     [[nodiscard]] bool anyRunning(double rebuildEntryMs, double rebuildGhostMs,
-                                  double stripMs) const;
+                                  double stripMs, double blurFadeMs) const;
 };
 
 } // namespace gloview::clock
