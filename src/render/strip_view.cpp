@@ -66,7 +66,12 @@ void Overview::renderStrip() const {
   // 0.96 -> 0.20 in a couple of frames and the paint read as switched off. m_progress is
   // elapsed/duration by construction -- linear in time, symmetric both ways -- so the band
   // fades evenly in and evenly out, which is what "the paint vanishes in one frame" is not.
-  const double bandE = blurAlpha();
+  // eased(), NOT blurAlpha(): blurAlpha() branches on m_landingEmpty and pins itself to
+  // 1.0 while a windowed exit is held, then snaps to eased() the moment the hold ends --
+  // the band's opacity changed in one frame, to exactly the empty-workspace value. The
+  // band is chrome, not backdrop: it follows the animation and knows nothing about
+  // windows, so its opacity is the same number on every workspace in every state.
+  const double bandE = std::clamp(eased(), 0.0, 1.0);
   auto bandCol       = cfg::colors.strip_band.get(bandE);
   // strip_band_opacity is the single source of the band's alpha; the colour string's own
   // alpha is ignored. Below ~60% the band reads at two different densities on the same
