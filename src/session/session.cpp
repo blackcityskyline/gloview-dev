@@ -494,6 +494,11 @@ void Overview::open() {
 void Overview::close() {
   if (!m_active)
     return;
+  // Symmetric exit: the ramp runs back DOWN over the same blur_entry_fade instead of
+  // riding the close animation. pow(k, 0.45) held the blur above 0.6 for ten of thirteen
+  // frames and then dropped 0.475 -> 0.043 in the last two — a hard cut, not a fade.
+  m_blurFade0 = blurAlpha();
+  m_clocks.blurFade.begin();
   m_opening = false;
   m_pendingJumpClose = false;
 
@@ -655,8 +660,14 @@ void Overview::pruneRecency() {
 }
 
 void Overview::deactivate() {
-  if (const auto mm = m_monitor.lock())
+  if (const auto mm = m_monitor.lock()) {
     mm->m_blurFBDirty = true;
+    // The window is still flying into its tile here, so Hyprland's own blur is not
+    // rendering yet: for the first frames after the overlay goes the desktop shows
+    // through unblurred. Force the full-damage frames open() asks for, or the blur FB
+    // is not rebuilt in time and the exit pops.
+    mm->m_forceFullFrames = 8;
+  }
   restoreLayers();
   restoreFill();
 

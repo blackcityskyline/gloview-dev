@@ -197,6 +197,7 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `blur_size` | int (px) | `8` | Backdrop blur radius in screen pixels |
 | `blur_resolution` | int `1`..`32` | `4` | Backdrop blur buffer = `1/N` monitor resolution (lower = sharper/cleaner, slightly more GPU; the blur is computed once per overview open, so the cost is negligible) |
 | `blur_entry_fade` | int (ms) | `1000` | How long the backdrop blur takes to reach full strength when the overview opens. Deliberately longer than the open animation: the blur rides its own clock, so it ramps in smoothly instead of landing in the first frames of the 300 ms open |
+| `blur_exit_fade` | int (ms) | `0` | How long the blur takes to fade back out on close. `0` = same as `blur_entry_fade` (one knob for both). The overlay stays up until it finishes, so the backdrop keeps covering the screen while the windows land |
 | `anchor` | `top` \| `bottom` \| `left` \| `right` | `top` | Edge the workspace strip attaches to |
 | `strip_offset` | int (px) | `0` | Inset from the anchored edge (0 = flush, no gap) |
 | `strip_height` | int (px) | `150` | Strip band thickness, label included |

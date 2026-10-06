@@ -13,7 +13,6 @@
 #include <hyprutils/utils/ScopeGuard.hpp>
 
 #include "gl_util.hpp"
-#include "../clock/curves.hpp"
 #include "../config/config.hpp"
 #include "../debug/log.hpp"
 #include "../overview.hpp"
@@ -210,6 +209,9 @@ void Overview::renderBackdrop() const {
 
   // Entry fade needs an OPAQUE base built from the backdrop SOURCES: at low k
   // the blend target is currentFB, whose stale wallpaper blinks dark on frame 0.
+  // baseIsBlur: the base is already the blurred texture, so the ramp must not blend it
+  // again on top of itself.
+  bool baseIsBlur = false;
   if (m_opening) {
     // valid, not merely allocated: open() clears m_blur.valid when the cache goes stale.
     const bool blurCacheReady = m_blur.valid && m_blur.fb &&
@@ -244,27 +246,32 @@ void Overview::renderBackdrop() const {
       glViewport(vp[0], vp[1], vp[2], vp[3]);
       cachedUsable = lit > 0;
     }
-    if (cachedUsable) {
+    // The SHARP composite is the preferred base: the entry ramp blends the blur over it,
+    // so the blur is something you watch arrive. A blurred base made the ramp a no-op,
+    // and blitting that same premultiplied texture a second time at rising alpha
+    // darkened the frame instead — measured 188,147,45 down to 97,81,22 across the ramp.
+    const auto oldProj = g_pHyprRenderer->m_renderData.projectionType;
+    const auto oldFbSz = g_pHyprRenderer->m_renderData.fbSize;
+    g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
+    g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
+    const auto comp = renderBackdropSource(W, H);
+    g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
+    g_pHyprRenderer->setProjectionType(oldProj);
+    if (comp && comp->ok()) {
+      g_pHyprOpenGL->renderTexture(comp, fullPx, {.a = 1.0F});
+    } else if (cachedUsable) {
+      // No sharp source this frame. The cache is blurred already, so it lands at full
+      // strength and the ramp has nothing to blend over — say so rather than blend it twice.
+      baseIsBlur = true;
       g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = 1.0F});
-    } else {
-
-      const auto oldProj = g_pHyprRenderer->m_renderData.projectionType;
-      const auto oldFbSz = g_pHyprRenderer->m_renderData.fbSize;
-      g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
-      g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
-      // No usable cache: composite the sources — the old flatFill fallback was black here.
-      const auto comp = renderBackdropSource(W, H);
-      g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
-      g_pHyprRenderer->setProjectionType(oldProj);
-      if (comp && comp->ok()) {
-        g_pHyprOpenGL->renderTexture(comp, fullPx, {.a = 1.0F});
-      } else if (m_blur.fb && m_blur.fb->isAllocated()) {
-        // No source this frame. The stale blur FB still holds the previous, correct
-        // backdrop — an outdated frame beats a black one, and m_blur.valid only gates
-        // recomputation, not the contents.
-        const auto stale = m_blur.fb->getTexture();
-        if (stale && stale->ok())
-          g_pHyprOpenGL->renderTexture(stale, fullPx, {.a = 1.0F});
+    } else if (m_blur.fb && m_blur.fb->isAllocated()) {
+      // No source this frame. The stale blur FB still holds the previous, correct
+      // backdrop — an outdated frame beats a black one, and m_blur.valid only gates
+      // recomputation, not the contents.
+      const auto stale = m_blur.fb->getTexture();
+      if (stale && stale->ok()) {
+        baseIsBlur = true;
+        g_pHyprOpenGL->renderTexture(stale, fullPx, {.a = 1.0F});
       }
     }
   }
@@ -345,11 +352,8 @@ void Overview::renderBackdrop() const {
   // which puts the blur at ~full strength within one or two frames and reads as a hard
   // cut. The fade outlives the open by design, so the anim pump keeps frames coming
   // (named in secondaryAnimsActive) until it reaches 1.
-  const float kk = m_opening
-      ? static_cast<float>(
-            curves::eval("easeinout", m_clocks.blurFade.raw(blurFadeDur())))
-      : std::pow(k, 0.45F);
-  if (tex && tex->ok()) {
+  const float kk = static_cast<float>(blurAlpha());
+  if (tex && tex->ok() && !baseIsBlur) {
     // Measured: blending is OFF here on the frames where the entry lands, so the blit
     // ignores kk and the texture goes down opaque. The blur texture is black on exactly
     // those frames (its source composite was rejected as black), so the frame went black
@@ -357,15 +361,18 @@ void Overview::renderBackdrop() const {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     g_pHyprOpenGL->renderTexture(tex, fullPx, {.a = kk});
-  } else {
+  } else if (!baseIsBlur) {
     // Keep the entry base, same reason as the fallback above.
     m_blur.valid = false;
   }
+
+  
 
 
   const auto dimCol = argb(baseCol, e);
   if (dimCol.a > 0.0)
     g_pHyprOpenGL->renderRect(fullPx, dimCol, {});
+
 }
 
 } // namespace gloview

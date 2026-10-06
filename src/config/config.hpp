@@ -141,7 +141,8 @@ struct blur {
   Color backdrop;
   Int fullscreen_background;
   Int frost_underlay;
-  Int entry_fade; // ms for the blur to reach full strength on entry
+  Int entry_fade;  // ms for the blur to reach full strength on entry
+  Int exit_fade;   // ms for it to fall back on close; 0 = same as entry_fade
 };
 
 inline blur blur;

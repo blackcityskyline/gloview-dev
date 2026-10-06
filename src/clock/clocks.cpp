@@ -81,8 +81,20 @@ double Overview::eased() const {
   return curves::eval(leaf(leaf_name).curve, m_progress);
 }
 
+// 0 on exit_fade means "same as entry": one knob for both unless asked otherwise.
 double Overview::blurFadeDur() const {
-  return std::max(1.0, static_cast<double>(cfg::blur.entry_fade));
+  const double base = static_cast<double>(
+      m_opening ? cfg::blur.entry_fade : cfg::blur.exit_fade);
+  return std::max(1.0, base > 0.0 ? base : static_cast<double>(cfg::blur.entry_fade));
+}
+
+// The one place the backdrop ramp's shape lives: entry ramps UP from 0, exit ramps
+// DOWN from whatever strength entry had reached. close() reads this before flipping
+// m_opening so a close mid-entry does not jump the blur back to full.
+double Overview::blurAlpha() const {
+  const double f =
+      curves::eval("easeinout", m_clocks.blurFade.raw(blurFadeDur()));
+  return m_opening ? f : m_blurFade0 * (1.0 - f);
 }
 
 double Overview::animDuration() const {
@@ -240,11 +252,19 @@ void Overview::updateAnimation() {
     m_newCardAnim = false;
     m_newCardId = 0;
   }
-  // NEVER zero m_progress: a transparent frame before deactivate() flashes
-  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur)) {
+  // NEVER zero m_progress: a transparent frame before deactivate() flashes.
+  // Clamp as soon as the flight ends, NOT together with the deactivate: the exit ramp
+  // outlives the close animation, and at exactly 0 the overlay paints nothing, Hyprland
+  // has no damage to serve, and the ramp runs on with no frames to show it (measured:
+  // 769ms of ticks with no render).
+  if (!m_opening && t >= 1.0 && m_progress <= 0.0)
     m_progress = 1e-6;
+  // The exit ramp outlives the close animation, so the overlay outlives it too: this is
+  // what keeps the backdrop covering the screen until Hyprland's own blur has taken
+  // over on the windows that have just landed.
+  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur) &&
+      m_clocks.blurFade.done(blurFadeDur()))
     m_pendingDeactivate = true;
-  }
 }
 
 bool Overview::animBusy() const {

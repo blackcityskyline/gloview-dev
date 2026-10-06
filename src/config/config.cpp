@@ -133,6 +133,7 @@ constexpr IntSpec kInts[] = {
     // Longer than the open animation on purpose: the blur rides its own clock so it
     // ramps in over a second instead of landing with the 300ms open.
     {&blur.entry_fade, "plugin:gloview:blur_entry_fade", 1000},
+    {&blur.exit_fade, "plugin:gloview:blur_exit_fade", 0}, // 0 = follow entry
     {&anim::enabled, "plugin:gloview:animations_enabled", 1},
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     {&behavior.focus_follows_mouse, "plugin:gloview:focus_follows_mouse", 1},
