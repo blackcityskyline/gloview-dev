@@ -164,44 +164,24 @@ void Overview::renderBackdrop() const {
   // Entry fade needs an OPAQUE base built from the backdrop SOURCES: at low k
   // the blend target is currentFB, whose stale wallpaper blinks dark on frame 0.
   if (m_opening) {
-    const bool hasWallpaper = m->m_background && m->m_background->ok();
-    debug::dbg("[baseDiag] hasWallpaper=" + std::to_string(hasWallpaper) +
-               " fullPx=" + std::to_string(fullPx.w) + "x" + std::to_string(fullPx.h) +
-               " W=" + std::to_string(W) + " H=" + std::to_string(H));
-    // Prefer an already-valid cached blur as that base (k% of a texture over
-    // 100% of itself is a no-op); gate on isAllocated + size, not on valid.
-    const bool blurCacheReady = m_blur.fb &&
+    // valid, not merely allocated: open() clears m_blur.valid when the cache goes stale.
+    const bool blurCacheReady = m_blur.valid && m_blur.fb &&
         m_blur.fb->isAllocated() && m_blur.fb->m_size == Vector2D(W, H);
     const auto cachedTex = blurCacheReady ? m_blur.fb->getTexture() : nullptr;
-    debug::dbg(std::string("[baseBranch] blurCacheReady=") +
-        std::to_string(blurCacheReady) +
-        " texOk=" + std::to_string(cachedTex && cachedTex->ok()) +
-        " branch=" + (cachedTex && cachedTex->ok() ? "cached"
-                      : hasWallpaper                ? "sharpWallpaper"
-                                                     : "flatFill"));
     if (cachedTex && cachedTex->ok()) {
       g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = 1.0F});
-    } else if (hasWallpaper) {
-      const double monRatio = static_cast<double>(W) / H;
-      const double wpRatio =
-          m->m_background->m_size.x / m->m_background->m_size.y;
-      double scale;
-      Vector2D origin;
-      if (monRatio > wpRatio) {
-        scale = static_cast<double>(W) / m->m_background->m_size.x;
-        origin.y = (H - m->m_background->m_size.y * scale) / 2.0;
-      } else {
-        scale = static_cast<double>(H) / m->m_background->m_size.y;
-        origin.x = (W - m->m_background->m_size.x * scale) / 2.0;
-      }
-      g_pHyprOpenGL->renderTexture(
-          m->m_background,
-          CBox{origin.x, origin.y, m->m_background->m_size.x * scale,
-              m->m_background->m_size.y * scale},
-          {.a = 1.0F});
     } else {
-      static auto PBGBase = CConfigValue<Config::INTEGER>("misc:background_color");
-      g_pHyprOpenGL->renderRect(fullPx, argb(*PBGBase, 1.0), {});
+
+      const auto oldProj = g_pHyprRenderer->m_renderData.projectionType;
+      const auto oldFbSz = g_pHyprRenderer->m_renderData.fbSize;
+      g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
+      g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
+      // No usable cache: composite the sources — the old flatFill fallback was black here.
+      const auto comp = renderBackdropSource(W, H);
+      g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
+      g_pHyprRenderer->setProjectionType(oldProj);
+      if (comp && comp->ok())
+        g_pHyprOpenGL->renderTexture(comp, fullPx, {.a = 1.0F});
     }
   }
 
