@@ -479,7 +479,6 @@ void Overview::open() {
   debug::dbg("open: ws=" + std::to_string(m_liveWsAtOpen.lock() ? m_liveWsAtOpen.lock()->m_id : -1) + " empty=" + std::to_string(m_landingEmpty ? 1 : 0));
   m_clocks.master.begin();
   m_clocks.tiles.begin();
-  m_clocks.blurFade.begin();
   m_lastAnimTick = {};
   hideLayers();
   m_cursor.onOpen(m, cursorMode());
@@ -499,20 +498,15 @@ void Overview::open() {
 void Overview::close() {
   if (!m_active)
     return;
-  // Symmetric exit: the ramp runs back DOWN over the same blur_entry_fade instead of
-  // riding the close animation. pow(k, 0.45) held the blur above 0.6 for ten of thirteen
-  // frames and then dropped 0.475 -> 0.043 in the last two — a hard cut, not a fade.
-  m_blurFade0 = blurAlpha();
-  // Re-read: the landing workspace can have changed while the overview was up, and it is
-  // THIS one we land back on, so it decides whether the exit may be a slow fade.
-  m_landingEmpty = !workspaceHasWindows(m_liveWsAtOpen.lock());
+  // The landing workspace can have changed while the overview was up (all-workspaces,
+  // digit jump), and it is THIS one we land back on — re-read it, do not reuse open()'s.
+  m_landingEmpty = !workspaceHasWindows(m_workspace.lock());
   // Ask Hyprland for the frames in which it rebuilds its own blur, and keep the overlay
   // up until they are spent: blur under a still-moving window is not rendered yet, so
   // releasing earlier just uncovers a sharp desktop.
   if (const auto m = m_monitor.lock())
     m->m_forceFullFrames = std::max(m->m_forceFullFrames, 8);
   debug::dbg("close: ws=" + std::to_string(m_workspace.lock() ? m_workspace.lock()->m_id : -1) + " empty=" + std::to_string(m_landingEmpty ? 1 : 0));
-  m_clocks.blurFade.begin();
   m_opening = false;
   m_pendingJumpClose = false;
 

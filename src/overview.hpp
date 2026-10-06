@@ -183,11 +183,10 @@ private:
   // added never arms it.
   bool secondaryAnimsActive() const {
     return m_clocks.anyRunning(leaf(entryLeaf()).ms, leaf(ghostLeaf()).ms,
-                               leaf("strip_step").ms, blurFadeDur());
+                               leaf("strip_step").ms);
   }
   // Read on the call site: a config edit mid-fade retimes the rest of the ramp.
-  double blurFadeDur() const;
-  double blurAlpha() const; // current backdrop blur strength, 0..1
+  double blurAlpha() const; // backdrop strength, on the open/close clock
   // The predicate build.cpp/actions.cpp each re-spelled: a window that really occupies
   // the desktop. First true one on `ws` is what tells an empty workspace from a busy one.
   static bool workspaceHasWindows(const PHLWORKSPACE &ws);
@@ -196,7 +195,6 @@ private:
   // Landing workspace empty? Re-read on every open and close: the landing workspace can
   // change while the overview is up (all-workspaces, digit jump).
   mutable bool m_landingEmpty = true;
-  mutable double m_blurFade0 = 1.0; // strength the exit ramp starts from
   double tileAppear(int i) const; // staggered 0..1 for tile i
   const char *entryLeaf() const;
   const char *ghostLeaf() const;

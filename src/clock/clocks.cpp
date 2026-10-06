@@ -82,26 +82,8 @@ double Overview::eased() const {
   return curves::eval(leaf(leaf_name).curve, m_progress);
 }
 
-// 0 on exit_fade means "same as entry": one knob for both unless asked otherwise.
-// Windows on the landing workspace mean Hyprland's own blur under them is about to stop
-// (entry) or has not started yet (exit). A long ramp then uncovers a sharp desktop for as
-// long as it runs — that gap is the whole complaint. So windows buy a ramp short enough
-// to hide (a handful of frames); an empty desktop is free to take its time, because
-// nothing was blurring it before and nothing has to take over after.
-namespace {
-constexpr double kWindowedFadeMs = 90.0;
-}
-
-double Overview::blurFadeDur() const {
-  if (!m_landingEmpty)
-    return kWindowedFadeMs;
-  const double base = static_cast<double>(
-      m_opening ? cfg::blur.entry_fade : cfg::blur.exit_fade);
-  return std::max(1.0, base > 0.0 ? base : static_cast<double>(cfg::blur.entry_fade));
-}
-
 // WINDOWED exit: hold the backdrop until our own tiles are done AND Hyprland has spent the
-// forced full frames close() asked for — those are the frames it rebuilds its blur in.
+// forced full frames close() asked for -- those are the frames it rebuilds its blur in.
 // Asking when the windows reached their goal geometry does NOT work: in the plain
 // open/close the real windows never move (the plugin draws previews and hides them), so
 // that test is true on frame 0 and holds nothing.
@@ -110,23 +92,19 @@ bool Overview::backdropSettled() const {
   return m_clocks.tiles.done(animDuration()) && (!m || m->m_forceFullFrames <= 0);
 }
 
-// The one place the backdrop ramp's shape lives. EMPTY workspace: entry ramps UP from 0
-// over blur_entry_fade and exit back DOWN over blur_exit_fade — the immersive fade.
-// Windowed: entry still ramps, but over kWindowedFadeMs, and exit HOLDS at full strength
-// until the windows have actually landed. Fading out before that is what exposed the
-// sharp desktop: Hyprland only rebuilds its blur once the window is seated, so the
-// release has to wait for the seating. The release itself is a cut, and it is invisible
-// because both sides are blurred by then.
+// The backdrop is part of the SAME gesture as the tiles, the strip and the chrome: it
+// rides the open/close animation itself. That is the whole fix for the queued feel --
+// separate clocks made the strip arrive first and then the backdrop set about arriving,
+// with nothing joining them up. The gap a private clock was introduced for is handled by
+// the BASE, not by a timeline: with windows present the base is the blurred cache, so the
+// screen is blurred on frame 0 and the ramp has nothing to reveal anyway.
+//
+// WINDOWED exit is the one exception: the backdrop must stay until Hyprland has rebuilt
+// its blur. Fading out before that is what exposed a sharp desktop mid-flight.
 double Overview::blurAlpha() const {
-  const double f =
-      curves::eval("easeinout", m_clocks.blurFade.raw(blurFadeDur()));
-  if (m_opening)
-    return f;
-  if (m_landingEmpty)
-    return m_blurFade0 * (1.0 - f);
-  // Ceiling: a window whose geometry animation never reaches its goal would hold the
-  // overlay forever. Two fade durations and we let go regardless.
-  return backdropSettled() ? 0.0 : m_blurFade0;
+  if (!m_opening && !m_landingEmpty && !backdropSettled())
+    return 1.0;
+  return std::clamp(eased(), 0.0, 1.0);
 }
 
 double Overview::animDuration() const {
@@ -205,7 +183,6 @@ void Overview::updateAnimation() {
       m_clocks.tiles.compensateStall(gapMs, glideMs);
       m_clocks.rebuild.compensateStall(gapMs, std::max(m_entry.ms, m_ghost.ms));
       m_clocks.strip.compensateStall(gapMs, leaf("strip_step").ms);
-      m_clocks.blurFade.compensateStall(gapMs, blurFadeDur());
       if (m_newCardAnim)
         m_clocks.newCard.compensateStall(gapMs, newCardDur());
       if (m_drag.lifted)
@@ -291,16 +268,11 @@ void Overview::updateAnimation() {
   // 769ms of ticks with no render).
   if (!m_opening && t >= 1.0 && m_progress <= 0.0)
     m_progress = 1e-6;
-  // The exit ramp outlives the close animation, so the overlay outlives it too: this is
+  // The overlay outlives the close animation by exactly the windowed-exit hold: that is
   // what keeps the backdrop covering the screen until Hyprland's own blur has taken over
-  // on the windows that have just landed. Windowed exits have no ramp to wait for — the
-  // backdrop is released the moment the tiles land, and lingering would leave a
-  // transparent overlay over a sharp desktop, which is the gap all over again.
-  // Windowed: the backdrop is released when the windows arrive, and that is also when the
-  // overlay may go -- lingering would leave a transparent overlay over a sharp desktop.
-  const bool settled =
-      m_landingEmpty ? m_clocks.blurFade.done(blurFadeDur()) : backdropSettled();
-  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur) && settled)
+  // on the windows that have just landed. Lingering past that would leave a transparent
+  // overlay over a sharp desktop, which is the gap all over again.
+  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur) && backdropSettled())
     m_pendingDeactivate = true;
 }
 

@@ -130,10 +130,6 @@ constexpr IntSpec kInts[] = {
     {&blur.resolution, "plugin:gloview:blur_resolution", 4},
     {&blur.fullscreen_background, "plugin:gloview:fullscreen_background", 0},
     {&blur.frost_underlay, "plugin:gloview:frost_underlay", 0}, // DEPRECATED no-op
-    // Longer than the open animation on purpose: the blur rides its own clock so it
-    // ramps in instead of landing with the 300ms open.
-    {&blur.entry_fade, "plugin:gloview:blur_entry_fade", 500},
-    {&blur.exit_fade, "plugin:gloview:blur_exit_fade", 0}, // 0 = follow entry
     {&anim::enabled, "plugin:gloview:animations_enabled", 1},
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     {&behavior.focus_follows_mouse, "plugin:gloview:focus_follows_mouse", 1},
@@ -226,7 +222,7 @@ constexpr ColorSpec kColors[] = {
 // One row per leaf: handles, base duration (what speed 1.0 means), default curve.
 // The resolver reads ONLY this table and the imperative rules.
 constexpr LeafSpec kLeaves[] = {
-    {"open", &anim::open, 300, "easeout"},         {"close", &anim::close, 300, "easeout"},
+    {"open", &anim::open, 500, "easeout"},         {"close", &anim::close, 500, "easeout"},
     {"glide", &anim::glide, 300, "easeout"},       {"appear", &anim::appear, 250, "easeout"},
     {"card", &anim::card, 250, "back"},            {"pulse", &anim::pulse, 180, "back"},
     {"strip_step", &anim::strip_step, 200, "easeinout"},

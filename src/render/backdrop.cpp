@@ -203,12 +203,10 @@ void Overview::renderBackdrop() const {
   const auto baseCol  = cfg::blur.backdrop.get();
 
   const float k = static_cast<float>(e);
-  // The dim is the same material as the blur, so on an empty desktop it has to ride the
-  // same clock: both used to ride the 300ms open animation, the dim finished long before
-  // the blur did, and the exit laid down wrong because the two parted halfway. Windowed
-  // exits keep the tight 300ms dim -- their backdrop hands over to Hyprland's blur in a
-  // single cut, and stretching the dim across that cut would only make it visible.
-  const double dimK = m_landingEmpty ? blurAlpha() : e;
+  // The dim is the same material as the blur and rides the same clock: it used to run on
+  // the open animation while the blur ran on its own, the two parted halfway, and the exit
+  // laid down wrong because of it.
+  const double dimK = blurAlpha();
   debug::dbg(std::string("backdrop e=") + std::to_string(e).substr(0, 5) +
       " opening=" + std::to_string(m_opening) +
       " k=" + std::to_string(k).substr(0, 5));
