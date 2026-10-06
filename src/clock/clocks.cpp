@@ -102,7 +102,7 @@ bool Overview::backdropSettled() const {
 // WINDOWED exit is the one exception: the backdrop must stay until Hyprland has rebuilt
 // its blur. Fading out before that is what exposed a sharp desktop mid-flight.
 double Overview::blurAlpha() const {
-  if (!m_opening && !m_landingEmpty && !backdropSettled())
+  if (!m_opening && !m_landingEmpty)
     return 1.0;
   return std::clamp(eased(), 0.0, 1.0);
 }
