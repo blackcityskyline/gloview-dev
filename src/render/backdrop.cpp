@@ -264,7 +264,7 @@ void Overview::renderBackdrop() const {
     // leaves the desktop clear for the whole ramp (measured). EMPTY: nothing was blurring
     // it and nothing takes over afterwards, so the SHARP composite is safe, and it is what
     // gives the ramp something to reveal.
-    if (cachedUsable && !m_landingEmpty) {
+    if (cachedUsable) {
       baseIsBlur = true;
       g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = 1.0F});
     } else {
