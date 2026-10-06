@@ -215,11 +215,13 @@ void Overview::renderBackdrop() const {
   // the blend target is currentFB, whose stale wallpaper blinks dark on frame 0.
   // baseIsBlur: the base is already the blurred texture, so the ramp must not blend it
   // again on top of itself.
-  // The base fades with the blur, not at a=1. Pinned opaque it survived the whole exit
-  // while the blur and the dim ramped to zero, and the frame the base stopped being painted
-  // was a visible step -- measured on an empty workspace, the band pixel dropping in one
-  // frame. Base and blur are one material and now share one alpha.
-  const float baseA = static_cast<float>(blurAlpha());
+  // OPAQUE on entry, fading on exit. Opaque is what keeps the first frames off the black
+  // compositor buffer: the entry base exists precisely because at low k the blend target is
+  // currentFB and anything translucent lets the black frame straight back in (measured: the
+  // black frame returned the moment this was made to fade both ways). On the way out the
+  // opposite holds -- pinned at 1.0 the base outlived the blur and the frame it stopped
+  // being painted was a visible step, measured on an empty workspace.
+  const float baseA = m_opening ? 1.0F : static_cast<float>(blurAlpha());
   bool baseIsBlur = false;
   // Also while a windowed exit holds: the opaque base is what the blur sits on, and the
   // hold is exactly the moment the real desktop would otherwise show through under the
