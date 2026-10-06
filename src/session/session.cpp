@@ -13,6 +13,7 @@
 #include <hyprland/src/debug/log/Logger.hpp>
 #include <hyprland/src/desktop/Workspace.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
+#include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/desktop/view/WLSurface.hpp>
 #include <hyprland/src/desktop/view/Window.hpp>
 #include <hyprland/src/event/EventBus.hpp>
@@ -472,6 +473,10 @@ void Overview::open() {
                                  .count()));
   m_pendingDeactivate = false;
   m_progress = 0.0;
+  // Immersive fade only when the desktop underneath has no windows: with windows, their
+  // Hyprland blur is what covers the gap the ramp would open.
+  m_landingEmpty = !workspaceHasWindows(m_liveWsAtOpen.lock());
+  debug::dbg("open: landing empty=" + std::to_string(m_landingEmpty ? 1 : 0));
   m_clocks.master.begin();
   m_clocks.tiles.begin();
   m_clocks.blurFade.begin();
@@ -498,6 +503,10 @@ void Overview::close() {
   // riding the close animation. pow(k, 0.45) held the blur above 0.6 for ten of thirteen
   // frames and then dropped 0.475 -> 0.043 in the last two — a hard cut, not a fade.
   m_blurFade0 = blurAlpha();
+  // Re-read: the landing workspace can have changed while the overview was up, and it is
+  // THIS one we land back on, so it decides whether the exit may be a slow fade.
+  m_landingEmpty = !workspaceHasWindows(m_workspace.lock());
+  debug::dbg("close: landing empty=" + std::to_string(m_landingEmpty ? 1 : 0));
   m_clocks.blurFade.begin();
   m_opening = false;
   m_pendingJumpClose = false;
@@ -598,6 +607,15 @@ bool Overview::tileBelongs(const PHLWINDOW &w, const PHLMONITOR &m,
     return wws->m_monitor.lock() == m;
   }
   return wws == ws;
+}
+
+bool Overview::workspaceHasWindows(const PHLWORKSPACE &ws) {
+  if (!ws)
+    return false;
+  for (const auto &w : Desktop::windowState()->windows())
+    if (w && w->m_isMapped && !w->isHidden() && w->m_workspace == ws)
+      return true;
+  return false;
 }
 
 bool Overview::shouldHideWindow(const PHLWINDOW &w,

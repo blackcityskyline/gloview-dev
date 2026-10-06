@@ -82,19 +82,38 @@ double Overview::eased() const {
 }
 
 // 0 on exit_fade means "same as entry": one knob for both unless asked otherwise.
+// Windows on the landing workspace mean Hyprland's own blur under them is about to stop
+// (entry) or has not started yet (exit). A long ramp then uncovers a sharp desktop for as
+// long as it runs — that gap is the whole complaint. So windows buy a ramp short enough
+// to hide (a handful of frames); an empty desktop is free to take its time, because
+// nothing was blurring it before and nothing has to take over after.
+namespace {
+constexpr double kWindowedFadeMs = 90.0;
+}
+
 double Overview::blurFadeDur() const {
+  if (!m_landingEmpty)
+    return kWindowedFadeMs;
   const double base = static_cast<double>(
       m_opening ? cfg::blur.entry_fade : cfg::blur.exit_fade);
   return std::max(1.0, base > 0.0 ? base : static_cast<double>(cfg::blur.entry_fade));
 }
 
-// The one place the backdrop ramp's shape lives: entry ramps UP from 0, exit ramps
-// DOWN from whatever strength entry had reached. close() reads this before flipping
-// m_opening so a close mid-entry does not jump the blur back to full.
+// The one place the backdrop ramp's shape lives. EMPTY workspace: entry ramps UP from 0
+// over blur_entry_fade and exit back DOWN over blur_exit_fade — the immersive fade.
+// Windowed: entry still ramps, but over kWindowedFadeMs, and exit HOLDS at full strength
+// until the windows have actually landed. Fading out before that is what exposed the
+// sharp desktop: Hyprland only rebuilds its blur once the window is seated, so the
+// release has to wait for the seating. The release itself is a cut, and it is invisible
+// because both sides are blurred by then.
 double Overview::blurAlpha() const {
   const double f =
       curves::eval("easeinout", m_clocks.blurFade.raw(blurFadeDur()));
-  return m_opening ? f : m_blurFade0 * (1.0 - f);
+  if (m_opening)
+    return f;
+  if (m_landingEmpty)
+    return m_blurFade0 * (1.0 - f);
+  return m_clocks.tiles.done(animDuration()) ? 0.0 : m_blurFade0;
 }
 
 double Overview::animDuration() const {
@@ -260,10 +279,13 @@ void Overview::updateAnimation() {
   if (!m_opening && t >= 1.0 && m_progress <= 0.0)
     m_progress = 1e-6;
   // The exit ramp outlives the close animation, so the overlay outlives it too: this is
-  // what keeps the backdrop covering the screen until Hyprland's own blur has taken
-  // over on the windows that have just landed.
-  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur) &&
-      m_clocks.blurFade.done(blurFadeDur()))
+  // what keeps the backdrop covering the screen until Hyprland's own blur has taken over
+  // on the windows that have just landed. Windowed exits have no ramp to wait for — the
+  // backdrop is released the moment the tiles land, and lingering would leave a
+  // transparent overlay over a sharp desktop, which is the gap all over again.
+  const bool backdropSettled =
+      m_landingEmpty ? m_clocks.blurFade.done(blurFadeDur()) : true;
+  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur) && backdropSettled)
     m_pendingDeactivate = true;
 }
 

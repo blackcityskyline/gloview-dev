@@ -246,32 +246,34 @@ void Overview::renderBackdrop() const {
       glViewport(vp[0], vp[1], vp[2], vp[3]);
       cachedUsable = lit > 0;
     }
-    // The SHARP composite is the preferred base: the entry ramp blends the blur over it,
-    // so the blur is something you watch arrive. A blurred base made the ramp a no-op,
-    // and blitting that same premultiplied texture a second time at rising alpha
-    // darkened the frame instead — measured 188,147,45 down to 97,81,22 across the ramp.
-    const auto oldProj = g_pHyprRenderer->m_renderData.projectionType;
-    const auto oldFbSz = g_pHyprRenderer->m_renderData.fbSize;
-    g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
-    g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
-    const auto comp = renderBackdropSource(W, H);
-    g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
-    g_pHyprRenderer->setProjectionType(oldProj);
-    if (comp && comp->ok()) {
-      g_pHyprOpenGL->renderTexture(comp, fullPx, {.a = 1.0F});
-    } else if (cachedUsable) {
-      // No sharp source this frame. The cache is blurred already, so it lands at full
-      // strength and the ramp has nothing to blend over — say so rather than blend it twice.
+    // The blurred cache is the preferred base, and it is not a stylistic choice: whatever
+    // blurred the screen before the overview opened was HYPRLAND's own blur under a window,
+    // and that stops the instant the window starts flying. A base that ramps from sharp
+    // therefore leaves the desktop unblurred for the whole ramp — measured a clear window
+    // for as long as it ran. Blurred at full strength from frame 0 hands over blurred to
+    // blurred. The sharp composite is only the fallback when there is no cache at all.
+    if (cachedUsable) {
       baseIsBlur = true;
       g_pHyprOpenGL->renderTexture(cachedTex, fullPx, {.a = 1.0F});
-    } else if (m_blur.fb && m_blur.fb->isAllocated()) {
-      // No source this frame. The stale blur FB still holds the previous, correct
-      // backdrop — an outdated frame beats a black one, and m_blur.valid only gates
-      // recomputation, not the contents.
-      const auto stale = m_blur.fb->getTexture();
-      if (stale && stale->ok()) {
-        baseIsBlur = true;
-        g_pHyprOpenGL->renderTexture(stale, fullPx, {.a = 1.0F});
+    } else {
+      const auto oldProj = g_pHyprRenderer->m_renderData.projectionType;
+      const auto oldFbSz = g_pHyprRenderer->m_renderData.fbSize;
+      g_pHyprRenderer->m_renderData.fbSize = Vector2D(W, H);
+      g_pHyprRenderer->setProjectionType(Render::RPT_EXPORT);
+      const auto comp = renderBackdropSource(W, H);
+      g_pHyprRenderer->m_renderData.fbSize = oldFbSz;
+      g_pHyprRenderer->setProjectionType(oldProj);
+      if (comp && comp->ok()) {
+        g_pHyprOpenGL->renderTexture(comp, fullPx, {.a = 1.0F});
+      } else if (m_blur.fb && m_blur.fb->isAllocated()) {
+        // No source this frame. The stale blur FB still holds the previous, correct
+        // backdrop — an outdated frame beats a black one, and m_blur.valid only gates
+        // recomputation, not the contents.
+        const auto stale = m_blur.fb->getTexture();
+        if (stale && stale->ok()) {
+          baseIsBlur = true;
+          g_pHyprOpenGL->renderTexture(stale, fullPx, {.a = 1.0F});
+        }
       }
     }
   }
