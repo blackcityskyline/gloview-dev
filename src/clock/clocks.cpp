@@ -15,7 +15,8 @@ namespace {
 double staggered(double base, int i, int n) {
   if (n <= 1)
     return base;
-  const double spread = std::min(0.08, 0.015 * n);
+  const double spread = std::min(anim::param(anim::Param::Stagger),
+                                anim::param(anim::Param::StaggerPerTile) * n);
   const double start  = spread * (static_cast<double>(i) / (n - 1));
   return std::clamp((base - start) / std::max(0.001, 1.0 - spread), 0.0, 1.0);
 }

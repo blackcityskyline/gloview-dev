@@ -98,7 +98,8 @@ void Overview::renderCarousel() const {
     // motion, one implementation. An unfocused card is pinned by close() (its real
     // geometry IS the focused card's), so it only shrinks on the close curve.
     if (!m_opening && card.depth != 0) {
-      const double k = std::clamp(1.0 - exitT / 0.5, 0.0, 1.0);
+      const double k = std::clamp(1.0 - exitT / anim::param(anim::Param::Collapse),
+                                  0.0, 1.0);
       const double cx = look.box.cx(), cy = look.box.cy();
       look.box = LRect{cx - look.box.w * k * 0.5, cy - look.box.h * k * 0.5,
                        look.box.w * k, look.box.h * k};

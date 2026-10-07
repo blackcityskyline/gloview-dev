@@ -55,6 +55,17 @@ struct Rule {
 [[nodiscard]] Cfg cfg(const char *name);
 [[nodiscard]] std::string style(const char *name);
 
+// SHAPE parameters: not how long an animation runs but how it is shaped. They belong to an
+// animation and live beside it here, rather than as literals in the render code that
+// consumes them. Resolved live, exactly like the rest of the registry.
+enum class Param : std::uint8_t {
+  Stagger,        // entry ladder: spread of the tiles over the window
+  StaggerPerTile, // ... per extra tile, capped by Stagger
+  Collapse,       // carousel: fraction of the exit spent shrinking the unfocused cards
+  Count
+};
+[[nodiscard]] double param(Param p);
+
 // Not animation styles: behaviour selectors that happen to live in the same config section.
 [[nodiscard]] const std::string &gridSwapStyle();
 [[nodiscard]] const std::string &stripSwapStyle();

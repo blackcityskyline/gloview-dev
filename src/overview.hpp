@@ -297,7 +297,7 @@ private:
   double glideDur() const { return m_clocks.tileMs > 0 ? m_clocks.tileMs : anim::cfg(glideLeaf()).ms; }
   bool entrySettled() const;
   uint32_t altTabModBit() const;
-  double newCardDur() const { return std::max(120.0, anim::cfg(anim::Id::NewCard).ms); }
+  double newCardDur() const { return anim::cfg(anim::Id::NewCard).ms; }
   double tileProgress(int i) const;
   LRect currentBox(const model::Tile &t, int i) const;
   LRect dragBox() const;

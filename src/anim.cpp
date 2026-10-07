@@ -51,6 +51,12 @@ static cfg::Int g_globallyEnabled;
 static const std::string s_grid = "horizontal", s_strip = "horizontal", s_jump = "instant";
 static cfg::Str g_gridSwapStyle, g_stripSwapStyle, g_jumpStyle;
 
+// Shape parameters, in the same order as anim::Param.
+static cfg::Float g_params[static_cast<std::size_t>(Param::Count)];
+static const char *const kParamKeys[] = {"appear_stagger", "appear_stagger_per_tile",
+                                          "carousel_step_collapse"};
+static const double kParamDefaults[] = {0.08, 0.015, 0.5};
+
 namespace {
 std::unordered_map<std::string, Rule> g_rules;
 
@@ -118,6 +124,12 @@ void setRule(const char *n, const Rule &rule) {
     g_rules[n] = rule;
 }
 
+double param(Param p) {
+  const auto i = static_cast<std::size_t>(p);
+  auto &h = g_params[i];
+  return h.v ? h.get() : kParamDefaults[i];
+}
+
 const std::string &gridSwapStyle()  { return g_gridSwapStyle.v ? g_gridSwapStyle.get() : s_grid; }
 const std::string &stripSwapStyle() { return g_stripSwapStyle.v ? g_stripSwapStyle.get() : s_strip; }
 const std::string &jumpStyle()      { return g_jumpStyle.v ? g_jumpStyle.get() : s_jump; }
@@ -146,6 +158,13 @@ void registerAll(HANDLE handle) {
   plain("grid_swap_style", "horizontal");
   plain("strip_swap_style", "horizontal");
   plain("jump_style", "instant");
+
+  for (std::size_t i = 0; i < static_cast<std::size_t>(Param::Count); ++i) {
+    g_params[i].v = makeShared<Config::Values::CFloatValue>(
+        key("", kParamKeys[i]), "", static_cast<float>(kParamDefaults[i]));
+    g_params[i].def = kParamDefaults[i];
+    HyprlandAPI::addConfigValueV2(handle, g_params[i].v);
+  }
 
   for (auto &r : kRows) {
     r.enabled.v = makeShared<Config::Values::CIntValue>(key(r.name, "_enabled"), "",
