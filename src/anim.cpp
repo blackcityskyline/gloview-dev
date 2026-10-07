@@ -5,8 +5,10 @@
 #include <deque>
 #include <unordered_map>
 
+extern "C" {
 #include <lauxlib.h>
 #include <lua.h>
+}
 
 #include "debug/log.hpp"
 
