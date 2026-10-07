@@ -260,27 +260,6 @@ void registerAll(HANDLE handle) {
     HyprlandAPI::addConfigValueV2(handle, s.h->v);
   }
   anim::registerAll(handle);
-  {
-    // ONE-SHOT DIAGNOSTIC: every key this build registers, in one line. The config in
-    // plugins/gloview.lua is applied without a pcall, so a single unknown key there aborts
-    // the whole config load and the compositor exits -- with no error anywhere the plugin
-    // can see. This line is written BEFORE that happens, so it survives and the offending
-    // key can be diffed out instead of guessed at.
-    std::string all;
-    for (auto &s : kInts) { all += s.key; all += " "; }
-    for (auto &s : kFloats) { all += s.key; all += " "; }
-    for (auto &s : kStrs) { all += s.key; all += " "; }
-    for (auto &s : kColors) { all += s.key; all += " "; }
-    for (const auto &id : {anim::Id::Open, anim::Id::Close, anim::Id::Glide, anim::Id::Appear,
-                            anim::Id::Card, anim::Id::Pulse, anim::Id::StripStep,
-                            anim::Id::WsEnter, anim::Id::WsExit, anim::Id::ExpoIn,
-                            anim::Id::ExpoOut, anim::Id::JumpIn, anim::Id::JumpOut,
-                            anim::Id::SwapMain, anim::Id::SwapPartner, anim::Id::Drop,
-                            anim::Id::SwapFly, anim::Id::Lift, anim::Id::CarouselStep,
-                            anim::Id::NewCard})
-      all += std::string("plugin:gloview:") + anim::name(id) + "_enabled ";
-    gloview::debug::dbg("[KEYS] " + all);
-  }
 }
 
 } // namespace gloview
