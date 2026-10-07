@@ -100,11 +100,12 @@ void renderWindowLive(const PHLWINDOW &w, const PHLMONITOR &mon,
   data.surfaceCounter = 0;
 
   if (g_overview && g_overview->snapshotMode()) {
-    const auto snapIt = g_overview->snapshots().find(w.get());
-    if (snapIt != g_overview->snapshots().end() && snapIt->second &&
-        snapIt->second->ok()) {
+    // A miss here means either "not captured yet" or "the window that owned that
+    // texture is gone and its address has a new tenant" -- the cache owns its entries
+    // and expires them, so there is no sweep to have forgotten to run.
+    if (const auto snap = g_overview->snapshot(w); snap && snap->ok()) {
       auto sdata      = data;
-      sdata.texture   = snapIt->second;
+      sdata.texture   = snap;
       sdata.localPos  = Vector2D{};
       sdata.mainSurface = true;
       g_pHyprRenderer->draw(sdata, g_pHyprRenderer->m_renderData.damage);

@@ -47,10 +47,38 @@ std::string PixelCache::truncate(const std::string &text,
   return text.substr(0, static_cast<size_t>(best)) + kEllipsis;
 }
 
-SP<Render::ITexture> PixelCache::label(void *key, const std::string &text,
-                                       const CHyprColor &col, int size,
-                                       int maxW) {
-  auto &e = m_labels[key];
+SP<Render::ITexture> PixelCache::windowLabel(const PHLWINDOW &win,
+                                            const std::string &text,
+                                            const CHyprColor &col, int size,
+                                            int maxW) {
+  return labelIn(m_winLabels, PHLWINDOWREF{win}, text, col, size, maxW);
+}
+
+SP<Render::ITexture> PixelCache::workspaceLabel(const PHLWORKSPACE &ws,
+                                                 const std::string &text,
+                                                 const CHyprColor &col, int size,
+                                                 int maxW) {
+  return labelIn(m_wsLabels, PHLWORKSPACEREF{ws}, text, col, size, maxW);
+}
+
+SP<Render::ITexture> PixelCache::virtualLabel(WORKSPACEID id,
+                                               const std::string &text,
+                                               const CHyprColor &col, int size,
+                                               int maxW) {
+  auto &e = m_virtualLabels[id];
+  // Hit first: nothing to measure. Probing before the lookup rendered the full
+  // string every frame to discover that nothing had changed.
+  if (e.matches(text, maxW, size, col))
+    return e.tex;
+  e = LabelEntry{truncate(text, col, size, maxW), maxW, size, col, nullptr};
+  e.tex = render(e.text, col, size);
+  return e.tex;
+}
+
+SP<Render::ITexture> PixelCache::fixedLabel(Slot slot, const std::string &text,
+                                             const CHyprColor &col, int size,
+                                             int maxW) {
+  auto &e = m_slotLabels[slot];
   // Hit first: nothing to measure. Probing before the lookup rendered the full
   // string every frame to discover that nothing had changed.
   if (e.matches(text, maxW, size, col))
@@ -73,32 +101,39 @@ SP<Render::ITexture> PixelCache::glyph(const std::string &icon,
 
 SP<Render::ITexture> PixelCache::closeGlyph() const { return m_glyph; }
 
-void PixelCache::putSnapshot(void *win, const SP<Render::ITexture> &tex) {
-  m_snapshots[win] = tex;
+void PixelCache::putSnapshot(const PHLWINDOW &win,
+                             const SP<Render::ITexture> &tex) {
+  const PHLWINDOWREF ref = win;
+  const auto         key = win.get();
+  if (!key)
+    return;
+  auto &slot = m_snapshots[key];
+  if (slot.owner.expired())
+    slot = {}; // the address has a new tenant
+  slot.owner = ref;
+  slot.tex = tex;
 }
 
-SP<Render::ITexture> PixelCache::snapshot(void *win) const {
-  const auto it = m_snapshots.find(win);
-  return it == m_snapshots.end() ? nullptr : it->second;
+SP<Render::ITexture> PixelCache::snapshot(const PHLWINDOW &win) const {
+  const auto key = win.get();
+  if (!key)
+    return nullptr;
+  const auto it = m_snapshots.find(key);
+  // An expired owner means the window that put this texture here is gone; whatever
+  // now lives at this address has nothing to do with it.
+  if (it == m_snapshots.end() || it->second.owner.expired())
+    return nullptr;
+  return it->second.tex;
 }
 
 void PixelCache::clear() {
-  m_labels.clear();
+  m_winLabels.clear();
+  m_wsLabels.clear();
+  m_slotLabels.clear();
+  m_virtualLabels.clear();
   m_snapshots.clear();
   m_glyph.reset();
   m_glyphIcon.clear();
-}
-
-void PixelCache::prune(const std::vector<void *> &live) {
-  const auto gone = [&](void *k) {
-    return std::find(live.begin(), live.end(), k) == live.end();
-  };
-  for (auto it = m_labels.begin(); it != m_labels.end();) {
-    it = gone(it->first) ? m_labels.erase(it) : std::next(it);
-  }
-  for (auto it = m_snapshots.begin(); it != m_snapshots.end();) {
-    it = gone(it->first) ? m_snapshots.erase(it) : std::next(it);
-  }
 }
 
 } // namespace gloview

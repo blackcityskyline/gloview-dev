@@ -123,9 +123,8 @@ public:
     return (m_blur.fb && m_blur.fb->isAllocated()) ? m_blur.fb->getTexture()
                                                    : nullptr;
   }
-  [[nodiscard]] const std::unordered_map<void *, SP<Render::ITexture>> &
-  snapshots() const {
-    return m_pixel.snapshots();
+  [[nodiscard]] SP<Render::ITexture> snapshot(const PHLWINDOW &w) const {
+    return m_pixel.snapshot(w);
   }
   [[nodiscard]] bool snapshotMode() const;
 
@@ -163,7 +162,6 @@ private:
   int m_pendingStep = 0;
   void syncRecency();
   void pruneRecency();
-  void prunePixelCache();
   model::Scene m_scene;
   model::Effects m_fx;
   view::State m_view;

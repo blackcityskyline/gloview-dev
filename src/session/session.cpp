@@ -545,11 +545,6 @@ void Overview::open() {
 
   buildTiles();
   buildStrip();
-  // Entries from the previous session are still in the cache: a window closed while
-  // the overview was shut will have been reaped by nothing, and its address may
-  // already belong to a different window. Pruned here as well as in syncTiles(),
-  // because this is the first frame updateSnapshots() will read.
-  prunePixelCache();
   if (m_scene.tiles().empty() && m_strip.size() <= 1)
     return;
 
@@ -778,29 +773,6 @@ int Overview::tileOf(const PHLWINDOW &w) const {
   return -1;
 }
 
-// Same rule for the pixel cache: labels and entry snapshots are keyed by address and
-// Hyprland reuses addresses, so an entry for a closed window would be handed to the
-// next window that lands there -- in snapshot mode that means another window's
-// contents drawn inside this one. Synthetic keys never die, so they are always live.
-void Overview::prunePixelCache() {
-  std::vector<void *> live;
-  live.reserve(m_scene.size() + m_strip.size() + 2);
-  for (const auto &t : m_scene.tiles())
-    live.push_back(t.win.lock().get());
-  for (const auto &it : m_strip) {
-    if (it.kind == model::StripItem::Kind::All) {
-      live.push_back(pixel::syntheticKey(pixel::kAllCardsKey));
-      continue;
-    }
-    // A not-yet-created workspace is keyed by its number, matching the call site.
-    const auto ws = it.ws.lock();
-    live.push_back(ws ? static_cast<void *>(ws.get())
-                      : pixel::syntheticKey(static_cast<std::intptr_t>(it.id)));
-  }
-  live.push_back(pixel::syntheticKey(pixel::kCarouselCountKey));
-  m_pixel.prune(live);
-}
-
 // The recency service is a cache of the live window set and must never outlive it.
 // Hyprland reuses window addresses, so an entry for a closed window would hand its
 // rank to an unrelated window that lands on the same address.
@@ -940,7 +912,7 @@ void Overview::updateSnapshots() {
   const auto grab = [this](const PHLWINDOW &w) {
     if (!w || !w->wlSurface() || !w->wlSurface()->resource())
       return;
-    if (m_pixel.snapshot(w.get()))
+    if (m_pixel.snapshot(w))
       return;
     const auto tex = w->wlSurface()->resource()->m_current.texture;
     if (!tex || !tex->ok())
@@ -981,7 +953,7 @@ void Overview::updateSnapshots() {
     g_pHyprOpenGL->setViewport(0, 0, PMON ? (int)PMON->m_pixelSize.x : W, PMON ? (int)PMON->m_pixelSize.y : H);
     guard.reset();
 
-    m_pixel.putSnapshot(w.get(), fb->getTexture());
+    m_pixel.putSnapshot(w, fb->getTexture());
   };
   for (const auto &t : m_scene.tiles())
     if (const auto w = t.win.lock())

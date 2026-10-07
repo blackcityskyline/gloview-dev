@@ -131,7 +131,7 @@ void Overview::renderCarouselCounter() const {
   // reused until the text changes: passing get(eased()) here meant the counter was baked dim
   // on entry (eased()~0) and only went normal once a switch changed the string (measured,
   // every entry). The fade still rides the draw alpha below -- see .a = eased().
-  if (auto tex = m_pixel.label(pixel::syntheticKey(pixel::kCarouselCountKey), text,
+  if (auto tex = m_pixel.fixedLabel(pixel::Slot::CarouselCount, text,
                              cfg::colors.label.get(1.0), 15);
       tex && tex->m_size.x > 0) {
     const double bw = m_view.carousel().countW, bh = m_view.carousel().countH;

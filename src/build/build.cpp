@@ -77,7 +77,7 @@ void Overview::buildTiles() {
         text = text.substr(0, 79) + "…";
       t.labelKey  = w.get();
       t.labelText = text;
-      t.label = m_pixel.label(w.get(), text, lblCol, 15);
+      t.label = m_pixel.windowLabel(w, text, lblCol, 15);
     }
     // glyph pre-rendered: text rendering mid-pass is unsafe
     const std::string closeIcon =
@@ -212,8 +212,7 @@ void Overview::buildStrip() {
       if (it.kind == model::StripItem::Kind::Plus)
         continue;
       if (it.kind == model::StripItem::Kind::All) {
-        it.label = m_pixel.label(pixel::syntheticKey(pixel::kAllCardsKey),
-                              "All workspaces", lblCol, 13);
+        it.label = m_pixel.fixedLabel(pixel::Slot::All, "All workspaces", lblCol, 13);
         continue;
       }
       const auto ws = it.ws.lock();
@@ -223,9 +222,8 @@ void Overview::buildStrip() {
             return std::isdigit(static_cast<unsigned char>(c));
           });
       const std::string text = numeric ? ("Workspace " + nm) : nm;
-      it.label =
-          m_pixel.label(ws ? (void *)ws.get() : (void *)(intptr_t)it.id, text,
-                      lblCol, 13);
+      it.label = ws ? m_pixel.workspaceLabel(ws, text, lblCol, 13)
+                    : m_pixel.virtualLabel(it.id, text, lblCol, 13);
     }
   }
 
@@ -440,10 +438,10 @@ void Overview::layoutTiles() {
       if (c.visible && t.win.lock())
         // The fitted box, not the card: a portrait window is drawn narrower than
         // the standard card, and the pill is sized off what it actually covers.
-        t.label = m_pixel.label(t.win.lock().get(), t.labelText,
-                                cfg::colors.label.get(1.0), 15,
-                                static_cast<int>(std::max(
-                                    1.0, tileBox(i, t.target).w - 28.0)));
+        t.label = m_pixel.windowLabel(t.win.lock(), t.labelText,
+                                      cfg::colors.label.get(1.0), 15,
+                                      static_cast<int>(std::max(
+                                          1.0, tileBox(i, t.target).w - 28.0)));
     }
     return;
   }
@@ -562,10 +560,6 @@ void Overview::syncTiles() {
   // tiles were just measured against. A dead window's entry would otherwise hold a
   // slot that Hyprland's next window at the same address inherits.
   pruneRecency();
-  // Same for the pixel cache. Snapshot mode reads it by address alone, so an entry
-  // left over from a closed window is drawn inside whatever window reused the
-  // address. Must run before updateSnapshots() reads the cache, not after.
-  prunePixelCache();
 
   auto oldBoxes = captureCurrentBoxes();
 
