@@ -545,6 +545,11 @@ void Overview::open() {
 
   buildTiles();
   buildStrip();
+  // Entries from the previous session are still in the cache: a window closed while
+  // the overview was shut will have been reaped by nothing, and its address may
+  // already belong to a different window. Pruned here as well as in syncTiles(),
+  // because this is the first frame updateSnapshots() will read.
+  prunePixelCache();
   if (m_scene.tiles().empty() && m_strip.size() <= 1)
     return;
 
@@ -771,6 +776,29 @@ int Overview::tileOf(const PHLWINDOW &w) const {
     if (m_scene.tiles()[i].win.lock() == w)
       return static_cast<int>(i);
   return -1;
+}
+
+// Same rule for the pixel cache: labels and entry snapshots are keyed by address and
+// Hyprland reuses addresses, so an entry for a closed window would be handed to the
+// next window that lands there -- in snapshot mode that means another window's
+// contents drawn inside this one. Synthetic keys never die, so they are always live.
+void Overview::prunePixelCache() {
+  std::vector<void *> live;
+  live.reserve(m_scene.size() + m_strip.size() + 2);
+  for (const auto &t : m_scene.tiles())
+    live.push_back(t.win.lock().get());
+  for (const auto &it : m_strip) {
+    if (it.kind == model::StripItem::Kind::All) {
+      live.push_back(pixel::syntheticKey(pixel::kAllCardsKey));
+      continue;
+    }
+    // A not-yet-created workspace is keyed by its number, matching the call site.
+    const auto ws = it.ws.lock();
+    live.push_back(ws ? static_cast<void *>(ws.get())
+                      : pixel::syntheticKey(static_cast<std::intptr_t>(it.id)));
+  }
+  live.push_back(pixel::syntheticKey(pixel::kCarouselCountKey));
+  m_pixel.prune(live);
 }
 
 // The recency service is a cache of the live window set and must never outlive it.

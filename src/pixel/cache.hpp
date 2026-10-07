@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -14,10 +16,23 @@ class IFramebuffer;
 
 namespace gloview::pixel {
 
+// Cache entries that have no window behind them still need a stable key, and a
+// string-literal address would be one -- but at a call site it reads as a window
+// address. Negative integers, so they can never collide with a real pointer, and
+// spelled as integers because a constexpr void* is not a constant expression.
+inline constexpr std::intptr_t kAllCardsKey = -2;     // the strip's "All" card
+inline constexpr std::intptr_t kCarouselCountKey = -1; // the carousel's counter pill
+
+// Keys above are integers so they can be constexpr; the cache is keyed by void*.
+inline void *syntheticKey(std::intptr_t k) {
+  return reinterpret_cast<void *>(k);
+}
+
 // Captions, the close glyph, entry snapshots. The job is the KEYING POLICY: a
 // caption is asked for whole and cut to the card, and sharing a slot measures one
 // texture and draws the other. Keys are window addresses, safe only because dead
-// ones are pruned — Hyprland reuses addresses.
+// ones are pruned — Hyprland reuses addresses, so a closed window's entry would
+// hand its snapshot to whatever window lands on that address next.
 class PixelCache {
   public:
     // maxW <= 0 = untruncated. renderText clips rather than ellipsizes, so a wide

@@ -212,7 +212,8 @@ void Overview::buildStrip() {
       if (it.kind == model::StripItem::Kind::Plus)
         continue;
       if (it.kind == model::StripItem::Kind::All) {
-        it.label = m_pixel.label((void *)-2, "All workspaces", lblCol, 13);
+        it.label = m_pixel.label(pixel::syntheticKey(pixel::kAllCardsKey),
+                              "All workspaces", lblCol, 13);
         continue;
       }
       const auto ws = it.ws.lock();
@@ -561,6 +562,10 @@ void Overview::syncTiles() {
   // tiles were just measured against. A dead window's entry would otherwise hold a
   // slot that Hyprland's next window at the same address inherits.
   pruneRecency();
+  // Same for the pixel cache. Snapshot mode reads it by address alone, so an entry
+  // left over from a closed window is drawn inside whatever window reused the
+  // address. Must run before updateSnapshots() reads the cache, not after.
+  prunePixelCache();
 
   auto oldBoxes = captureCurrentBoxes();
 

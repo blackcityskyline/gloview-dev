@@ -163,6 +163,7 @@ private:
   int m_pendingStep = 0;
   void syncRecency();
   void pruneRecency();
+  void prunePixelCache();
   model::Scene m_scene;
   model::Effects m_fx;
   view::State m_view;
