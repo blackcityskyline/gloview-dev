@@ -60,8 +60,10 @@ static cfg::Str g_gridSwapStyle, g_stripSwapStyle, g_jumpStyle;
 // Shape parameters, in the same order as anim::Param.
 static cfg::Float g_params[static_cast<std::size_t>(Param::Count)];
 static const char *const kParamKeys[] = {"appear_stagger", "appear_stagger_per_tile",
-                                          "carousel_step_collapse"};
-static const double kParamDefaults[] = {0.08, 0.015, 0.5};
+                                          "carousel_step_collapse",
+                                          "pulse_ring_scale",
+                                          "lift_scale", "lift_rise"};
+static const double kParamDefaults[] = {0.08, 0.015, 0.5, 0.10, 0.07, 5.0};
 
 namespace {
 std::unordered_map<std::string, Rule> g_rules;

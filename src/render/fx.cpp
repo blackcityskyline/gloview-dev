@@ -66,8 +66,8 @@ LRect Overview::dragVisualBox() const {
 
   // Scale/raise apply unconditionally: a stationary hold (fromBox == to) must
   // still animate.
-  const double s  = 1.0 + 0.07 * p;
-  const double dy = -5.0 * p;
+  const double s  = 1.0 + anim::param(anim::Param::LiftScale) * p;
+  const double dy = -anim::param(anim::Param::LiftRise) * p;
   const double cx = b.cx(), cy = b.cy();
   return LRect{cx - b.w * s / 2.0, cy - b.h * s / 2.0 + dy, b.w * s, b.h * s};
 }
@@ -225,7 +225,11 @@ void Overview::renderPulses(bool strip) const {
 
 void Overview::drawPulseRing(const CBox &boxPx, int round, float roundPow,
                              const CHyprColor &col, double p) const {
-  const double k  = curves::eval("back", p) * 0.10;
+  // The curve comes from the pulse animation; the reach past the tile edge is its own
+  // shape parameter. Both were literals, so pulse_curve and this amplitude were two halves of
+  // one animation configured from different places.
+  const double k  = curves::eval(anim::cfg(anim::Id::Pulse).curve, p) *
+                  anim::param(anim::Param::PulseScale);
   const double cx = boxPx.x + boxPx.w / 2.0, cy = boxPx.y + boxPx.h / 2.0;
   const CBox ring{cx - boxPx.w * (0.5 + k), cy - boxPx.h * (0.5 + k),
                   boxPx.w * (1.0 + 2.0 * k), boxPx.h * (1.0 + 2.0 * k)};

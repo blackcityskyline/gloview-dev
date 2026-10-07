@@ -260,6 +260,9 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `appear_stagger` | float | `0.08` | entry ladder: how far the tile entry is spread across the window (as a fraction) |
 | `appear_stagger_per_tile` | float | `0.015` | extra spread per tile, capped by `appear_stagger` |
 | `carousel_step_collapse` | float | `0.5` | fraction of the exit spent shrinking the unfocused carousel cards |
+| `pulse_ring_scale` | float | `0.10` | how far the post-drop pulse ring reaches past the tile edge |
+| `lift_scale` | float | `0.07` | how much a picked-up tile grows |
+| `lift_rise` | float | `5.0` | how far a picked-up tile rises, px |
 | `drop_hint_color` | color | `"0x38ffffff"` | drop-zone highlight flash on a workspace card while dragging |
 | `close_button_visibility` | `shift` \| `always` | `shift` | `shift`: close buttons only show in desktop/canvas mode (`key_desktop`) — `always`: show them on every tile and strip card all the time |
 | `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |

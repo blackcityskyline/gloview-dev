@@ -62,6 +62,9 @@ enum class Param : std::uint8_t {
   Stagger,        // entry ladder: spread of the tiles over the window
   StaggerPerTile, // ... per extra tile, capped by Stagger
   Collapse,       // carousel: fraction of the exit spent shrinking the unfocused cards
+  PulseScale,     // pulse ring: how far past the tile edge it reaches
+  LiftScale,      // lift: how much the picked-up tile grows
+  LiftRise,       // lift: how far it rises, px
   Count
 };
 [[nodiscard]] double param(Param p);
