@@ -17,14 +17,21 @@ src/
 ├── actions/              commands: drop/swap/workspace/focus (dispatcher + hyprctl + Lua from one table)
 ├── render/               the painter (one pass element, fixed z-slots), backdrop blur cache,
 │                         window-content leaf (immediate surface drawing), tile/strip views, fx
-├── anim/                 clocks (Tween + leaf resolution) and the curve registry (native + Lua curves)
+├── anim/                 the animation registry: enum Id, config keys, defaults, shape
+│                         params, Lua rules. Also where the Lua C API is bridged (extern "C")
+├── clock/                time domain: Tween, per-effect clocks, curve registry (native + Lua)
+├── pixel/                caches: labels, close glyph, entry snapshots
 ├── config/               the typed option schema, grouped by domain; live handles
+├── view/                 the view-state shared by input and render
 ├── debug/                gated log channel (/tmp/gloview.log)
-└── model/                the Model data structures (Tile/StripItem/Drag/...)
+├── model/                the Model data structures (Tile/StripItem/Drag/...)
+├── layout.{hpp,cpp}      pure geometry: no Hyprland, no GL (the only ctest domain)
+├── blur.{hpp,cpp}        self-contained dual-Kawase + gaussian, independent of decoration:blur
+└── cursor.{hpp,cpp}      HW/SW cursor drawn on top (a consequence of RENDER_LAST_MOMENT)
 
 Layering rule: arrows point one way — main wires the domains; domains
-(session/build/input/actions/render/anim) read the primitives (model/config/
-layout/gl_util); the painter only reads Model+Clocks+Pixels and mutates
+(session/build/input/actions/render) read the primitives (model/config/clock/
+anim/pixel/layout/gl_util); the painter only reads Model+Clocks+Pixels and mutates
 nothing. Whatever sits ON TOP of content draws AFTER it.
 ```
 
@@ -132,13 +139,13 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 ### Animations
 
 One master switch (`animations_enabled`, 0 = the whole plugin is instant) and
-a set of LEAVES mirroring Hyprland's own animation model. Every leaf reads
-exactly three options:
+a set of LEAVES — one per ACTION. Every leaf reads four options:
 
 | field | type | meaning |
 |---|---|---|
 | `<leaf>_enabled` | 0/1 | kill-switch for that one motion |
-| `<leaf>_speed` | float | multiplier over the leaf's built-in base duration — `2.0` is twice as fast, `0.5` twice as slow (floor: one frame) |
+| `<leaf>_ms` | int (ms) | absolute duration; defaults to the leaf's built-in base, so existing configs are unchanged |
+| `<leaf>_speed` | float | multiplier over the duration above — `2.0` is twice as fast, `0.5` twice as slow (floor: one frame) |
 | `<leaf>_curve` | name | any registry curve: native (`linear`/`easeout`/`easeinout`/`back`) or registered from Lua |
 
 Motions with selectable TYPES also read a `<thing>_style` key (listed below).
@@ -147,23 +154,43 @@ The imperative twin of these keys is the Lua API
 `gloview.animation{ leaf = "...", enabled = bool, speed = n, ms = n, curve = "...", style = "..." }`
 — whatever it sets wins over the static keys; unset fields fall through.
 
-| Leaf | base @ speed 1.0 | default curve | What it drives |
+| Leaf | base ms | default curve | What it drives |
 |---|---|---|---|
-| `open` | 300ms | easeout | entry reveal (chrome + tiles) |
-| `close` | 300ms | easeout | exit collapse |
-| `glide` | 300ms | easeout | tile movement slot ↔ slot (drops, syncs, close-home) |
-| `appear` | 250ms | easeout | staggered entry of brand-new tiles |
-| `card` | 250ms | back | "+" card pop-in |
-| `pulse` | 180ms | back | success ring after swaps/moves |
-| `strip_step` | 200ms | easeinout | animated strip scroll per workspace step |
-| `ws_enter` | 250ms | easeout | incoming tiles' timing on a workspace switch (style: `ws_enter_style`) |
-| `ws_exit` | 250ms | easeout | outgoing ghosts on a workspace switch (style: `ws_exit_style`) |
-| `expo_in` | 250ms | easeout | one→all spread during the all↔one flip (`gloview:allworkspaces`) |
-| `expo_out` | 250ms | easeout | all→one collapse during the flip |
-| `swap_main` | 320ms | easeinout | the swap INITIATOR's flight |
-| `swap_partner` | 320ms | easeinout | the swap PARTNER's flight |
-| `drag` | 150ms | easeout | the drag cycle in BOTH directions: pickup flight to the cursor anchor and release flight back into the slot; disabled → instant |
-| `carousel_step_enabled` / `carousel_step_speed` / `carousel_step_curve` | | | The run's selection step. Its own preset rather than a share of `glide`, which also rides the grid relayout and the opening glide — three motions on one leaf means none can be tuned apart. Same numbers as `glide`, so the motion that existed before is this leaf's default |
+| `open` | 500 | easeout | entry reveal (chrome + tiles) |
+| `close` | 500 | easeout | exit collapse |
+| `glide` | 300 | easeout | tile movement slot ↔ slot (drops, syncs, close-home) |
+| `appear` | 250 | easeout | staggered entry of brand-new tiles |
+| `card` | 250 | back | "+" card pop-in |
+| `pulse` | 180 | back | success ring after swaps/moves |
+| `strip_step` | 200 | easeinout | animated strip scroll per workspace step |
+| `ws_enter` | 250 | easeout | incoming tiles' timing on a workspace switch (style: `ws_enter_style`) |
+| `ws_exit` | 250 | easeout | outgoing ghosts on a workspace switch (style: `ws_exit_style`) |
+| `expo_in` | 250 | easeout | one→all spread during the all↔one flip (`gloview:allworkspaces`) |
+| `expo_out` | 250 | easeout | all→one collapse during the flip |
+| `jump_in` | 180 | easeout | one→all flip started from the keyboard (`jump_style`) |
+| `jump_out` | 220 | easeout | all→one flip started from the keyboard |
+| `swap_main` | 320 | easeinout | the swap INITIATOR's flight |
+| `swap_partner` | 320 | easeinout | the swap PARTNER's flight |
+| `drop` | 400 | easeout | the landing of a preview released into a slot |
+| `swap_fly` | 400 | easeout | the fly-between-slots of a swap |
+| `lift` | 400 | easeout | the raise of a preview at pickup (see `lift_scale`, `lift_rise`) |
+| `carousel_step` | 300 | easeout | the carousel run's selection step |
+| `new_card` | 250 | easeout | a workspace card that appeared on its own |
+
+`drop`, `swap_fly` and `lift` used to be one `drag` leaf, which meant a single
+`_speed` moved all three at once and none could be tuned apart.
+
+Shape parameters — not timings, but "how it looks", so they are plain floats
+rather than per-leaf keys:
+
+| Key | default | meaning |
+|---|---|---|
+| `appear_stagger` | `0.08` | fraction of `appear` each tile waits before starting |
+| `appear_stagger_per_tile` | `0.015` | extra stagger per tile index |
+| `carousel_step_collapse` | `0.5` | fraction of the step over which unfocused cards collapse |
+| `pulse_ring_scale` | `0.10` | ring growth per pulse frame |
+| `lift_scale` | `0.07` | how much a lifted preview grows |
+| `lift_rise` | `5.0` | px a lifted preview rises |
 
 Style keys:
 
@@ -173,6 +200,7 @@ Style keys:
 | `ws_exit_style` | `slide` \| `slidevert` \| `fade` | `slide` |
 | `grid_swap_style` | `horizontal` \| `slidevert` \| `fade` \| `pop` | `horizontal` |
 | `strip_swap_style` | same set | `horizontal` |
+| `jump_style` | `instant` \| `horizontal` \| `slidevert` \| `fade` \| `pop` | `instant` |
 
 **Custom curves (Lua).** Register a named curve once (e.g. next to the config
 in `plugins/gloview.lua`) — either as a function or as a cubic bezier:
@@ -248,6 +276,8 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `switch_on_drop` | bool (0/1) | `0` | Dropping a window on a card also follows it to that workspace |
 | — | — | — | Dragging a preview (grid or strip) onto a workspace **card** with the left button moves it there; the **right** button swaps it with that workspace's last-focused window instead |
 | `switch_on_new_workspace` | bool (0/1) | `1` | Clicking `+` follows the display to the new workspace |
+| `hold_lift_ms` | int (ms) | `400` | Hold a dragged preview still this long before it lifts and starts scaling — separates a hold from a drag |
+| `tile_layout` | `none` \| `dwindle` | `none` | `dwindle`: after a swap, re-run Hyprland's dwindle layout on the target workspace so neighbours fill the freed space; `none` leaves the layout alone |
 | `new_workspace_mode` | `fill` \| `linear` | `fill` | `fill`: `+` takes the lowest free workspace id (backfills a gap left by a closed one) — `linear`: always appends past the highest existing id, never backfills |
 | `close_button_color` | color/role | `"0xe6e23b3b"` | `✕` close-button fill — per-window, and per-workspace (closes every window on it) |
 | `close_glyph_color` | color | `"0xffffffff"` | the `✕` glyph itself, drawn on top of `close_button_color` |
@@ -493,7 +523,6 @@ applies the new colors live.
                 padding_top    = 40,
                 padding_bottom = 70,
                 max_scale      = 1.0,
-                duration       = 200,
                 preview_round       = 12,
                 preview_round_power = 2.0,
                 blur           = 1,
@@ -580,7 +609,6 @@ plugin {
         padding_top = 40
         padding_bottom = 70
         max_scale = 1.0
-        duration = 200
         preview_round = 12
         preview_round_power = 2.0
         blur = 1
