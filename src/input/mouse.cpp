@@ -604,8 +604,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
                       parseSwapStyle(anim::style("strip_swap")),
                       anim::cfg(anim::Id::SwapFly).ms, anim::cfg(anim::Id::SwapFly).curve);
           // beginSwapFX may reuse a slot: force `from` on the entry it just pushed.
-          if (!m_fx.swapfx().empty())
-            m_fx.lastSwap()->from = fromBox;
+          m_fx.retargetLastSwap(fromBox);
           kickPulse(w);
           damage();
           return true;

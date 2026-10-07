@@ -34,8 +34,15 @@ class Effects {
     void clearGhosts() { m_ghosts.clear(); }
     void clearNewWorkspaces() { m_newWorkspaces.clear(); }
 
-    [[nodiscard]] SwapFX *lastSwap() {
-      return m_swapfx.empty() ? nullptr : &m_swapfx.back();
+    // beginSwapFX() may reuse a slot rather than append, so the caller that knows the
+    // real origin has to pin it afterwards. Returning bool instead of a pointer: the
+    // only way to spell "no last swap" was to pair this with an emptiness check on the
+    // vector, which is the same question asked twice.
+    bool retargetLastSwap(const LRect &from) {
+      if (m_swapfx.empty())
+        return false;
+      m_swapfx.back().from = from;
+      return true;
     }
 
     template <class F> void eachPulse(F &&f) {

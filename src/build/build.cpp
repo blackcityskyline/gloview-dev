@@ -29,7 +29,7 @@ namespace gloview {
 void Overview::buildTiles() {
   // parked boxes survive the rebuild
   std::unordered_map<PHLWINDOWREF, std::pair<LRect, bool>> priorTargets;
-  for (const auto &t : m_scene.edit())
+  for (const auto &t : m_scene.tiles())
     if (t.parked)
       if (const auto w = t.win.lock())
         priorTargets.emplace(w, std::pair{t.target, true});
@@ -310,7 +310,7 @@ LRect Overview::stripWinSlotRect(const model::StripItem &it, const LRect &card,
 
 void Overview::layoutTiles() {
   const auto m = m_monitor.lock();
-  if (!m || m_scene.edit().empty())
+  if (!m || m_scene.empty())
     return;
 
   // The renderer asks m_view.engine() / m_view.run(), never the config: free-arrange, the all/one
@@ -447,13 +447,13 @@ void Overview::layoutTiles() {
   m_view.clearCards();
 
   std::vector<LRect> nat;
-  nat.reserve(m_scene.edit().size());
-  for (const auto &t : m_scene.edit())
+  nat.reserve(m_scene.size());
+  for (const auto &t : m_scene.tiles())
     nat.push_back(t.natural);
 
   const auto out =
       computeLayout(nat, LRect{0, 0, m->m_size.x, m->m_size.y}, cfg);
-  for (size_t i = 0; i < m_scene.edit().size(); ++i)
+  for (size_t i = 0; i < m_scene.size(); ++i)
     m_scene.edit()[i].target = out[i];
 }
 
@@ -543,9 +543,9 @@ void Overview::syncTiles() {
     if (belongs(w))
       ++expected;
 
-  bool diff = expected != m_scene.edit().size();
+  bool diff = expected != m_scene.size();
   if (!diff)
-    for (const auto &t : m_scene.edit()) {
+    for (const auto &t : m_scene.tiles()) {
       const auto w = t.win.lock();
       if (!belongs(w)) {
         diff = true;
