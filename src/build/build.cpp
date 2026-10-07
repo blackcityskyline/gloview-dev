@@ -57,8 +57,14 @@ void Overview::buildTiles() {
     m_scene.edit().push_back(t);
   }
 
+  // NO makeEGLCurrent() here. buildTiles()/buildStrip() are reached from key handlers and
+  // dispatch (open(), the actions), where the current EGL context belongs to the compositor,
+  // not to us: making ours current there raised a foreign context over it and the NEXT GL
+  // call in renderBackdrop() threw bad_variant_access, killing the compositor (crash report
+  // hyprlandCrashReport41645: eglCreateContext EGL_BAD_MATCH -> renderBackdrop -> paint).
+  // The compositor makes our context current for every pass it drives, so the label
+  // pre-render is safe from renderStage and needs no context juggling here.
   if (g_pHyprOpenGL && g_pHyprRenderer) {
-    g_pHyprOpenGL->makeEGLCurrent();
     const auto lblCol = cfg::colors.label.get();
     for (auto &t : m_scene.edit()) {
       const auto w = t.win.lock();
@@ -193,8 +199,14 @@ void Overview::buildStrip() {
   plus.id = 0;
   m_strip.push_back(std::move(plus));
 
+  // NO makeEGLCurrent() here. buildTiles()/buildStrip() are reached from key handlers and
+  // dispatch (open(), the actions), where the current EGL context belongs to the compositor,
+  // not to us: making ours current there raised a foreign context over it and the NEXT GL
+  // call in renderBackdrop() threw bad_variant_access, killing the compositor (crash report
+  // hyprlandCrashReport41645: eglCreateContext EGL_BAD_MATCH -> renderBackdrop -> paint).
+  // The compositor makes our context current for every pass it drives, so the label
+  // pre-render is safe from renderStage and needs no context juggling here.
   if (g_pHyprOpenGL && g_pHyprRenderer) {
-    g_pHyprOpenGL->makeEGLCurrent();
     const auto lblCol = cfg::colors.label.get();
     for (auto &it : m_strip) {
       if (it.kind == model::StripItem::Kind::Plus)
