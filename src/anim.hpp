@@ -70,9 +70,7 @@ enum class Param : std::uint8_t {
 [[nodiscard]] double param(Param p);
 
 // Not animation styles: behaviour selectors that happen to live in the same config section.
-[[nodiscard]] const std::string &gridSwapStyle();
-[[nodiscard]] const std::string &stripSwapStyle();
-[[nodiscard]] const std::string &jumpStyle();
+[[nodiscard]] std::string jumpStyle();
 
 void setRule(const char *name, const Rule &r);
 

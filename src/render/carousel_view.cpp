@@ -20,9 +20,11 @@ namespace gloview {
 
 namespace {
 
-constexpr double kNearTone = 0.125;
-constexpr double kFarTone = 0.25;
-constexpr double kDepthTaper = 0.8;
+// Read through functions, never cached at namespace scope: see the same note in fx.cpp
+// about a global initialised from the config before PLUGIN_INIT.
+double nearTone()   { return cfg::carousel.tone_near; }
+double farTone()    { return cfg::carousel.tone_far; }
+double depthTaper() { return cfg::carousel.depth_taper; }
 
 } // namespace
 
@@ -109,8 +111,8 @@ void Overview::renderCarousel() const {
     look.contain = true;                  // the window goes inside the box whole
     look.tone =
         card.depth > 0
-            ? (card.depth == 1 ? kNearTone : kFarTone) *
-                  std::pow(kDepthTaper, static_cast<double>(card.depth - 1))
+            ? (card.depth == 1 ? nearTone() : farTone()) *
+                  std::pow(depthTaper(), static_cast<double>(card.depth - 1))
             : 0.0;
     look.button = tileCloseButtons();
     drawTile(static_cast<size_t>(i), look);

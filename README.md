@@ -135,6 +135,9 @@ All keys live under `plugin:gloview:*`. Colors are `0xAARRGGBB` integers.
 | `carousel_cards` | int | `5` | `carousel` only: how many cards the run shows (any count, even included) |
 | `carousel_card_width` | int (px) | `0` | `carousel` only: narrow the standard box; 0 keeps the fullscreen box |
 | `carousel_scale` | float | `1.0` | `carousel` only: zoom the whole run on top of the automatic fit (above 1 it deliberately overflows) |
+| `carousel_tone_near` | float | `0.125` | `carousel` only: dim applied to the nearest unfocused card |
+| `carousel_tone_far` | float | `0.25` | `carousel` only: dim applied to the farthest unfocused card |
+| `carousel_depth_taper` | float | `0.8` | `carousel` only: how much each step deeper multiplies the dim by
 
 ### Animations
 
@@ -296,6 +299,7 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `kill_zone` | int | `1` | closing a window by dragging it to the screen edge; `0` makes the edge a no-op |
 | `kill_zone_size` | float | `40` | thickness of that edge zone, px |
 | `kill_zone_falloff` | float | `150` | how far from the zone its glow reaches, px |
+| `kill_zone_reach` | int (px) | `160` | how far from the screen edge the drop target reaches |
 | `click_window_ms` | int | `400` | window in which two clicks count as a double-click (`close_trigger=doubleclick`) |
 | `strip_label_band` | float | `26` | height of the label strip under a strip card |
 | `strip_label_extra` | float | `24` | how far a strip card widens to fit its label |
@@ -314,6 +318,9 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |
 | `close_button_size` | float | `1.0` | Scale multiplier over the computed base button size |
 | `drag_size` | float (0.15–1.0) | `0.55` | Drag-phase preview size as a fraction of its source slot — applies to grid tiles and strip thumbs alike; `1.0` keeps the full-size preview under the cursor |
+| `drag_offset_x` | float (px) | `46.0` | Drag preview offset from the pointer, x — keeps the drop zones visible under it |
+| `drag_offset_y` | float (px) | `64.0` | Drag preview offset from the pointer, y |
+| `swap_lift` | float (px) | `12.0` | vertical lift of a `slidevert` swap |
 | `close_button_position` | `top-right` \| `top-left` \| `bottom-right` \| `bottom-left` | `top-right` | Corner the close button sits in |
 | `close_trigger` | `button` \| `doubleclick` | `button` | `button` (default): the "✕" close button — `doubleclick`: double-click/double-tap directly on a tile closes it instead (the "✕" is hidden); `key_close_window` and the strip card's whole-workspace "✕"/middle-click are unaffected either way |
 | `hide_top_layers` | bool (0/1) | `0` | Fade out Top layer surfaces (bars, e.g. Waybar) while open |

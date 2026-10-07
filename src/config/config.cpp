@@ -110,6 +110,7 @@ constexpr IntSpec kInts[] = {
     {&grid.padding, "plugin:gloview:padding", 80},
     {&grid.padding_top, "plugin:gloview:padding_top", 40},
     {&grid.padding_bottom, "plugin:gloview:padding_bottom", 70},
+    {&behavior.kill_zone_reach, "plugin:gloview:kill_zone_reach", 160},
     // carousel: the run, laid over `layout` in the all-workspaces view only
     {&carousel.enabled, "plugin:gloview:carousel", 0},
     {&carousel.on_open, "plugin:gloview:carousel_on_open", 1},
@@ -153,6 +154,11 @@ constexpr IntSpec kInts[] = {
 };
 
 constexpr FloatSpec kFloats[] = {
+    // Depth shading of the run: nearest unfocused card, far one, and the multiplier per
+    // step deeper.
+    {&carousel.tone_near, "plugin:gloview:carousel_tone_near", 0.125F},
+    {&carousel.tone_far, "plugin:gloview:carousel_tone_far", 0.25F},
+    {&carousel.depth_taper, "plugin:gloview:carousel_depth_taper", 0.8F},
     {&look.shadow_radius, "plugin:gloview:shadow_radius", 6.0},
     {&look.shadow_radius_lift, "plugin:gloview:shadow_radius_lift", 14.0},
     {&look.shadow_alpha, "plugin:gloview:shadow_alpha", 0.18},
@@ -173,6 +179,9 @@ constexpr FloatSpec kFloats[] = {
     {&blur.strength, "plugin:gloview:blur", 1.0F},
     {&look.close_button_size, "plugin:gloview:close_button_size", 1.0F},
     {&look.drag_size, "plugin:gloview:drag_size", 0.55F},
+    {&look.drag_offset_x, "plugin:gloview:drag_offset_x", 46.0F},
+    {&look.drag_offset_y, "plugin:gloview:drag_offset_y", 64.0F},
+    {&look.swap_lift, "plugin:gloview:swap_lift", 12.0F},
     {&carousel.scale, "plugin:gloview:carousel_scale", 1.0F},
     {&carousel.scroll_speed, "plugin:gloview:carousel_scroll_speed", 1.0F},
 };

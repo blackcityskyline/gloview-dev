@@ -141,9 +141,11 @@ double param(Param p) {
   return h.v ? h.get() : kParamDefaults[i];
 }
 
-const std::string &gridSwapStyle()  { return g_gridSwapStyle.v ? g_gridSwapStyle.get() : s_grid; }
-const std::string &stripSwapStyle() { return g_stripSwapStyle.v ? g_stripSwapStyle.get() : s_strip; }
-const std::string &jumpStyle()      { return g_jumpStyle.v ? g_jumpStyle.get() : s_jump; }
+// By value, not by reference: Str::get() returns std::string by value, so the ternary
+// produces a temporary and a const& return would dangle. gridSwapStyle/stripSwapStyle
+// had the same shape and no callers at all -- style() reaches those directly -- so they
+// are gone rather than fixed.
+std::string jumpStyle() { return g_jumpStyle.v ? g_jumpStyle.get() : s_jump; }
 
 void registerAll(HANDLE handle) {
   // deque: the keys must outlive registration (CIntValue keeps them as const char*).

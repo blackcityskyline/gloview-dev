@@ -73,6 +73,11 @@ struct carousel {
   // Carousel state when the all-workspaces view opens. The key binding is always
   // a toggle; this only decides where it starts.
   Int on_open;
+  // Depth shading of the run: the nearest unfocused card's tone, the far one, and how
+  // fast each step deeper multiplies down.
+  Float tone_near;
+  Float tone_far;
+  Float depth_taper;
 };
 
 inline carousel carousel;
@@ -113,6 +118,11 @@ struct look {
   Int select_border_size;
   Float close_button_size;
   Float drag_size;
+  // Drag preview offset from the pointer, so the drop zones stay visible under it, and
+  // the vertical lift of a SlideVert swap.
+  Float drag_offset_x;
+  Float drag_offset_y;
+  Float swap_lift;
   // Tile chrome geometry that was literal in tile_view.cpp: shadow blur at rest and lifted,
   // shadow alpha multiplier, title-pill padding and the gaps around it, and how much of the
   // close button the glyph fills.
@@ -199,6 +209,8 @@ struct behavior {
   Int kill_zone;
   Float kill_zone_size;
   Float kill_zone_falloff;
+  // How far from the screen edge the drop target reaches, in px.
+  Int kill_zone_reach;
   Int click_window_ms;
   Int exit_on_switch;
   Int switch_on_drop;
