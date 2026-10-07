@@ -53,9 +53,9 @@ SP<Render::ITexture> PixelCache::label(void *key, const std::string &text,
   auto &e = m_labels[key];
   // Hit first: nothing to measure. Probing before the lookup rendered the full
   // string every frame to discover that nothing had changed.
-  if (e.tex && e.text == text && e.maxW == maxW)
+  if (e.matches(text, maxW, size, col))
     return e.tex;
-  e = LabelEntry{truncate(text, col, size, maxW), maxW, nullptr};
+  e = LabelEntry{truncate(text, col, size, maxW), maxW, size, col, nullptr};
   e.tex = render(e.text, col, size);
   return e.tex;
 }

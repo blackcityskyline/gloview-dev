@@ -35,6 +35,22 @@ inline void *syntheticKey(std::intptr_t k) {
 // hand its snapshot to whatever window lands on that address next.
 class PixelCache {
   public:
+    struct LabelEntry {
+      std::string text;
+      int maxW = 0;
+      int size = 0;
+      // Colour and size belong to the key, not just the string: the config is live
+      // (hl.config), and a caption baked in the old colour keeps being drawn after
+      // the user changes it. Same defect the carousel counter had.
+      CHyprColor col;
+      SP<Render::ITexture> tex;
+
+      [[nodiscard]] bool matches(const std::string &t, int w, int s,
+                                 const CHyprColor &c) const {
+        return tex && text == t && maxW == w && size == s && col == c;
+      }
+    };
+
     // maxW <= 0 = untruncated. renderText clips rather than ellipsizes, so a wide
     // title is shortened here and re-rendered to fit.
     SP<Render::ITexture> label(void *key, const std::string &text,
@@ -59,12 +75,6 @@ class PixelCache {
     void prune(const std::vector<void *> &live);
 
   private:
-    struct LabelEntry {
-      std::string text;
-      int maxW = 0;
-      SP<Render::ITexture> tex;
-    };
-
     [[nodiscard]] static SP<Render::ITexture> render(const std::string &s,
                                                     const CHyprColor &col,
                                                     int size);
