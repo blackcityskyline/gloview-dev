@@ -103,6 +103,6 @@ The blur is **NOT independently animated** — it fades as part of the single `m
 Frame-traced, solitary/DS ruled out; prime suspect = swapchain buffer-age
 (CDamageRing 3-deep ring) + async explicit-sync commits (this box runs
 render:new_render_scheduling=true). `m_forceFullFrames=3` in open() did NOT
-fix it. Full hypothesis board: CANDIDATES.md. Next step when resumed:
+fix it. Next step when resumed:
 epoch-stamped trace (system_clock alongside steady_clock) + wf-recorder PTS
 correlation protocol (claude_review.md history, commit ea8891e..).
