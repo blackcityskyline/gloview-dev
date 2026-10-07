@@ -137,7 +137,7 @@ tail -100 /run/user/1000/hypr/$(ls -t /run/user/1000/hypr | head -1)/hyprland.lo
 | `render/window_content.cpp` | контент окна через публичный `IHyprRenderer::draw` |
 | `clock/clock.cpp`, `clocks.cpp`, `curves.cpp` | домен времени: tween, прогрессы, resolved anim cfg, реестр кривых |
 | `pixel/cache.cpp` | кэши: подписи, глифы, снапшоты |
-| `model/` | сцена: tiles, strip, drag, recency, effects |
+| `model/` | `scene.hpp` (плитки, выбор), `strip.hpp` (полоса), `effects.hpp` (ghosts/pulses/swapfx), `recency.*`, `model.hpp` (общие типы). Поля приватные, наружу — намерения |
 | `blur.*` | self-contained dual-Kawase+gaussian (детали в CLAUDE.md) |
 | `cursor.*` | HW/SW курсор поверх оверлея (следствие RENDER_LAST_MOMENT) |
 | `layout.hpp/.cpp` | чистая геометрия лейаута, без Hyprland (единственный юнит-домен) |
