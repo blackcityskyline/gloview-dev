@@ -94,6 +94,15 @@ add_test(NAME carousel_exit
 add_test(NAME config_keys
          COMMAND bash -c "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra ${CMAKE_SOURCE_DIR}/tests/config_keys_check.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/cfg_keys_check && ${CMAKE_CURRENT_BINARY_DIR}/cfg_keys_check ${CMAKE_SOURCE_DIR}")
 
+# The load seam. Needs the real .so, so it only means anything once it has been
+# built: `ctest -R load_seam` afterwards, or CI, where the .so always exists.
+# SKIP_RETURN_CODE so a machine without Hyprland reports skip, not a fake failure.
+find_program(HYPRLAND_BIN Hyprland)
+add_test(NAME load_seam
+         COMMAND bash ${CMAKE_SOURCE_DIR}/tests/load_seam_check.sh
+                 $<TARGET_FILE:gloview> ${HYPRLAND_BIN}
+         SKIP_RETURN_CODE 77)
+
 add_custom_target(reload
   COMMAND bash -c "hyprctl gloviewunload || true"
   COMMAND ${CMAKE_COMMAND} -E sleep 0.15
