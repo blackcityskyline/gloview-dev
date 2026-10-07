@@ -36,6 +36,7 @@ class CGradientValueData; // general:col.active_border's real type
 #include "model/effects.hpp"
 #include "model/recency.hpp"
 #include "model/scene.hpp"
+#include "model/strip.hpp"
 #include "model/model.hpp"
 #include "pixel/cache.hpp"
 #include "render/backdrop.hpp"
@@ -174,7 +175,7 @@ private:
   PHLMONITORREF m_monitor;
   PHLWORKSPACEREF m_workspace;
   PHLWORKSPACEREF m_liveWsAtOpen; // for exit_on_switch
-  std::vector<model::StripItem> m_strip;
+  model::Strip m_strip;
   mutable pixel::PixelCache m_pixel;
   double m_scrollAccum = 0.0; // sub-card wheel leftover, so slow paging still moves
   std::vector<std::pair<PHLLSREF, float>> m_hiddenLayers; // + pre-hide alpha

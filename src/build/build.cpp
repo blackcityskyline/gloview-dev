@@ -118,7 +118,7 @@ void Overview::buildStrip() {
         it.ws = ws;
         it.id = ws->m_id;
         it.active = (ws == cur);
-        m_strip.push_back(std::move(it));
+        m_strip.add(std::move(it));
       }
       continue;
     }
@@ -128,8 +128,7 @@ void Overview::buildStrip() {
     highestId = std::max(highestId, static_cast<int>(ws->m_id));
   }
   // special cards bypass the numeric ordering
-  std::vector<model::StripItem> specialCards;
-  specialCards.swap(m_strip);
+  std::vector<model::StripItem> specialCards = m_strip.takeAll();
 
   std::set<int> idsToShow;
   if (emptyMode == "hide") {
@@ -162,7 +161,7 @@ void Overview::buildStrip() {
     model::StripItem all;
     all.kind = model::StripItem::Kind::All;
     all.id = 0;
-    m_strip.push_back(std::move(all));
+    m_strip.add(std::move(all));
   }
 
   for (const int id : idsToShow) {
@@ -171,7 +170,7 @@ void Overview::buildStrip() {
     const auto found = real.find(id);
     if (found == real.end()) {
       it.virtualWs = true; // created on click/drop
-      m_strip.push_back(std::move(it));
+      m_strip.add(std::move(it));
       continue;
     }
     const auto &ws = found->second;
@@ -189,15 +188,15 @@ void Overview::buildStrip() {
                      s.y / m->m_size.y};
       it.wins.push_back(sw);
     }
-    m_strip.push_back(std::move(it));
+    m_strip.add(std::move(it));
   }
   for (auto &sc : specialCards)
-    m_strip.push_back(std::move(sc));
+    m_strip.add(std::move(sc));
 
   model::StripItem plus;
   plus.kind = model::StripItem::Kind::Plus;
   plus.id = 0;
-  m_strip.push_back(std::move(plus));
+  m_strip.add(std::move(plus));
 
   // NO makeEGLCurrent() here. buildTiles()/buildStrip() are reached from key handlers and
   // dispatch (open(), the actions), where the current EGL context belongs to the compositor,
