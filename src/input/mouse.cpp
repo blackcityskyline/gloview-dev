@@ -404,14 +404,14 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
                 stripCardAt(cardIdx),
                 [&]{ for (size_t j=0;j<sit.wins.size();++j) if(sit.wins[j].win.lock()==vj) return (int)j; return 0; }());
             if (swapWindows(w, vj)) {
-              landAfterMove(w, m_lastDragBox, anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+              landAfterMove(w, m_lastDragBox, anim::cfg(anim::Id::Drop).ms, anim::cfg(anim::Id::Drop).curve);
               landAfterMove(vj, vOld, anim::cfg(anim::Id::SwapPartner).ms, anim::cfg(anim::Id::SwapPartner).curve);
               kickPulse(w); kickPulse(vj);
             } else damage();
           } else {
             swapOnWorkspace(w, m_strip[cardIdx]); // no slot hit → last-focused fallback
             kickPulse(w);
-            landAfterMove(w, m_lastDragBox, anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+            landAfterMove(w, m_lastDragBox, anim::cfg(anim::Id::Drop).ms, anim::cfg(anim::Id::Drop).curve);
           }
           return true;
         }
@@ -419,7 +419,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         // "+" (dropOnWorkspace already handles Kind::Plus) and moves the window in.
         if (dropOnStripCard(w, lx, ly, -1)) {
           kickPulse(w);
-          landAfterMove(w, m_lastDragBox, anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+          landAfterMove(w, m_lastDragBox, anim::cfg(anim::Id::Drop).ms, anim::cfg(anim::Id::Drop).curve);
           return true;
         }
         // A drop that resolved to nothing still flies back: fall through to the checks below.
@@ -437,7 +437,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         }
         closeTileWindow(press);
         beginSwapFX(w, m_lastDragBox, model::SwapStyle::Horizontal,
-                    anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+                    anim::cfg(anim::Id::SwapFly).ms, anim::cfg(anim::Id::SwapFly).curve);
         ensureAnimPump();
         damage();
         return true;
@@ -579,7 +579,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         if (dropOnStripCard(w, lx, ly, stripItem)) {
           debug::dbg("[REL] branch=StripWin->dropOnStripCard");
           kickPulse(w);
-          landAfterMove(w, fromBox, anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+          landAfterMove(w, fromBox, anim::cfg(anim::Id::Drop).ms, anim::cfg(anim::Id::Drop).curve);
           return true;
         }
         const int homeIdx = stripItemAt(lx, ly);
@@ -599,7 +599,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
           }
           beginSwapFX(w, fromBox,
                       parseSwapStyle(anim::style("strip_swap")),
-                      anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+                      anim::cfg(anim::Id::SwapFly).ms, anim::cfg(anim::Id::SwapFly).curve);
           // beginSwapFX may reuse a slot: force `from` on the entry it just pushed.
           if (!m_fx.swapfx().empty())
             m_fx.lastSwap()->from = fromBox;
@@ -644,7 +644,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
                 swapOnWorkspace(w, it);
                 debug::dbg("[REL] branch=StripWin->swapOnWorkspace(fallback)");
                 kickPulse(w);
-                landAfterMove(w, fromBox, anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+                landAfterMove(w, fromBox, anim::cfg(anim::Id::Drop).ms, anim::cfg(anim::Id::Drop).curve);
                 return true;
               }
             }
@@ -655,7 +655,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
                 dropOnWorkspace(w, it);
                 debug::dbg("[REL] branch=StripWin->dropOnWorkspace");
                 kickPulse(w);
-                landAfterMove(w, fromBox, anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+                landAfterMove(w, fromBox, anim::cfg(anim::Id::Drop).ms, anim::cfg(anim::Id::Drop).curve);
                 return true;
               }
             }
@@ -667,7 +667,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
         if (auto *home = homeStripCardFor(w))
           switchToWorkspace(*home);
         beginSwapFX(w, fromBox, model::SwapStyle::Horizontal,
-                    anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+                    anim::cfg(anim::Id::SwapFly).ms, anim::cfg(anim::Id::SwapFly).curve);
       }
       damage();
       return true;

@@ -253,6 +253,9 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `close_glyph_color` | color | `"0xffffffff"` | the `✕` glyph itself, drawn on top of `close_button_color` |
 | `label_color` | color | `"0xf2ffffff"` | window/workspace name text under tiles and strip cards |
 | `title_pill_color` | color | `"0xcc11151c"` | pill behind a tile's title label in desktop/canvas mode |
+| `lift_ms` | int | `400` | the raise when a tile is picked up |
+| `swap_fly_ms` | int | `400` | the flight between slots on a swap |
+| `drop_ms` | int | `400` | window landing after a drop |
 | `carousel_count_pill_color` | color | `"0xcc11151c"` | pill behind the carousel counter (`1 / 4`) |
 | `appear_stagger` | float | `0.08` | entry ladder: how far the tile entry is spread across the window (as a fraction) |
 | `appear_stagger_per_tile` | float | `0.015` | extra spread per tile, capped by `appear_stagger` |

@@ -25,7 +25,7 @@ namespace gloview::anim {
 enum class Id : std::uint8_t {
   Open, Close, Glide, Appear, Card, Pulse, StripStep,
   WsEnter, WsExit, ExpoIn, ExpoOut, JumpIn, JumpOut,
-  SwapMain, SwapPartner, Drag, CarouselStep, NewCard,
+  SwapMain, SwapPartner, Drop, SwapFly, Lift, CarouselStep, NewCard,
   Count
 };
 

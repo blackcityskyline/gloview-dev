@@ -137,7 +137,7 @@ void Overview::updateAnimation() {
   m_glide      = anim::cfg(glideLeaf());
   m_entry      = anim::cfg(entryLeaf());
   m_ghost      = anim::cfg(ghostLeaf());
-  m_lift       = anim::cfg(anim::Id::Drag);
+  m_lift       = anim::cfg(anim::Id::Lift);
   m_enterStyle = anim::style("ws_enter");
   m_exitStyle  = anim::style("ws_exit");
 
@@ -156,7 +156,7 @@ void Overview::updateAnimation() {
       if (m_newCardAnim)
         m_clocks.newCard.compensateStall(gapMs, newCardDur());
       if (m_drag.lifted)
-        m_clocks.dragLift.compensateStall(gapMs, anim::cfg(anim::Id::Drag).ms);
+        m_clocks.dragLift.compensateStall(gapMs, anim::cfg(anim::Id::Lift).ms);
       m_fx.eachSwap([&](auto &fx) { fx.clock.compensateStall(gapMs, fx.ms); });
     }
   }

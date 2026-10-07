@@ -20,6 +20,7 @@ struct Row {
   cfg::Float  speed;
   cfg::Str    curve;
   cfg::Str    style;
+  cfg::Int    ms;      // absolute duration; _speed still scales it
   float       base;
   const char *curveDef;
   bool        hasStyle;
@@ -27,24 +28,29 @@ struct Row {
 };
 
 static std::array<Row, static_cast<std::size_t>(Id::Count)> kRows = {{
-  {"open", {}, {}, {}, {}, 500, "easeout", false, ""},
-  {"close", {}, {}, {}, {}, 500, "easeout", false, ""},
-  {"glide", {}, {}, {}, {}, 300, "easeout", false, ""},
-  {"appear", {}, {}, {}, {}, 250, "easeout", false, ""},
-  {"card", {}, {}, {}, {}, 250, "back", false, ""},
-  {"pulse", {}, {}, {}, {}, 180, "back", false, ""},
-  {"strip_step", {}, {}, {}, {}, 200, "easeinout", false, ""},
-  {"ws_enter", {}, {}, {}, {}, 250, "easeout", true, "slide"},
-  {"ws_exit", {}, {}, {}, {}, 250, "easeout", true, "slide"},
-  {"expo_in", {}, {}, {}, {}, 250, "easeout", false, ""},
-  {"expo_out", {}, {}, {}, {}, 250, "easeout", false, ""},
-  {"jump_in", {}, {}, {}, {}, 180, "easeout", false, ""},
-  {"jump_out", {}, {}, {}, {}, 220, "easeout", false, ""},
-  {"swap_main", {}, {}, {}, {}, 320, "easeinout", false, ""},
-  {"swap_partner", {}, {}, {}, {}, 320, "easeinout", false, ""},
-  {"drag", {}, {}, {}, {}, 400, "easeout", false, ""},
-  {"carousel_step", {}, {}, {}, {}, 300, "easeout", false, ""},
-  {"new_card", {}, {}, {}, {}, 250, "easeout", false, ""},
+{"open", {}, {}, {}, {}, {}, 500, "easeout", false, ""},
+{"close", {}, {}, {}, {}, {}, 500, "easeout", false, ""},
+{"glide", {}, {}, {}, {}, {}, 300, "easeout", false, ""},
+{"appear", {}, {}, {}, {}, {}, 250, "easeout", false, ""},
+{"card", {}, {}, {}, {}, {}, 250, "back", false, ""},
+{"pulse", {}, {}, {}, {}, {}, 180, "back", false, ""},
+{"strip_step", {}, {}, {}, {}, {}, 200, "easeinout", false, ""},
+{"ws_enter", {}, {}, {}, {}, {}, 250, "easeout", true, "slide"},
+{"ws_exit", {}, {}, {}, {}, {}, 250, "easeout", true, "slide"},
+{"expo_in", {}, {}, {}, {}, {}, 250, "easeout", false, ""},
+{"expo_out", {}, {}, {}, {}, {}, 250, "easeout", false, ""},
+{"jump_in", {}, {}, {}, {}, {}, 180, "easeout", false, ""},
+{"jump_out", {}, {}, {}, {}, {}, 220, "easeout", false, ""},
+{"swap_main", {}, {}, {}, {}, {}, 320, "easeinout", false, ""},
+{"swap_partner", {}, {}, {}, {}, {}, 320, "easeinout", false, ""},
+  // One animation per ACTION, not one per feeling. These three shared "drag" while meaning
+  // a landing, a fly-between-slots and a raise; config could not tell them apart, and a
+  // single _speed therefore moved all three at once.
+{"drop", {}, {}, {}, {}, {}, 400, "easeout", false, ""},
+{"swap_fly", {}, {}, {}, {}, {}, 400, "easeout", false, ""},
+{"lift", {}, {}, {}, {}, {}, 400, "easeout", false, ""},
+{"carousel_step", {}, {}, {}, {}, {}, 300, "easeout", false, ""},
+{"new_card", {}, {}, {}, {}, {}, 250, "easeout", false, ""},
 }};
 
 static cfg::Int g_globallyEnabled;
@@ -100,10 +106,11 @@ Cfg cfg(const char *n) {
     c.ms = 1.0;
     return c;
   }
-  c.ms = absMs >= 0 ? std::max(16.0, static_cast<double>(absMs))
-                    : std::max(16.0,
-                               static_cast<double>(r->base) /
-                                   std::clamp(speed, 0.01, 20.0));
+  // The key IS the base duration -- it defaults to the table's base, so existing configs
+  // are unchanged -- and _speed still scales it. A Lua rule's ms overrides both outright.
+  const double base = absMs >= 0 ? static_cast<double>(absMs)
+                                  : static_cast<double>(r->ms.v ? r->ms.get() : r->base);
+  c.ms = std::max(16.0, base / std::clamp(speed, 0.01, 20.0));
   c.curve = (ruleFor(r->name) && ruleFor(r->name)->curve)
                 ? *ruleFor(r->name)->curve
                 : (r->curve.v ? r->curve.get() : std::string(r->curveDef));
@@ -174,6 +181,10 @@ void registerAll(HANDLE handle) {
     r.speed.v = makeShared<Config::Values::CFloatValue>(key(r.name, "_speed"), "", 1.0F);
     r.speed.def = 1.0F;
     HyprlandAPI::addConfigValueV2(handle, r.speed.v);
+    r.ms.v = makeShared<Config::Values::CIntValue>(key(r.name, "_ms"), "",
+                                                  static_cast<Config::INTEGER>(r.base));
+    r.ms.def = static_cast<int>(r.base);
+    HyprlandAPI::addConfigValueV2(handle, r.ms.v);
     r.curve.v = makeShared<Config::Values::CStringValue>(key(r.name, "_curve"), "",
                                                          r.curveDef);
     r.curve.def = r.curveDef;

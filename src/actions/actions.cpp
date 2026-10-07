@@ -309,7 +309,7 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   }
 
   replayReflow(oldBoxes);
-  landAfterMove(w, m_lastDragBox, anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
+  landAfterMove(w, m_lastDragBox, anim::cfg(anim::Id::Drop).ms, anim::cfg(anim::Id::Drop).curve);
   for (const auto &[win, box] : oldBoxes)
     if (win == partner)
       landAfterMove(partner, box, anim::cfg(anim::Id::SwapPartner).ms,
