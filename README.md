@@ -263,6 +263,10 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `pulse_ring_scale` | float | `0.10` | how far the post-drop pulse ring reaches past the tile edge |
 | `lift_scale` | float | `0.07` | how much a picked-up tile grows |
 | `lift_rise` | float | `5.0` | how far a picked-up tile rises, px |
+| `kill_zone` | int | `1` | closing a window by dragging it to the screen edge; `0` makes the edge a no-op |
+| `kill_zone_size` | float | `40` | thickness of that edge zone, px |
+| `kill_zone_falloff` | float | `150` | how far from the zone its glow reaches, px |
+| `click_window_ms` | int | `400` | window in which two clicks count as a double-click (`close_trigger=doubleclick`) |
 | `drop_hint_color` | color | `"0x38ffffff"` | drop-zone highlight flash on a workspace card while dragging |
 | `close_button_visibility` | `shift` \| `always` | `shift` | `shift`: close buttons only show in desktop/canvas mode (`key_desktop`) — `always`: show them on every tile and strip card all the time |
 | `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |

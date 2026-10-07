@@ -179,6 +179,12 @@ struct behavior {
   Int scroll_switches_workspace;
   Int passthrough_keys;
   Int exit_on_click;
+  // Closing a window by dragging it to the screen edge. The zone is the strip opposite the
+  // strip band; disabling it leaves the edge a no-op instead of a trap.
+  Int kill_zone;
+  Float kill_zone_size;
+  Float kill_zone_falloff;
+  Int click_window_ms;
   Int exit_on_switch;
   Int switch_on_drop;
   Int drag_to_swap;

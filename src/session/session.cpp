@@ -201,13 +201,15 @@ std::string Overview::cursorMode() const {
 
 namespace {
 } // namespace
-static constexpr double kKillZoneFalloff = 150.0;
+static double kKillZoneFalloff() { return cfg::behavior.kill_zone_falloff; }
 
 LRect Overview::killZoneRect() const {
   const auto m = m_monitor.lock();
   if (!m)
     return {};
-  constexpr double kH = 40.0; // 50 * 0.8: 20% shorter
+  if (cfg::behavior.kill_zone == 0)
+    return {}; // disabled: an empty rect contains nothing and never closes a window
+  const double kH = cfg::behavior.kill_zone_size;
   const bool atTop = stripAnchor() == Anchor::Bottom;
   return LRect{0.0, atTop ? 0.0 : m->m_size.y - kH, m->m_size.x, kH};
 }
@@ -222,7 +224,7 @@ double Overview::killZoneGlow(double lx, double ly) const {
   const double dx = std::max({z.x - lx, 0.0, lx - (z.x + z.w)});
   const double dy = std::max({z.y - ly, 0.0, ly - (z.y + z.h)});
   const double d  = std::sqrt(dx * dx + dy * dy);
-  const double t  = std::clamp(1.0 - d / kKillZoneFalloff, 0.0, 1.0);
+  const double t  = std::clamp(1.0 - d / kKillZoneFalloff(), 0.0, 1.0);
   return t * t * (3.0 - 2.0 * t);
 }
 

@@ -224,7 +224,10 @@ void Overview::updateHover() {
 
 namespace {
 // close_trigger=doubleclick: a touchpad double-tap is the pair.
-constexpr auto DBLCLICK_WINDOW = std::chrono::milliseconds(400);
+const auto dblclickWindow = [] {
+  return std::chrono::milliseconds(
+      std::max(1, cfg::behavior.click_window_ms.get()));
+};
 } // namespace
 
 bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
@@ -511,7 +514,7 @@ bool Overview::onMouseButton(const IPointer::SButtonEvent &e) {
       cancelPendingClick(); // drop any OTHER tile's still-pending timer first
       m_pendingClickWin = w;
       m_clickTimer = makeShared<CEventLoopTimer>(
-          DBLCLICK_WINDOW,
+          dblclickWindow(),
           [this](SP<CEventLoopTimer>, void *) {
             const auto pw = m_pendingClickWin.lock();
             m_pendingClickWin.reset();

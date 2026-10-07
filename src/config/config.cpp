@@ -136,6 +136,8 @@ constexpr IntSpec kInts[] = {
     {&behavior.scroll_switches_workspace, "plugin:gloview:scroll_switches_workspace", 1},
     {&behavior.passthrough_keys, "plugin:gloview:passthrough_keys", 1},
     {&behavior.exit_on_click, "plugin:gloview:exit_on_click", 1},
+    {&behavior.kill_zone, "plugin:gloview:kill_zone", 1},
+    {&behavior.click_window_ms, "plugin:gloview:click_window_ms", 400},
     {&behavior.exit_on_switch, "plugin:gloview:exit_on_switch", 0},
     {&behavior.switch_on_drop, "plugin:gloview:switch_on_drop", 0},
     {&behavior.drag_to_swap, "plugin:gloview:drag_to_swap", 1},
@@ -150,6 +152,8 @@ constexpr IntSpec kInts[] = {
 };
 
 constexpr FloatSpec kFloats[] = {
+    {&behavior.kill_zone_size, "plugin:gloview:kill_zone_size", 40.0},
+    {&behavior.kill_zone_falloff, "plugin:gloview:kill_zone_falloff", 150.0},
     {&grid.max_scale, "plugin:gloview:max_scale", 1.0F},
     {&look.preview_round_power, "plugin:gloview:preview_round_power", 2.0F},
     {&blur.strength, "plugin:gloview:blur", 1.0F},
