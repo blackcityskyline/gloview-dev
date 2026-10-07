@@ -146,10 +146,7 @@ struct blur {
   Int size;
   Int resolution;
   Color backdrop;
-  // Same: deprecated no-op, still registered so existing configs keep loading.
-  Int frost_underlay;
-  // Same: the mpv fullscreen-background source was removed, key kept for compatibility.
-  Int fullscreen_background;};
+};
 
 inline blur blur;
 
