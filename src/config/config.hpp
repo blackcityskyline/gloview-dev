@@ -64,6 +64,11 @@ inline grid grid;
 // layout of its own — see Overview::layoutTiles for where it takes over.
 struct carousel {
   Int enabled;
+  // Depth shading of the run: the nearest unfocused card's tone, the far one, and how fast
+  // each step deeper multiplies down.
+  Float tone_near;
+  Float tone_far;
+  Float depth_taper;
   Int cards;
   Int card_width;
   Float scale;
@@ -124,6 +129,11 @@ struct look {
   Float title_gap;
   Float title_margin;
   Float close_glyph_fill;
+  // Drag preview offset from the pointer, so the drop zones stay visible under it, and the
+  // vertical lift of a SlideVert swap.
+  Float drag_offset_x;
+  Float drag_offset_y;
+  Float swap_lift;
   Str close_button_position;
   Str close_button_visibility;
   Str close_trigger;
@@ -201,6 +211,7 @@ struct behavior {
   // strip band; disabling it leaves the edge a no-op instead of a trap.
   Int kill_zone;
   Float kill_zone_size;
+  Int kill_zone_reach;
   Float kill_zone_falloff;
   Int click_window_ms;
   Int exit_on_switch;

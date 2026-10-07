@@ -279,6 +279,13 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `title_gap` | float | `10` | gap between a tile and its title pill |
 | `title_margin` | float | `6` | screen margin kept around the title pill |
 | `close_glyph_fill` | float | `0.62` | fraction of the close button the glyph fills |
+| `drag_offset_x` | float | `46` | horizontal offset of the drag preview from the pointer |
+| `drag_offset_y` | float | `64` | vertical offset of the drag preview from the pointer |
+| `swap_lift` | float | `12` | vertical lift of a `slidevert` swap |
+| `kill_zone_reach` | int | `160` | how many px of kill-zone glow are drawn |
+| `carousel_tone_near` | float | `0.125` | depth shading of the nearest unfocused carousel card |
+| `carousel_tone_far` | float | `0.25` | depth shading of a far unfocused carousel card |
+| `carousel_depth_taper` | float | `0.8` | per-step falloff of that shading with depth |
 | `drop_hint_color` | color | `"0x38ffffff"` | drop-zone highlight flash on a workspace card while dragging |
 | `close_button_visibility` | `shift` \| `always` | `shift` | `shift`: close buttons only show in desktop/canvas mode (`key_desktop`) — `always`: show them on every tile and strip card all the time |
 | `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |

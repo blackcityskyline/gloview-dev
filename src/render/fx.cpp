@@ -24,8 +24,12 @@ using Render::GL::g_pHyprOpenGL;
 namespace gloview {
 
 namespace {
-// Down-right of the pointer, so the drop zones stay visible under the preview.
-constexpr double offX = 46.0, offY = 64.0;
+// Down-right of the pointer, so the drop zones stay visible under the preview. Read at the
+// use site, never at namespace scope: a global initialised from a config value is built
+// before PLUGIN_INIT registers that value, and the static init order is undefined across
+// translation units -- reading it there took the whole compositor down at startup.
+const double dragOffsetX() { return cfg::look.drag_offset_x; }
+const double dragOffsetY() { return cfg::look.drag_offset_y; }
 double dragScale() {
   return std::clamp(static_cast<double>(cfg::look.drag_size), 0.15, 1.0);
 }
@@ -41,7 +45,7 @@ LRect Overview::dragBox() const {
                  base.w, base.h};
   const LRect full = tileBox(static_cast<size_t>(dragIdx), base);
   const double k   = dragScale();
-  return LRect{m_drag.x + offX, m_drag.y + offY, full.w * k, full.h * k};
+  return LRect{m_drag.x + dragOffsetX(), m_drag.y + dragOffsetY(), full.w * k, full.h * k};
 }
 
 LRect Overview::dragStripBox() const {
@@ -51,7 +55,7 @@ LRect Overview::dragStripBox() const {
   const double ww    = sw * dragScale();
   const auto size    = m_drag.win.lock()->sizeAnimation()->goal();
   const double aspect = (size.x > 0 && size.y > 0) ? size.x / size.y : 16.0 / 9.0;
-  return LRect{m_drag.x + offX, m_drag.y + offY, ww, ww / std::max(0.1, aspect)};
+  return LRect{m_drag.x + dragOffsetX(), m_drag.y + dragOffsetY(), ww, ww / std::max(0.1, aspect)};
 }
 
 double Overview::dragLiftProgress() const {
@@ -158,7 +162,7 @@ void Overview::renderKillZone() const {
   const bool zoneAtTop = stripAnchor() == Anchor::Bottom;
   // ONE falloff from the SCREEN edge, through the band and into the screen. Two
   // ramps — band and halo — put a step where they met that read as a second line.
-  constexpr int kReach = 160; // 200 * 0.8: the glow is 20% shorter
+  const int kReach = cfg::behavior.kill_zone_reach;
   for (int d = 0; d < kReach; ++d) {
     const double f = static_cast<double>(d) / kReach;
     const double a = std::pow(1.0 - f, 2.5) * 0.4675 * glow; // 0.55 less 15%
@@ -282,7 +286,7 @@ void Overview::renderSwapFX() const {
     bool ring = false;
 
     if (fx.style == model::SwapStyle::SlideVert) {
-      constexpr double LIFT = 12.0;
+      const double LIFT = cfg::look.swap_lift;
       if (t < 0.5) {
         const double q = curves::eval(fx.curve, t / 0.5);
         bx = fx.from.x;

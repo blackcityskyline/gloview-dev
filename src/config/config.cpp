@@ -137,6 +137,7 @@ constexpr IntSpec kInts[] = {
     {&behavior.passthrough_keys, "plugin:gloview:passthrough_keys", 1},
     {&behavior.exit_on_click, "plugin:gloview:exit_on_click", 1},
     {&behavior.kill_zone, "plugin:gloview:kill_zone", 1},
+    {&behavior.kill_zone_reach, "plugin:gloview:kill_zone_reach", 160},
     {&behavior.click_window_ms, "plugin:gloview:click_window_ms", 400},
     {&behavior.exit_on_switch, "plugin:gloview:exit_on_switch", 0},
     {&behavior.switch_on_drop, "plugin:gloview:switch_on_drop", 0},
@@ -152,6 +153,12 @@ constexpr IntSpec kInts[] = {
 };
 
 constexpr FloatSpec kFloats[] = {
+    {&look.drag_offset_x, "plugin:gloview:drag_offset_x", 46.0},
+    {&look.drag_offset_y, "plugin:gloview:drag_offset_y", 64.0},
+    {&look.swap_lift, "plugin:gloview:swap_lift", 12.0},
+    {&carousel.tone_near, "plugin:gloview:carousel_tone_near", 0.125},
+    {&carousel.tone_far, "plugin:gloview:carousel_tone_far", 0.25},
+    {&carousel.depth_taper, "plugin:gloview:carousel_depth_taper", 0.8},
     {&look.shadow_radius, "plugin:gloview:shadow_radius", 6.0},
     {&look.shadow_radius_lift, "plugin:gloview:shadow_radius_lift", 14.0},
     {&look.shadow_alpha, "plugin:gloview:shadow_alpha", 0.18},
