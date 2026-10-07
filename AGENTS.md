@@ -32,17 +32,33 @@
    с сохранением/восстановлением окружающего состояния (см. существующие примеры).
 7. **Конфиг читается только через `cfg*`-хелперы** (V2 `value()`), НЕ через
    deprecated `HyprlandAPI::getConfigValue()` — последний игнорирует Lua-конфиг.
-8. **Порядок фаз оверлея менять осознанно:** Back(хром) → surfaces → Buttons → … —
-   кнопки рисуются ПОСЛЕ своих поверхностей, иначе opaque-контент окон затирает их.
+8. **Порядок `paint()` менять осознанно** (`render/painter.cpp:185`): backdrop →
+   tiles/carousel → ghosts → pulses → strip → strip windows → strip buttons →
+   pulses → swapfx → drag → aboveLayers → cursor. Правило: сидящее ПОВЕРХ контента
+   рисуется ПОСЛЕ него (кнопки — после своих поверхностей, иначе opaque-контент
+   окон затирает их). Два осознанных исключения — в ARCHITECTURE.md: счётчик
+   карусели рисуется ДО карточек, `pushOut()` двигает хром из paint.
 9. **`m_pendingDeactivate`:** не деактивировать mid-frame — должен отрисоваться
    финальный кадр оверлея, иначе один прозрачный кадр (flicker).
+10. **Заголовки Lua (`<lua.h>`, `<lauxlib.h>`) — всегда внутри `extern "C"`.**
+    Без него C-функции манглятся в C++-имена и `dlopen` падает с
+    `undefined symbol: _Z14luaL_checktype...` — ДО `PLUGIN_INIT`, то есть выглядит
+    как «тихая ошибка конфига». Стоило суток. Файлы с Lua C API: `src/anim.cpp`,
+    `src/clock/curves.cpp`.
+11. **`const double x = cfg::…` в namespace scope — нельзя.** Инициализатор
+    выполняется до `PLUGIN_INIT`, конфиг ещё не прочитан.
+12. **`hl.config{…}` в пользовательском конфиге — только под `pcall`.** Без него
+    ошибка одного ключа обрушивает загрузку конфига, Hyprland выходит молча, без
+    падения и без отчёта. `hl.plugin.load` тоже под pcall — он глотает ошибку
+    загрузки .so, и это выглядит как «конфиг не подхватился».
 
 ## Минные поля (семантика, которую легко сломать)
 
 - `close()`: resume закрытия — `m_timeline.seek(1.0 - m_progress)`; при закрытии
   `m_progress = 1 - timeline.raw()` (инверсия направления!). Менять вместе.
 - Blur-кэш: source-identity проверка выполняется КАЖДЫЙ кадр ВНЕ dirty-guard —
-  именно так работает инвалидация mpv↔wallpaper. Не задвигать обратно внутрь.
+  единственный способ поймать смену источника (обои/видео/окно). В dirty-guard
+  кэш не инвалидируется никогда.
 - Кэш блюра — ЧИСТЫЙ блюр без dim и без анимации: dim рисуется отдельным rect'ом
   поверх блита, fade — только альфа блита `k=eased()`. `blur_strength` означает
   ТОЛЬКО радиус фильтра. Ключ кэша = srcId + passes/size/resolution/strength,
@@ -62,7 +78,22 @@
 ```bash
 cmake --build build -j$(nproc)          # цель build/gloview.so; зелёная сборка = минимум
 cmake --build build --target reload     # пересобрать + горячо перезагрузить в живой Hyprland
+cd build && ctest --output-on-failure  # 4 шва: layout_carousel, recency, carousel_exit, config_keys
 ```
+
+Правку `src/anim.cpp` / `src/clock/curves.cpp` (границы `extern "C"`) hot-reload
+не подхватит — нужен перезапуск сессии: сбой на `dlopen`, а не в рантайме.
+
+**Падение без coredump — читай первым:**
+
+```bash
+ls -t ~/.cache/hyprland/hyprlandCrashReport*.txt | head -1        # точный стек
+tail -100 /run/user/1000/hypr/$(ls -t /run/user/1000/hypr | head -1)/hyprland.log
+```
+
+`Hyprland --verify-config` как диагностика бесполезен: роняет композитор и БЕЗ
+плагина, подсовывая чужие core-дампы. Не делай `rm -rf /run/user/1000/hypr/*` —
+вместе с мусором уходят логи живых и упавших сессий.
 
 Окружение базовой сессии: Hyprland 0.56.2, lua 5.5.1, GLES 3.2, C++23.
 Критерий готовности шага: сборка без error/warning + поведение не изменилось
@@ -70,21 +101,29 @@ cmake --build build --target reload     # пересобрать + горячо 
 
 ## Карта исходников (`src/`)
 
+19 `.cpp`, плоско: слои из `ARCHITECTURE.md`. Подробности — там.
+
 | Файл | Ответственность |
 |---|---|
-| `overview.hpp` | класс Overview (+Tween, BlurCache), состояние сессии |
-| `main.cpp` | регистрация: конфиг-таблицы, единый реестр действий kActions |
-| `overview_core.cpp` | lifecycle (open/close/hardClose/deactivate), хуки, конфиг-хелперы |
-| `overview_render.cpp` | renderStage, backdrop+blur+entry-snapshot, strip chrome, cursor |
-| `overview_tiles_render.cpp` | хром плиток, drag-хром |
-| `overview_build.cpp` | buildTiles/buildStrip/layoutTiles/replayReflow/syncTiles |
-| `overview_input.cpp` | мышь (press/release/drag), hover, hit-test хелперы |
-| `overview_keys.cpp` | клавиатура, alt-tab, digit-jump |
-| `overview_actions.cpp` | drop/swap/add workspace, switchToWorkspace, stepWorkspace |
+| `overview.hpp` | класс Overview, состояние сессии, единственный владелец `m_active` |
+| `main.cpp` | регистрация: config-таблицы, единый реестр действий kActions |
+| `anim.hpp` / `anim.cpp` | **реестр анимаций**: enum Id, ключи конфига, дефолты, параметры формы, Lua-правила. `config.*` о нём не знает |
+| `config/config.hpp` / `.cpp` | типизированная схема значений + таблицы `kInts`/`kFloats`/`kStrs`/`kColors` |
+| `session/session.cpp` | lifecycle (open/close/hardClose/deactivate), хуки, геометрия стрипа |
+| `build/build.cpp` | buildTiles/buildStrip/layoutTiles/replayReflow/syncTiles |
+| `input/mouse.cpp`, `input/keys.cpp` | мышь, клавиатура, alt-tab, digit-jump |
+| `actions/actions.cpp` | drop/swap/add workspace, switchToWorkspace, stepWorkspace |
+| `render/painter.cpp` | renderStage + PainterPass, единственная точка регистрации прохода |
+| `render/backdrop.cpp` | бэкдроп: композит, кэш, prime-фаза, отложенное открытие |
+| `render/tile_view.cpp`, `carousel_view.cpp`, `strip_view.cpp`, `fx.cpp` | хром плиток, карусель, стрип, эффекты |
+| `render/window_content.cpp` | контент окна через публичный `IHyprRenderer::draw` |
+| `clock/clock.cpp`, `clocks.cpp`, `curves.cpp` | домен времени: tween, прогрессы, resolved anim cfg, реестр кривых |
+| `pixel/cache.cpp` | кэши: подписи, глифы, снапшоты |
+| `model/` | сцена: tiles, strip, drag, recency, effects |
 | `blur.*` | self-contained dual-Kawase+gaussian (детали в CLAUDE.md) |
 | `cursor.*` | HW/SW курсор поверх оверлея (следствие RENDER_LAST_MOMENT) |
-| `layout.hpp/.cpp` | чистая геометрия лейаута, без Hyprland (юнит-разумно) |
-| `overlay_gl.hpp` | общие GL-хелперы двух рендер-TU |
+| `layout.hpp/.cpp` | чистая геометрия лейаута, без Hyprland (единственный юнит-домен) |
+| `tests/` | ctest: `layout_carousel_check`, `recency_check`, `carousel_exit_check`, `config_keys_check` |
 
 ## Правила работы
 
@@ -96,7 +135,7 @@ cmake --build build --target reload     # пересобрать + горячо 
 - **Комментарии в коде** — английские, документируют «почему» и верифицированные
   факты о внутренностях Hyprland (файл:строка источника). Археологию удалённых
   багов в комментариях не плодить — для этого git history. Общие эссе — в общий
-  заголовок (overlay_gl.hpp как образец), не копировать между TU.
+  заголовок (`src/render/gl_util.hpp` как образец), не копировать между TU.
 - **Дедупликация прежде копипасты:** повторившийся 3+ раз паттерн → хелпер
   (`captureCurrentBoxes`, `releaseNewWorkspaces` — образцы). Хит-тесты — через
   `LRect::contains`.
@@ -111,6 +150,8 @@ cmake --build build --target reload     # пересобрать + горячо 
 
 - [ ] сборка зелёная (error И warning)
 - [ ] нет обращений к удалённым членам/API (grep по имени)
-- [ ] новые конфиги: добавлены в таблицы main.cpp + описаны в README
+- [ ] новые конфиги: в `src/config/config.cpp` (`kInts`/`kFloats`/`kStrs`/`kColors`)
+      или `src/anim.cpp` (`kRows`), описаны в README, зелёный `ctest` (ловит
+      «поле есть, регистрации нет»)
 - [ ] поведение по умолчанию не изменилось (если это не задумано)
 - [ ] REFACTORING.md обновлён
