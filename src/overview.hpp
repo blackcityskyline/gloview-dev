@@ -115,6 +115,11 @@ public:
   [[nodiscard]] bool isTileWindow(const PHLWINDOW &w) const;
 
   [[nodiscard]] bool active() const { return m_active; }
+  // open() parks before it becomes visible, so "did the open take" is active OR parked.
+  // Every caller that tests m_active right after open() must test this instead, or it reads
+  // a waiting open as a failed one -- that is what silently disarmed alt+tab.
+  // Also the predicate for input ownership: a parked frame already covers the windows.
+  [[nodiscard]] bool openedOrParked() const { return m_active || m_pendingOpen; }
   [[nodiscard]] bool opening() const { return m_opening; } // entry anim only
   [[nodiscard]] std::uint64_t frameTick() const { return m_frameTick; }
   [[nodiscard]] PHLMONITOR monitor() const { return m_monitor.lock(); }
@@ -143,10 +148,6 @@ private:
   // drawn), and the first non-black composite promotes the open. Measured reason: the frame
   // the overview is first visible had no backdrop of its own, and the wallpaper texture is
   // mid-recreation right then, so it composed black. Painting late beats painting black.
-  // open() parks before it becomes visible, so "did the open take" is active OR parked.
-  // Every caller that tests m_active right after open() must test this instead, or it reads
-  // a waiting open as a failed one -- that is what silently disarmed alt+tab.
-  [[nodiscard]] bool openedOrParked() const { return m_active || m_pendingOpen; }
   bool m_pendingOpen = false;
   int m_pendingTicks = 0;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
@@ -237,6 +238,8 @@ private:
   CHyprSignalListener m_keyL;
   CFunctionHook *m_shouldRenderHook = nullptr;
   CFunctionHook *m_damageSurfaceHook = nullptr;
+  CFunctionHook *m_setPointerFocusHook = nullptr;
+  CFunctionHook *m_setKeyboardFocusHook = nullptr;
 
   CCursorModule m_cursor; // KMS plane preferred, software erases-and-redraws
 

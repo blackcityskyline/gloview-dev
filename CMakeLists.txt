@@ -103,6 +103,15 @@ add_test(NAME load_seam
                  $<TARGET_FILE:gloview> ${HYPRLAND_BIN}
          SKIP_RETURN_CODE 77)
 
+# Hook signatures against the running compositor's exports. A mismatch makes
+# findFunctionsByName return nothing and initialize() fail, and hyprpm's plugin.load
+# swallows that, so the symptom reads as "my config did not take".
+add_test(NAME hook_signatures
+         COMMAND bash ${CMAKE_SOURCE_DIR}/tests/hook_signature_check.sh
+                 $<TARGET_FILE:gloview> ${HYPRLAND_BIN}
+                 ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+         SKIP_RETURN_CODE 77)
+
 add_custom_target(reload
   COMMAND bash -c "hyprctl gloviewunload || true"
   COMMAND ${CMAKE_COMMAND} -E sleep 0.15

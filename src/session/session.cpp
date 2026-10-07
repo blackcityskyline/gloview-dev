@@ -38,6 +38,61 @@ namespace {
 using PSHOULDRENDER = bool (*)(void *, PHLWINDOW, PHLMONITOR);
 PSHOULDRENDER g_shouldRenderOrig = nullptr;
 
+// --- input routing ---------------------------------------------------------
+//
+// shouldRenderWindow hides the real windows, but it hides them from the RENDERER
+// only. CSeatManager still hands them pointer and keyboard focus, so a window under
+// the cursor receives enter and motion while the overview is on screen, and a keypress
+// lands in whatever Hyprland happened to have focused. Both are invisible to
+// shouldRenderWindow and neither is reachable through Event::bus(): focus is not an
+// event the bus carries.
+//
+// These are the two functions where input BECOMES addressed, which is why they are
+// hooked rather than the send* calls: blocking a send leaves the seat believing the
+// window still has focus, and the compositor keeps routing to it.
+using PSETKEYFOCUS = void (*)(void *, SP<CWLSurfaceResource>);
+using PSETPTRFOCUS = void (*)(void *, SP<CWLSurfaceResource>, const Vector2D &);
+PSETKEYFOCUS g_setKeyboardFocusOrig = nullptr;
+PSETPTRFOCUS g_setPointerFocusOrig = nullptr;
+
+// True while the overview owns the screen. m_pendingDeactivate is deliberately NOT
+// included: the final frame still draws the overlay, and by then the desktop is
+// expected to be interactive again. openedOrParked() rather than active(), because the
+// parked frames are already the overview's -- the overlay is merely not drawn yet, and
+// input must not reach the windows it is covering.
+bool inputRoutedAway() {
+  return g_overview && g_overview->openedOrParked();
+}
+
+// The hooks refuse to move focus to a window, but they do not drop focus from the one
+// that already had it. Without this the window under the cursor keeps receiving motion
+// for the whole session. refocus() re-runs Hyprland's own resolution, which now lands
+// on nullptr because the hooks are in the way -- and lands on the real window again once
+// the overview is gone, so no separate restore path is needed.
+void dropFocusFromWindows() {
+  if (g_pInputManager)
+    g_pInputManager->refocus(std::nullopt);
+}
+
+void hkSetKeyboardFocus(void *thisptr, SP<CWLSurfaceResource> surf) {
+  if (inputRoutedAway()) {
+    // nullptr is Hyprland's own "no window has focus" value, so the seat ends up in
+    // the state it would be in with nothing to focus, rather than keeping a stale one.
+    g_setKeyboardFocusOrig(thisptr, nullptr);
+    return;
+  }
+  g_setKeyboardFocusOrig(thisptr, surf);
+}
+
+void hkSetPointerFocus(void *thisptr, SP<CWLSurfaceResource> surf,
+                       const Vector2D &local) {
+  if (inputRoutedAway()) {
+    g_setPointerFocusOrig(thisptr, nullptr, local);
+    return;
+  }
+  g_setPointerFocusOrig(thisptr, surf, local);
+}
+
 bool hkShouldRenderWindow(void *thisptr, PHLWINDOW window, PHLMONITOR monitor) {
   const bool hide = g_overview && g_overview->shouldHideWindow(window, monitor);
   if (g_overview && g_overview->opening()) {
@@ -102,8 +157,18 @@ Overview::~Overview() {
     HyprlandAPI::removeFunctionHook(m_handle, m_damageSurfaceHook);
     m_damageSurfaceHook = nullptr;
   }
+  if (m_setPointerFocusHook) {
+    HyprlandAPI::removeFunctionHook(m_handle, m_setPointerFocusHook);
+    m_setPointerFocusHook = nullptr;
+  }
+  if (m_setKeyboardFocusHook) {
+    HyprlandAPI::removeFunctionHook(m_handle, m_setKeyboardFocusHook);
+    m_setKeyboardFocusHook = nullptr;
+  }
   g_shouldRenderOrig = nullptr;
   g_damageSurfaceOrig = nullptr;
+  g_setPointerFocusOrig = nullptr;
+  g_setKeyboardFocusOrig = nullptr;
 }
 
 bool Overview::initialize() {
@@ -191,6 +256,55 @@ bool Overview::initialize() {
     HyprlandAPI::addNotification(
         m_handle, "[gloview] could not find damageSurface to hook",
         CHyprColor(1.0, 0.2, 0.2, 1.0), 6000);
+  }
+
+  // Input routing. Both are required: half of this is worse than none, because the
+  // overview would look modal for the keyboard and not for the mouse.
+  struct FocusHook {
+    const char *name;
+    const char *sig;
+    void *hookFn;
+    CFunctionHook **slot;
+    void **orig;
+  };
+  const FocusHook focusHooks[] = {
+      {"setPointerFocus",
+       "setPointerFocus(Hyprutils::Memory::CSharedPointer<CWLSurfaceResource>, "
+       "Hyprutils::Math::Vector2D const&)",
+       reinterpret_cast<void *>(&hkSetPointerFocus),
+       &m_setPointerFocusHook, reinterpret_cast<void **>(&g_setPointerFocusOrig)},
+      {"setKeyboardFocus", "setKeyboardFocus(Hyprutils::Memory::"
+                           "CSharedPointer<CWLSurfaceResource>)",
+       reinterpret_cast<void *>(&hkSetKeyboardFocus),
+       &m_setKeyboardFocusHook,
+       reinterpret_cast<void **>(&g_setKeyboardFocusOrig)},
+  };
+  for (const auto &fh : focusHooks) {
+    void *addrFocus = nullptr;
+    for (const auto &mt :
+         HyprlandAPI::findFunctionsByName(m_handle, fh.name)) {
+      if (mt.demangled.find(fh.sig) != std::string::npos) {
+        addrFocus = mt.address;
+        break;
+      }
+    }
+    if (!addrFocus) {
+      HyprlandAPI::addNotification(
+          m_handle,
+          std::string("[gloview] could not find ") + fh.name +
+              " to hook — input will reach the windows under the overview",
+          CHyprColor(1.0, 0.2, 0.2, 1.0), 6000);
+      return false;
+    }
+    *fh.slot = HyprlandAPI::createFunctionHook(m_handle, addrFocus, fh.hookFn);
+    if (!*fh.slot || !(*fh.slot)->hook()) {
+      *fh.slot = nullptr;
+      HyprlandAPI::addNotification(
+          m_handle, std::string("[gloview] failed to hook ") + fh.name,
+          CHyprColor(1.0, 0.2, 0.2, 1.0), 6000);
+      return false;
+    }
+    *fh.orig = (*fh.slot)->m_original;
   }
   return true;
 }
@@ -578,6 +692,9 @@ void Overview::open() {
                                  .count()));
   m_pendingDeactivate = false;
   m_progress = 0.0;
+  // Parked already counts as owned (see inputRoutedAway), so the real windows lose
+  // focus on the first parked frame, not when the overlay actually appears.
+  dropFocusFromWindows();
   // Immersive fade only when the desktop underneath has no windows: with windows, their
   // Hyprland blur is what covers the gap the ramp would open.
   m_landingEmpty = !workspaceHasWindows(m_liveWsAtOpen.lock());
@@ -826,6 +943,9 @@ void Overview::deactivate() {
   m_active = false;
   m_opening = false;
   m_pendingDeactivate = false;
+  // m_active is down, so the hooks pass focus through again; this is what actually
+  // gives the desktop its focus back rather than waiting for the next mouse move.
+  dropFocusFromWindows();
   m_view.setDesktop( false);
   m_view.setAllOverride( -1);
   m_altTabbing = false;
