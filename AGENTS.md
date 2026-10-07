@@ -18,8 +18,11 @@
    становятся STB_GNU_UNIQUE, glibc помечает .so NODELETE, `dlclose` не выгружает,
    и hot-reload молча гоняет СТАРЫЙ код.
 4. **Хуки ставятся по demangled-signature substring** (`shouldRenderWindow`,
-   `damageSurface`). Ломаются при смене ABI Hyprland (уже ломались на 0.56 —
-   namespace move). После обновления Hyprland первым делом проверять их.
+   `damageSurface`, `CSeatManager::setPointerFocus/setKeyboardFocus`). Ломаются при
+   смене ABI Hyprland (уже ломались на 0.56 — namespace move). Несовпадение =
+   `findFunctionsByName` ничего не находит → `initialize()` возвращает false →
+   `plugin.load` глотает ошибку → выглядит как «конфиг не подхватился». После
+   обновления Hyprland: `ctest -R hook_signatures`.
 5. **currentFB нельзя использовать как источник блюра/полос:** фуллскрин-окно на
    активном воркспейсе идёт через «solitary client» fast path в обход
    `shouldRenderWindow`. Источники — только `backdropSource()` /
@@ -40,6 +43,12 @@
    карусели рисуется ДО карточек, `pushOut()` двигает хром из paint.
 9. **`m_pendingDeactivate`:** не деактивировать mid-frame — должен отрисоваться
    финальный кадр оверлея, иначе один прозрачный кадр (flicker).
+10. **Владение вводом ≠ скрытие окон.** `shouldRenderWindow` прячет окна только от
+   рендерера; фокус им раздаёт `CSeatManager`, и через `Event::bus()` это не
+   отменяется. Пока овервью владеет экраном (включая паркованные кадры —
+   `openedOrParked()`, не `active()`), хуки `setPointerFocus`/`setKeyboardFocus`
+   не дают фокусу уйти в окна. Хук на `send*` бесполезен: seat продолжает считать
+   окно сфокусированным и маршрутизировать в него.
 10. **Заголовки Lua (`<lua.h>`, `<lauxlib.h>`) — всегда внутри `extern "C"`.**
     Без него C-функции манглятся в C++-имена и `dlopen` падает с
     `undefined symbol: _Z14luaL_checktype...` — ДО `PLUGIN_INIT`, то есть выглядит
@@ -78,7 +87,10 @@
 ```bash
 cmake --build build -j$(nproc)          # цель build/gloview.so; зелёная сборка = минимум
 cmake --build build --target reload     # пересобрать + горячо перезагрузить в живой Hyprland
-cd build && ctest --output-on-failure  # 4 шва: layout_carousel, recency, carousel_exit, config_keys
+cd build && ctest --output-on-failure
+# 6 проверок: recency, carousel_layout, carousel_exit, config_keys,
+#             load_seam (символы .so против экспорта Hyprland),
+#             hook_signatures (сигнатуры хуков против nm -DC /usr/bin/Hyprland)
 ```
 
 Правку `src/anim.cpp` / `src/clock/curves.cpp` (границы `extern "C"`) hot-reload
@@ -109,7 +121,7 @@ tail -100 /run/user/1000/hypr/$(ls -t /run/user/1000/hypr | head -1)/hyprland.lo
 | `main.cpp` | регистрация: config-таблицы, единый реестр действий kActions |
 | `anim.hpp` / `anim.cpp` | **реестр анимаций**: enum Id, ключи конфига, дефолты, параметры формы, Lua-правила. `config.*` о нём не знает |
 | `config/config.hpp` / `.cpp` | типизированная схема значений + таблицы `kInts`/`kFloats`/`kStrs`/`kColors` |
-| `session/session.cpp` | lifecycle (open/close/hardClose/deactivate), хуки, геометрия стрипа |
+| `session/session.cpp` | lifecycle (open/close/hardClose/deactivate), хуки (рендер + маршрутизация ввода), геометрия стрипа |
 | `build/build.cpp` | buildTiles/buildStrip/layoutTiles/replayReflow/syncTiles |
 | `input/mouse.cpp`, `input/keys.cpp` | мышь, клавиатура, alt-tab, digit-jump |
 | `actions/actions.cpp` | drop/swap/add workspace, switchToWorkspace, stepWorkspace |
