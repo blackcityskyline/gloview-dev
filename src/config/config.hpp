@@ -122,7 +122,10 @@ struct colors {
   Color shadow;
   Color label;
   Color title_pill;
-  Color carousel_count_pill;
+  // Registered, never read. The translucent-tile backing fill it configured is gone
+  // (0725444), but Hyprland REJECTS a config file that sets an unknown plugin key, so
+  // existing configs like this one must keep loading.
+  Color backing;  Color carousel_count_pill;
   Color drop_hint;
   Color close_button;
   Color close_glyph;
@@ -143,7 +146,10 @@ struct blur {
   Int size;
   Int resolution;
   Color backdrop;
-};
+  // Same: deprecated no-op, still registered so existing configs keep loading.
+  Int frost_underlay;
+  // Same: the mpv fullscreen-background source was removed, key kept for compatibility.
+  Int fullscreen_background;};
 
 inline blur blur;
 
