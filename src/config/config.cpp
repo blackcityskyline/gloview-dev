@@ -1,5 +1,7 @@
 #include "config.hpp"
 
+#include "../anim.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -129,7 +131,6 @@ constexpr IntSpec kInts[] = {
     {&blur.passes, "plugin:gloview:blur_passes", 3},
     {&blur.size, "plugin:gloview:blur_size", 8},
     {&blur.resolution, "plugin:gloview:blur_resolution", 4},
-    {&anim::enabled, "plugin:gloview:animations_enabled", 1},
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     {&behavior.focus_follows_mouse, "plugin:gloview:focus_follows_mouse", 1},
     {&behavior.scroll_switches_workspace, "plugin:gloview:scroll_switches_workspace", 1},
@@ -183,11 +184,6 @@ constexpr StrSpec kStrs[] = {
     {&keys.alt_tab_modifier, "plugin:gloview:alt_tab_modifier", "alt"},
     {&behavior.preview_mode, "plugin:gloview:preview_mode", "live"},
     {&behavior.tile_layout,  "plugin:gloview:tile_layout",  "none"},
-    {&anim::grid_swap_style, "plugin:gloview:grid_swap_style", "horizontal"},
-    {&anim::strip_swap_style, "plugin:gloview:strip_swap_style", "horizontal"},
-    {&anim::ws_enter_style, "plugin:gloview:ws_enter_style", "slide"},
-    {&anim::ws_exit_style, "plugin:gloview:ws_exit_style", "slide"},
-    {&anim::jump_style,    "plugin:gloview:jump_style",    "instant"},
     {&behavior.cursor_mode, "plugin:gloview:cursor_mode", "auto"},
     {&behavior.workspace_key_mode, "plugin:gloview:key_workspace_mode", "switch"},
     {&behavior.new_workspace_mode, "plugin:gloview:new_workspace_mode", "fill"},
@@ -220,49 +216,6 @@ constexpr ColorSpec kColors[] = {
 // ---- animation leaves ---------------------------------------------------------
 // One row per leaf: handles, base duration (what speed 1.0 means), default curve.
 // The resolver reads ONLY this table and the imperative rules.
-constexpr LeafSpec kLeaves[] = {
-    {"open", &anim::open, 500, "easeout"},         {"close", &anim::close, 500, "easeout"},
-    {"glide", &anim::glide, 300, "easeout"},       {"appear", &anim::appear, 250, "easeout"},
-    {"card", &anim::card, 250, "back"},            {"pulse", &anim::pulse, 180, "back"},
-    {"strip_step", &anim::strip_step, 200, "easeinout"},
-    {"ws_enter", &anim::ws_enter, 250, "easeout"}, {"ws_exit", &anim::ws_exit, 250, "easeout"},
-    {"expo_in", &anim::expo_in, 250, "easeout"},   {"expo_out", &anim::expo_out, 250, "easeout"},
-    {"jump_in",  &anim::jump_in,  180, "easeout"}, {"jump_out", &anim::jump_out, 220, "easeout"},
-    {"swap_main", &anim::swap_main, 320, "easeinout"},
-    {"swap_partner", &anim::swap_partner, 320, "easeinout"},
-    {"drag", &anim::drag, 400, "easeout"},
-    {"carousel_step", &anim::carousel_step, 300, "easeout"},
-};
-
-void registerLeaf(HANDLE handle, const LeafSpec &l) {
-  // deque: element addresses stay valid across appends, and the keys must outlive
-  // registration (CIntValue keeps them as const char*).
-  static std::deque<std::string> keys;
-  const auto key = [&](const char *suffix) {
-    keys.emplace_back(std::string("plugin:gloview:") + l.name + "_" + suffix);
-    return keys.back().c_str();
-  };
-  auto reg = [](HANDLE h, const char *k, auto v) {
-    HyprlandAPI::addConfigValueV2(h, v);
-  };
-  l.leaf->enabled.v = makeShared<Config::Values::CIntValue>(key("enabled"), "", static_cast<Config::INTEGER>(1));
-  l.leaf->enabled.def = 1;
-  reg(handle, key("enabled"), l.leaf->enabled.v);
-  l.leaf->speed.v = makeShared<Config::Values::CFloatValue>(key("speed"), "", 1.0F);
-  l.leaf->speed.def = 1.0F;
-  reg(handle, key("speed"), l.leaf->speed.v);
-  l.leaf->curve.v = makeShared<Config::Values::CStringValue>(key("curve"), "", l.curveDef);
-  l.leaf->curve.def = l.curveDef;
-  reg(handle, key("curve"), l.leaf->curve.v);
-}
-
-const LeafSpec *animLeaf(const char *name) {
-  for (const auto &l : kLeaves)
-    if (std::strcmp(l.name, name) == 0)
-      return &l;
-  return nullptr;
-}
-
 void registerAll(HANDLE handle) {
   for (auto &s : kInts) {
     s.h->v = makeShared<Config::Values::CIntValue>(s.key, "",
@@ -288,68 +241,7 @@ void registerAll(HANDLE handle) {
     s.h->def = s.def;
     HyprlandAPI::addConfigValueV2(handle, s.h->v);
   }
-  // Leaf keys are BUILT here, kept alive in a deque for the reason above.
-  for (const auto &l : kLeaves)
-    registerLeaf(handle, l);
-}
-
-
-namespace {
-std::unordered_map<std::string, AnimRule> g_rules;
-} // namespace
-
-void setAnimRule(const std::string &leaf, const AnimRule &rule) { g_rules[leaf] = rule; }
-const AnimRule *animRule(const std::string &leaf) {
-  const auto it = g_rules.find(leaf);
-  return it == g_rules.end() ? nullptr : &it->second;
-}
-
-std::string animStyle(const std::string &thing) {
-  static const std::unordered_map<std::string, const Str *> k = {
-      {"ws_enter", &anim::ws_enter_style},  {"ws_exit", &anim::ws_exit_style},
-      {"grid_swap", &anim::grid_swap_style},{"strip_swap", &anim::strip_swap_style},
-  };
-  if (const auto *r = animRule(thing); r && r->style)
-    return *r->style;
-  const auto it = k.find(thing);
-  return it == k.end() ? std::string() : it->second->get();
-}
-
-// gloview.animation({ leaf, enabled, speed, ms, curve, style }) — an imperative
-// rule layered over the schema keys; whatever it sets wins.
-int luaSetAnimRule(::lua_State *L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-  lua_settop(L, 1);
-  lua_getfield(L, 1, "leaf");
-  const char *leaf = luaL_checkstring(L, -1);
-  lua_pop(L, 1);
-  AnimRule r;
-  auto num = [&](const char *k) -> std::optional<double> {
-    lua_getfield(L, 1, k);
-    const bool ok = lua_isnumber(L, -1);
-    const double v = ok ? lua_tonumber(L, -1) : 0.0;
-    lua_pop(L, 1);
-    return ok ? std::optional(v) : std::nullopt;
-  };
-  auto str = [&](const char *k) -> std::optional<std::string> {
-    lua_getfield(L, 1, k);
-    const bool ok = lua_isstring(L, -1);
-    const std::string v = ok ? lua_tostring(L, -1) : "";
-    lua_pop(L, 1);
-    return ok ? std::optional(v) : std::nullopt;
-  };
-  lua_getfield(L, 1, "enabled");
-  if (lua_isboolean(L, -1))
-    r.enabled = lua_toboolean(L, -1) != 0;
-  lua_pop(L, 1);
-  if (const auto v = num("speed"))
-    r.speed = *v;
-  if (const auto v = num("ms"))
-    r.ms = static_cast<int>(*v);
-  r.curve = str("curve");
-  r.style = str("style");
-  setAnimRule(leaf, r);
-  return 0;
+  anim::registerAll(handle);
 }
 
 } // namespace gloview

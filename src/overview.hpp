@@ -29,6 +29,7 @@ namespace Config {
 class CGradientValueData; // general:col.active_border's real type
 }
 
+#include "anim.hpp"
 #include "clock/clocks.hpp"
 #include "clock/clock.hpp"
 #include "view/state.hpp"
@@ -187,14 +188,14 @@ private:
   double m_stripScrollTarget = 0.0;
   double m_stripScrollFrom = 0.0;
   void animateStripTo(double from, double to);
-  anim::AnimCfg m_glide, m_entry, m_ghost, m_lift;
+  anim::Cfg m_glide, m_entry, m_ghost, m_lift;
   std::string m_enterStyle, m_exitStyle;
   bool animBusy() const;
   // Clocks that outlive the master: the pump must name every clock or the next one
   // added never arms it.
   bool secondaryAnimsActive() const {
-    return m_clocks.anyRunning(leaf(entryLeaf()).ms, leaf(ghostLeaf()).ms,
-                               leaf("strip_step").ms);
+    return m_clocks.anyRunning(anim::cfg(entryLeaf()).ms, anim::cfg(ghostLeaf()).ms,
+                               anim::cfg(anim::Id::StripStep).ms);
   }
   // Read on the call site: a config edit mid-fade retimes the rest of the ramp.
   double blurAlpha() const; // backdrop strength, on the open/close clock
@@ -207,9 +208,9 @@ private:
   // change while the overview is up (all-workspaces, digit jump).
   mutable bool m_landingEmpty = true;
   double tileAppear(int i) const; // staggered 0..1 for tile i
-  const char *entryLeaf() const;
-  const char *ghostLeaf() const;
-  const char *glideLeaf() const;
+  anim::Id entryLeaf() const;
+  anim::Id ghostLeaf() const;
+  anim::Id glideLeaf() const;
   double entryFade(size_t i) const;
   void kickPulse(const PHLWINDOW &w);
   void beginSwapFX(const PHLWINDOW &w, const LRect &from,
@@ -262,7 +263,6 @@ private:
   void updateSnapshots();
   std::string cursorMode() const;
 
-  anim::AnimCfg leaf(const char *name) const;
 
   enum class Anchor { Top, Bottom, Left, Right };
   Anchor stripAnchor() const; // falls back to bar_position
@@ -294,10 +294,10 @@ private:
   // per-window fades — a fading original under the preview reads as double vision.
   double eased() const; // chrome opacity / backdrop progress
   double animDuration() const; // read LIVE, so config applies in-flight
-  double glideDur() const { return m_clocks.tileMs > 0 ? m_clocks.tileMs : leaf(glideLeaf()).ms; }
+  double glideDur() const { return m_clocks.tileMs > 0 ? m_clocks.tileMs : anim::cfg(glideLeaf()).ms; }
   bool entrySettled() const;
   uint32_t altTabModBit() const;
-  double newCardDur() const { return std::max(120.0, leaf("new_card").ms); }
+  double newCardDur() const { return std::max(120.0, anim::cfg(anim::Id::NewCard).ms); }
   double tileProgress(int i) const;
   LRect currentBox(const model::Tile &t, int i) const;
   LRect dragBox() const;

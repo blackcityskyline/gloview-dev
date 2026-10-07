@@ -868,10 +868,14 @@ void Overview::rearmanim() const {
 
 void Overview::ensureAnimPump() {
   if (!animBusy()) {
-    if (m_animPump) {
+    // Disarm, never reset. This runs from inside the timer OWN callback, while the event loop
+    // iterates its timer list: dropping the last shared pointer here destroys the timer from
+    // inside CEventLoopManager::nudgeTimers(), which then walks freed memory. Backtrace of the
+    // Hyprland SIGSEGV that killed the compositor on reload:
+    //   CSharedPointer<CEventLoopTimer>::_delete -> nudgeTimers -> wl_event_loop_dispatch_idle
+    // The object lives as long as the Overview; it is re-armed below when work resumes.
+    if (m_animPump)
       m_animPump->cancel();
-      m_animPump.reset();
-    }
     return;
   }
   if (m_animPump && m_animPump->armed())

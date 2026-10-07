@@ -19,7 +19,7 @@ namespace gloview {
 
 // Both entry clocks done. Committing before this truncates what the tap was for.
 bool Overview::entrySettled() const {
-  return m_clocks.master.done(leaf("open").ms) && m_clocks.tiles.done(glideDur());
+  return m_clocks.master.done(anim::cfg(anim::Id::Open).ms) && m_clocks.tiles.done(glideDur());
 }
 
 namespace {

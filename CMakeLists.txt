@@ -37,6 +37,7 @@ add_library(gloview SHARED
   src/clock/clocks.cpp
   src/clock/curves.cpp
   src/config/config.cpp
+  src/anim.cpp
   src/debug/log.cpp
   src/render/painter.cpp
   src/render/backdrop.cpp

@@ -23,63 +23,30 @@ double staggered(double base, int i, int n) {
 }
 
 // imperative rule > schema key > default; off -> 1ms, speed divides base
-anim::AnimCfg Overview::leaf(const char *name) const {
-  anim::AnimCfg a;
-  const auto *spec = cfg::animLeaf(name);
-  const auto *rule = cfg::animRule(name);
-  double speed = spec ? static_cast<double>(spec->leaf->speed.get()) : 1.0;
-  int absMs = -1;
-  a.on = cfg::anim::enabled != 0;
-  if (spec && spec->leaf->enabled == 0)
-    a.on = false;
-  if (rule) {
-    if (rule->enabled)
-      a.on = *rule->enabled;
-    if (rule->speed)
-      speed = *rule->speed;
-    if (rule->ms)
-      absMs = *rule->ms;
-    if (rule->curve)
-      a.curve = *rule->curve;
-  }
-  if (!a.on) {
-    a.ms = 1.0;
-    return a;
-  }
-  if (absMs >= 0)
-    a.ms = std::max(16.0, static_cast<double>(absMs));
-  else
-    a.ms = std::max(16.0,
-                    static_cast<double>(spec ? spec->base : 250.0F) /
-                        std::clamp(speed, 0.01, 20.0));
-  if (!rule || !rule->curve)
-    a.curve = spec ? spec->leaf->curve.get() : std::string("easeout");
-  return a;
+anim::Id Overview::entryLeaf() const {
+  if (m_view.expoFlip() != 0)
+    return m_view.expoFlip() > 0 ? anim::Id::ExpoIn : anim::Id::ExpoOut;
+  return m_view.wsSlideDir() != 0 ? anim::Id::WsEnter : anim::Id::Appear;
 }
 
-const char *Overview::entryLeaf() const {
+anim::Id Overview::ghostLeaf() const {
   if (m_view.expoFlip() != 0)
-    return m_view.expoFlip() > 0 ? "expo_in" : "expo_out";
-  return m_view.wsSlideDir() != 0 ? "ws_enter" : "appear";
+    return m_view.expoFlip() > 0 ? anim::Id::ExpoIn : anim::Id::ExpoOut;
+  return m_view.wsSlideDir() != 0 ? anim::Id::WsExit : anim::Id::Appear;
 }
 
-const char *Overview::ghostLeaf() const {
+anim::Id Overview::glideLeaf() const {
+  if (m_view.jumpMode()) return m_opening ? anim::Id::JumpIn : anim::Id::JumpOut;
   if (m_view.expoFlip() != 0)
-    return m_view.expoFlip() > 0 ? "expo_in" : "expo_out";
-  return m_view.wsSlideDir() != 0 ? "ws_exit" : "appear";
-}
-
-const char *Overview::glideLeaf() const {
-  if (m_view.jumpMode()) return m_opening ? "jump_in" : "jump_out";
-  if (m_view.expoFlip() != 0)
-    return m_view.expoFlip() > 0 ? "expo_in" : "expo_out";
-  return carouselMode() ? "carousel_step" : "glide";
+    return m_view.expoFlip() > 0 ? anim::Id::ExpoIn : anim::Id::ExpoOut;
+  return carouselMode() ? anim::Id::CarouselStep : anim::Id::Glide;
 }
 
 double Overview::eased() const {
-  const char *leaf_name = (m_view.jumpMode() && !m_opening) ? "jump_out"
-                        : m_opening ? "open" : "close";
-  return curves::eval(leaf(leaf_name).curve, m_progress);
+  const auto id = (m_view.jumpMode() && !m_opening) ? anim::Id::JumpOut
+                  : m_opening                    ? anim::Id::Open
+                                                 : anim::Id::Close;
+  return curves::eval(anim::cfg(id).curve, m_progress);
 }
 
 // WINDOWED exit: hold the backdrop until our own tiles are done AND Hyprland has spent the
@@ -108,8 +75,10 @@ double Overview::blurAlpha() const {
 }
 
 double Overview::animDuration() const {
-  if (m_view.jumpMode() && !m_opening) return leaf("jump_out").ms;
-  return leaf(m_opening ? "open" : "close").ms;
+  if (m_view.jumpMode() && !m_opening) return anim::cfg(anim::Id::JumpOut).ms;
+  return (m_opening ? anim::cfg(anim::Id::Open)
+                     : anim::cfg(anim::Id::Close))
+      .ms;
 }
 
 // CLOSE rides m_progress DOWN: tiles then match the collapsing chrome.
@@ -164,12 +133,12 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
 }
 
 void Overview::updateAnimation() {
-  m_glide      = leaf(glideLeaf());
-  m_entry      = leaf(entryLeaf());
-  m_ghost      = leaf(ghostLeaf());
-  m_lift       = leaf("drag");
-  m_enterStyle = cfg::animStyle("ws_enter");
-  m_exitStyle  = cfg::animStyle("ws_exit");
+  m_glide      = anim::cfg(glideLeaf());
+  m_entry      = anim::cfg(entryLeaf());
+  m_ghost      = anim::cfg(ghostLeaf());
+  m_lift       = anim::cfg(anim::Id::Drag);
+  m_enterStyle = anim::style("ws_enter");
+  m_exitStyle  = anim::style("ws_exit");
 
   const double dur = animDuration();
   // stall guard: rewind every clock past a render hole
@@ -182,11 +151,11 @@ void Overview::updateAnimation() {
       m_clocks.master.compensateStall(gapMs, dur);
       m_clocks.tiles.compensateStall(gapMs, glideMs);
       m_clocks.rebuild.compensateStall(gapMs, std::max(m_entry.ms, m_ghost.ms));
-      m_clocks.strip.compensateStall(gapMs, leaf("strip_step").ms);
+      m_clocks.strip.compensateStall(gapMs, anim::cfg(anim::Id::StripStep).ms);
       if (m_newCardAnim)
         m_clocks.newCard.compensateStall(gapMs, newCardDur());
       if (m_drag.lifted)
-        m_clocks.dragLift.compensateStall(gapMs, leaf("drag").ms);
+        m_clocks.dragLift.compensateStall(gapMs, anim::cfg(anim::Id::Drag).ms);
       m_fx.eachSwap([&](auto &fx) { fx.clock.compensateStall(gapMs, fx.ms); });
     }
   }
@@ -210,7 +179,7 @@ void Overview::updateAnimation() {
     }
   }
 
-  const auto st = leaf("strip_step");
+  const auto st = anim::cfg(anim::Id::StripStep);
   if (!m_clocks.strip.done(st.ms))
     m_stripScroll =
         lerp(m_stripScrollFrom, m_stripScrollTarget,
@@ -227,7 +196,7 @@ void Overview::updateAnimation() {
     for (auto &t : m_scene.edit())
       t.appear = 1.0;
 
-  const auto pulse = leaf("pulse");
+  const auto pulse = anim::cfg(anim::Id::Pulse);
   m_fx.eachPulse([&](auto &p) {
     if (p.w.expired())
       return;
@@ -287,13 +256,13 @@ bool Overview::animBusy() const {
 double Overview::newCardScale() const {
   if (!m_newCardAnim)
     return 1.0;
-  return curves::eval(leaf("card").curve, m_clocks.newCard.raw(newCardDur()));
+  return curves::eval(anim::cfg(anim::Id::Card).curve, m_clocks.newCard.raw(newCardDur()));
 }
 
 void Overview::animateStripTo(double from, double to) {
   from = std::clamp(from, 0.0, std::max(0.0, m_stripScrollMax));
   to   = std::clamp(to, 0.0, std::max(0.0, m_stripScrollMax));
-  const auto st = leaf("strip_step");
+  const auto st = anim::cfg(anim::Id::StripStep);
   if (!st.on || std::abs(to - from) < 0.5) {
     m_stripScrollFrom = m_stripScrollTarget = m_stripScroll = to;
     return;

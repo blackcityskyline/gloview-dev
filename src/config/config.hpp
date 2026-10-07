@@ -14,7 +14,6 @@
 
 #include "../layout.hpp"
 
-struct lua_State;
 
 namespace gloview::cfg {
 
@@ -152,61 +151,7 @@ inline blur blur;
 
 // One LEAF per animated behavior: <leaf>_enabled, <leaf>_speed (multiplier over
 // the base, >= 16ms), <leaf>_curve, plus <leaf>_style where types are selectable.
-namespace anim {
 
-struct Leaf {
-  Int enabled;
-  Float speed;
-  Str curve;
-};
-
-inline Int enabled;
-inline Leaf open{ {}, {}, {} };
-inline Leaf close{ {}, {}, {} };
-inline Leaf glide{ {}, {}, {} };
-inline Leaf appear{ {}, {}, {} };
-inline Leaf card{ {}, {}, {} };
-inline Leaf pulse{ {}, {}, {} };
-inline Leaf strip_step{ {}, {}, {} };
-inline Leaf ws_enter{ {}, {}, {} };
-inline Leaf ws_exit{ {}, {}, {} };
-inline Leaf expo_in{ {}, {}, {} };
-inline Leaf expo_out{ {}, {}, {} };
-inline Leaf jump_in{ {}, {}, {} };
-inline Leaf jump_out{ {}, {}, {} };
-inline Leaf swap_main{ {}, {}, {} };
-inline Leaf swap_partner{ {}, {}, {} };
-inline Leaf drag{ {}, {}, {} };
-inline Leaf carousel_step{ {}, {}, {} };
-
-inline Str ws_enter_style;
-inline Str ws_exit_style;
-inline Str jump_style;
-inline Str grid_swap_style;
-inline Str strip_swap_style;
-
-}
-
-struct AnimRule {
-  std::optional<bool> enabled;
-  std::optional<double> speed;
-  std::optional<int> ms;
-  std::optional<std::string> curve;
-  std::optional<std::string> style;
-};
-void setAnimRule(const std::string &leaf, const AnimRule &rule);
-const AnimRule *animRule(const std::string &leaf);
-std::string animStyle(const std::string &thing);
-
-struct LeafSpec {
-  const char *name;
-  anim::Leaf *leaf;
-  float base;
-  const char *curveDef;
-};
-const LeafSpec *animLeaf(const char *name);
-
-int luaSetAnimRule(lua_State *L);
 
 struct keys {
   Str close;

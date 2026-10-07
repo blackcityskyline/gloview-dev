@@ -19,6 +19,7 @@ extern "C" {
 }
 
 #include "clock/curves.hpp"
+#include "anim.hpp"
 #include "config/config.hpp"
 #include "overview.hpp"
 
@@ -120,7 +121,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             HyprlandAPI::addLuaFunction(handle, "gloview", "curve",
                                         &gloview::curves::luaRegister);
             HyprlandAPI::addLuaFunction(handle, "gloview", "animation",
-                                        &gloview::cfg::luaSetAnimRule);
+                                        &gloview::anim::luaSetRule);
         }
     }(std::make_index_sequence<kActions.size()>{});
 

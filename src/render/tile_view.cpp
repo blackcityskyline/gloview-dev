@@ -194,10 +194,18 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
     const double ph   = lh + 2 * padY;
     const double px   = std::clamp(box.cx() - pw / 2.0, 6.0, m->m_size.x - pw - 6.0);
     const double py   = std::min(box.y + box.h + 10.0, m->m_size.y - ph - 6.0);
-    g_pHyprOpenGL->renderRect(pxb(CBox(px, py, pw, ph), s),
+    // Yields like every other chrome element when a preview reaches it -- but AFTER the
+    // clamp above, and deliberately unclamped itself: the clamp exists to keep the caption on
+    // screen while the card is laid out, while the push is what shoves the pill clear. With
+    // the clamp applied last the pill travelled to the screen edge, stopped there and just
+    // faded (measured on exit).
+    const Vector2D push = pushOut(LRect{px, py, pw, ph});
+    const double ux = px + push.x;
+    const double uy = py + push.y;
+    g_pHyprOpenGL->renderRect(pxb(CBox(ux, uy, pw, ph), s),
                               cfg::colors.title_pill.get(e * f),
                               {.round = pxr(ph / 2.0, s)});
-    g_pHyprOpenGL->renderTexture(t.label, pxb(CBox(px + padX, py + padY, lw, lh), s),
+    g_pHyprOpenGL->renderTexture(t.label, pxb(CBox(ux + padX, uy + padY, lw, lh), s),
                                  {.a = static_cast<float>(e * f)});
   }
 

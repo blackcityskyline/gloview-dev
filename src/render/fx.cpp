@@ -170,7 +170,7 @@ void Overview::renderKillZone() const {
 }
 
 void Overview::kickPulse(const PHLWINDOW &w) {
-  if (!w || !leaf("pulse").on)
+  if (!w || !anim::cfg(anim::Id::Pulse).on)
     return;
   m_fx.dropPulse([&w](const model::WinPulse &p) { return p.w.lock() == w; });
   m_fx.addPulse(model::WinPulse{w, 0.0, std::chrono::steady_clock::now()});
@@ -307,7 +307,7 @@ void Overview::renderSwapFX() const {
         alpha = static_cast<float>(1.0 - t / 0.3);
       } else {
         const double q = (t - 0.3) / 0.7;
-        const double k = 0.7 + 0.3 * curves::eval(leaf("card").curve, q);
+        const double k = 0.7 + 0.3 * curves::eval(anim::cfg(anim::Id::Card).curve, q);
         bx = to.x + to.w * (1.0 - k) / 2.0;
         by = to.y + to.h * (1.0 - k) / 2.0;
         bw = to.w * k;

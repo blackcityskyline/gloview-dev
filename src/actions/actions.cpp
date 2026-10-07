@@ -37,6 +37,21 @@ model::StripItem *Overview::homeStripCardFor(const PHLWINDOW &w) {
 bool Overview::dropOnStripCard(const PHLWINDOW &w, double lx, double ly,
                                int skipItem) {
   const int idx = stripItemAt(lx, ly);
+  {
+    std::string s = "[DROP] at=" + std::to_string(static_cast<int>(lx)) + "," +
+                    std::to_string(static_cast<int>(ly)) +
+                    " idx=" + std::to_string(idx) +
+                    " skip=" + std::to_string(skipItem) + " cards=" +
+                    std::to_string(m_strip.size()) + " [";
+    for (size_t i = 0; i < m_strip.size(); ++i) {
+      const LRect c = stripCardAt(i);
+      s += std::to_string(static_cast<int>(c.x)) + "," +
+           std::to_string(static_cast<int>(c.y)) + " " +
+           std::to_string(static_cast<int>(c.w)) + "x" +
+           std::to_string(static_cast<int>(c.h)) + ";";
+    }
+    debug::dbg(s + "]");
+  }
   if (idx < 0 || idx == skipItem)
     return false;
   // COPY: the rebuild below frees the element a reference would dangle on.
@@ -160,11 +175,11 @@ bool Overview::swapWindows(const PHLWINDOW &wa, const PHLWINDOW &wb) {
   replayReflow(oldBoxes);
   for (const auto &[win, box] : oldBoxes)
     if (win == wa)
-      landAfterMove(win, box, leaf("swap_main").ms,
-                    leaf("swap_main").curve); // the initiator
+      landAfterMove(win, box, anim::cfg(anim::Id::SwapMain).ms,
+                    anim::cfg(anim::Id::SwapMain).curve); // the initiator
     else if (win == wb)
-      landAfterMove(win, box, leaf("swap_partner").ms,
-                    leaf("swap_partner").curve); // the partner
+      landAfterMove(win, box, anim::cfg(anim::Id::SwapPartner).ms,
+                    anim::cfg(anim::Id::SwapPartner).curve); // the partner
   kickPulse(wa);
   kickPulse(wb);
   damage();
@@ -222,12 +237,12 @@ void Overview::landAfterMove(const PHLWINDOW &w, const LRect &oldBox,
         strip = true;
   }
   if (strip) { // strip thumbs have no glide machinery — always an FX flight
-    beginSwapFX(w, oldBox, parseSwapStyle(cfg::animStyle("strip_swap")), ms, curve);
+    beginSwapFX(w, oldBox, parseSwapStyle(anim::style("strip_swap")), ms, curve);
     return;
   }
-  if (parseSwapStyle(cfg::animStyle("grid_swap")) !=
+  if (parseSwapStyle(anim::style("grid_swap")) !=
     model::SwapStyle::Horizontal) {
-    beginSwapFX(w, oldBox, parseSwapStyle(cfg::animStyle("grid_swap")),
+    beginSwapFX(w, oldBox, parseSwapStyle(anim::style("grid_swap")),
                 ms, curve);
     return;
   }
@@ -294,11 +309,11 @@ void Overview::swapOnWorkspace(const PHLWINDOW &w, const model::StripItem &it) {
   }
 
   replayReflow(oldBoxes);
-  landAfterMove(w, m_lastDragBox, leaf("drag").ms, leaf("drag").curve);
+  landAfterMove(w, m_lastDragBox, anim::cfg(anim::Id::Drag).ms, anim::cfg(anim::Id::Drag).curve);
   for (const auto &[win, box] : oldBoxes)
     if (win == partner)
-      landAfterMove(partner, box, leaf("swap_partner").ms,
-                    leaf("swap_partner").curve);
+      landAfterMove(partner, box, anim::cfg(anim::Id::SwapPartner).ms,
+                    anim::cfg(anim::Id::SwapPartner).curve);
   damage();
 }
 

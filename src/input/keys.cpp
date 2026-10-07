@@ -129,7 +129,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
       const bool jumpMode = cfg::behavior.workspace_key_mode.get() == "jump";
       const bool ctrlHeld = (mods & HL_MODIFIER_CTRL) != 0;
       const bool doJump   = jumpMode && !ctrlHeld;
-      const bool instant  = doJump && cfg::anim::jump_style.get() == "instant";
+      const bool instant  = doJump && anim::jumpStyle() == "instant";
       switchToWorkspace(it, instant);
       if (m) {
         if (const auto target = m_workspace.lock();
