@@ -152,6 +152,14 @@ constexpr IntSpec kInts[] = {
 };
 
 constexpr FloatSpec kFloats[] = {
+    {&look.shadow_radius, "plugin:gloview:shadow_radius", 6.0},
+    {&look.shadow_radius_lift, "plugin:gloview:shadow_radius_lift", 14.0},
+    {&look.shadow_alpha, "plugin:gloview:shadow_alpha", 0.18},
+    {&look.title_pad_x, "plugin:gloview:title_pad_x", 14.0},
+    {&look.title_pad_y, "plugin:gloview:title_pad_y", 6.0},
+    {&look.title_gap, "plugin:gloview:title_gap", 10.0},
+    {&look.title_margin, "plugin:gloview:title_margin", 6.0},
+    {&look.close_glyph_fill, "plugin:gloview:close_glyph_fill", 0.62},
     {&strip.label_band, "plugin:gloview:strip_label_band", 26.0},
     {&strip.label_extra, "plugin:gloview:strip_label_extra", 24.0},
     {&strip.slide_frac, "plugin:gloview:strip_slide_frac", 0.55},

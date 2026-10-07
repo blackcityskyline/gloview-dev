@@ -271,6 +271,14 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `strip_label_extra` | float | `24` | how far a strip card widens to fit its label |
 | `strip_slide_frac` | float | `0.55` | fraction of the band thickness the slide-out covers |
 | `strip_offset_max` | float | `0.42` | hard ceiling on `strip_offset`, as a fraction of the cross axis |
+| `shadow_radius` | float | `6` | tile shadow blur at rest |
+| `shadow_radius_lift` | float | `14` | tile shadow blur while dragged |
+| `shadow_alpha` | float | `0.18` | tile shadow opacity multiplier |
+| `title_pad_x` | float | `14` | horizontal padding inside the title pill |
+| `title_pad_y` | float | `6` | vertical padding inside the title pill |
+| `title_gap` | float | `10` | gap between a tile and its title pill |
+| `title_margin` | float | `6` | screen margin kept around the title pill |
+| `close_glyph_fill` | float | `0.62` | fraction of the close button the glyph fills |
 | `drop_hint_color` | color | `"0x38ffffff"` | drop-zone highlight flash on a workspace card while dragging |
 | `close_button_visibility` | `shift` \| `always` | `shift` | `shift`: close buttons only show in desktop/canvas mode (`key_desktop`) — `always`: show them on every tile and strip card all the time |
 | `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |

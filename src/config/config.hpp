@@ -113,6 +113,17 @@ struct look {
   Int select_border_size;
   Float close_button_size;
   Float drag_size;
+  // Tile chrome geometry that was literal in tile_view.cpp: shadow blur at rest and lifted,
+  // shadow alpha multiplier, title-pill padding and the gaps around it, and how much of the
+  // close button the glyph fills.
+  Float shadow_radius;
+  Float shadow_radius_lift;
+  Float shadow_alpha;
+  Float title_pad_x;
+  Float title_pad_y;
+  Float title_gap;
+  Float title_margin;
+  Float close_glyph_fill;
   Str close_button_position;
   Str close_button_visibility;
   Str close_trigger;

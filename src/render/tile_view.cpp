@@ -134,8 +134,8 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
                                       : cfg::look.select_border_size)
                             : cfg::look.border_size;
 
-  dropShadow(box, s, shadowCol, look.lift ? 14.0 : 6.0, look.lift ? 30.0 : 16.0,
-             static_cast<float>(e * 0.18 * f), round, roundPow);
+  dropShadow(box, s, shadowCol, look.lift ? cfg::look.shadow_radius_lift : cfg::look.shadow_radius, look.lift ? 30.0 : 16.0,
+             static_cast<float>(e * cfg::look.shadow_alpha * f), round, roundPow);
 
   if (look.frame) {
     if (cfg::look.show_border != 0)
@@ -185,7 +185,7 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
                               {.round = pxr(round, s), .roundingPower = roundPow});
 
   if ((framed || selected) && !look.lift && t.label && t.label->m_size.x > 0) {
-    const double padX = 14.0, padY = 6.0;
+    const double padX = cfg::look.title_pad_x, padY = cfg::look.title_pad_y;
     // The caption was captured to the card's own width, so the pill measures the
     // texture it draws — not the uncut entry it used to.
     const double lw   = t.label->m_size.x;
@@ -193,7 +193,8 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
     const double pw   = lw + 2 * padX;
     const double ph   = lh + 2 * padY;
     const double px   = std::clamp(box.cx() - pw / 2.0, 6.0, m->m_size.x - pw - 6.0);
-    const double py   = std::min(box.y + box.h + 10.0, m->m_size.y - ph - 6.0);
+    const double py   = std::min(box.y + box.h + cfg::look.title_gap,
+                     m->m_size.y - ph - cfg::look.title_margin);
     // Yields like every other chrome element when a preview reaches it -- but AFTER the
     // clamp above, and deliberately unclamped itself: the clamp exists to keep the caption on
     // screen while the card is laid out, while the push is what shoves the pill clear. With
@@ -215,8 +216,8 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
     g_pHyprOpenGL->renderRect(pxb(br, s), cfg::colors.close_button.get(e),
                               {.round = pxr(br.h / 2.0, s)});
     const double gw = closeGlyph->m_size.x, gh = closeGlyph->m_size.y;
-    const double gs = std::min((br.w * 0.62) / std::max(1.0, gw),
-                               (br.h * 0.62) / std::max(1.0, gh));
+    const double gs = std::min((br.w * cfg::look.close_glyph_fill) / std::max(1.0, gw),
+                               (br.h * cfg::look.close_glyph_fill) / std::max(1.0, gh));
     g_pHyprOpenGL->renderTexture(
         closeGlyph,
         pxb(LRect{br.x + (br.w - gw * gs) / 2.0, br.y + (br.h - gh * gs) / 2.0,
