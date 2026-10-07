@@ -253,7 +253,7 @@ double Overview::stripThickness() const {
   const double cross = stripHorizontal() ? m->m_size.y : m->m_size.x;
   return std::clamp(
       static_cast<double>(cfg::strip.height), 100.0,
-      cross * 0.42);
+      cross * cfg::strip.offset_max);
 }
 
 double Overview::stripOffset() const {
@@ -288,7 +288,7 @@ LRect Overview::stripBand() const {
 }
 
 Vector2D Overview::stripSlide(double e) const {
-  const double d = (1.0 - e) * stripThickness() * 0.55;
+  const double d = (1.0 - e) * stripThickness() * cfg::strip.slide_frac;
   switch (stripAnchor()) {
   case Anchor::Bottom:
     return Vector2D{0.0, d};

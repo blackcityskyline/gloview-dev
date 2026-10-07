@@ -267,6 +267,10 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `kill_zone_size` | float | `40` | thickness of that edge zone, px |
 | `kill_zone_falloff` | float | `150` | how far from the zone its glow reaches, px |
 | `click_window_ms` | int | `400` | window in which two clicks count as a double-click (`close_trigger=doubleclick`) |
+| `strip_label_band` | float | `26` | height of the label strip under a strip card |
+| `strip_label_extra` | float | `24` | how far a strip card widens to fit its label |
+| `strip_slide_frac` | float | `0.55` | fraction of the band thickness the slide-out covers |
+| `strip_offset_max` | float | `0.42` | hard ceiling on `strip_offset`, as a fraction of the cross axis |
 | `drop_hint_color` | color | `"0x38ffffff"` | drop-zone highlight flash on a workspace card while dragging |
 | `close_button_visibility` | `shift` \| `always` | `shift` | `shift`: close buttons only show in desktop/canvas mode (`key_desktop`) — `always`: show them on every tile and strip card all the time |
 | `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |

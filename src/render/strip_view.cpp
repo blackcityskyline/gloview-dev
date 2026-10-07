@@ -225,14 +225,14 @@ void Overview::renderStrip() const {
     if (it.label && it.label->m_size.x > 0) {
       double lw = it.label->m_size.x;
       double lh = it.label->m_size.y;
-      const double maxLw = card.w + 24.0;
+      const double maxLw = card.w + cfg::strip.label_extra;
       if (lw > maxLw) {
         const double k = maxLw / lw;
         lw *= k;
         lh *= k;
       }
       // 26 is reserved above every card by buildStrip in both layouts.
-      const double labelBand = 26.0;
+      const double labelBand = cfg::strip.label_band;
       const double lx = card.cx() - lw / 2.0;
       const double ly = card.y - labelBand + (labelBand - lh) / 2.0;
       const float la =

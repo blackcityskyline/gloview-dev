@@ -83,6 +83,13 @@ struct strip {
   Int margin;
   Int gap;
   Int card_round;
+  // Geometry that was literal in the strip code: the label strip under a card, how far a
+  // card widens to fit its label, how much of the strip's thickness the slide-out covers,
+  // and the hard ceiling on offset as a fraction of the cross axis.
+  Float label_band;
+  Float label_extra;
+  Float slide_frac;
+  Float offset_max;
   Str anchor;
   Str bar_position;
   Str empty_mode;

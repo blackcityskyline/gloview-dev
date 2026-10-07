@@ -220,7 +220,7 @@ void Overview::buildStrip() {
   const bool horiz = stripHorizontal();
   const double margin = cfg::strip.margin;
   const double gap = cfg::strip.gap;
-  const double labelH = 26.0;
+  const double labelH = cfg::strip.label_band;
   const double aspect = m->m_size.x / std::max(1.0, m->m_size.y);
 
   double cardW, cardH;
