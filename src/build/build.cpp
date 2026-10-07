@@ -284,7 +284,7 @@ LRect Overview::stripCardAt(size_t i) const {
   const LRect &c = m_strip[i].card;
   const Vector2D scroll = stripScroll();
   const Vector2D slide =
-      stripSlide(eased()); // draw and hit-test must share this slide
+      stripOffset(eased()); // draw and hit-test must share this slide
   return LRect{c.x + slide.x + scroll.x, c.y + slide.y + scroll.y, c.w, c.h};
 }
 
@@ -572,10 +572,17 @@ void Overview::hideLayers() {
   const bool ovl = cfg::layer.hide_overlay != 0;
   if (!top && !ovl)
     return;
-  const auto fade = [this](const std::vector<PHLLSREF> &layer) {
+  const auto fade = [this, &m](const std::vector<PHLLSREF> &layer) {
     for (const auto &ref : layer) {
       const auto ls = ref.lock();
       if (!ls)
+        continue;
+      // The wallpaper is NOT chrome. It is the one thing that keeps the desktop from being
+      // an empty black buffer on the first frame, and fading it here is what produces the
+      // entry blackout: Hyprland renders the wallpaper at alpha 0 into the monitor FB, then
+      // our opaque entry base goes down on top of nothing. m_background IS its texture.
+      if (ls->wlSurface() && ls->wlSurface()->resource() &&
+          ls->wlSurface()->resource()->m_current.texture.get() == m->m_background.get())
         continue;
       auto &a = ls->alpha()[Desktop::View::LS_ALPHA_FADE];
       if (!a)

@@ -66,6 +66,17 @@ void Overview::renderStage(eRenderStage stage) {
   if (stage == RENDER_LAST_MOMENT)
     syncRecency();
 
+  // Parked open: the pass is registered anyway so draw() can run primeBackdrop, which
+  // composites into a private framebuffer and draws nothing. Without this the pass is never
+  // added while m_active is false, so the backdrop is never computed before the first draw.
+  if (m_pendingOpen && stage == RENDER_LAST_MOMENT) {
+    const auto pm  = m_monitor.lock();
+    const auto prm = g_pHyprRenderer->m_renderData.pMonitor.lock();
+    if (pm && prm == pm)
+      g_pHyprRenderer->m_renderPass.add(makeUnique<PainterPass>(this));
+    return;
+  }
+
   if (!m_active)
     return;
   const auto rm = g_pHyprRenderer->m_renderData.pMonitor.lock();
@@ -172,6 +183,10 @@ void Overview::renderStage(eRenderStage stage) {
 
 // Z-slots, top to bottom: on-top-of-content draws after it.
 void Overview::paint() {
+  if (m_pendingOpen) {
+    primeBackdrop(); // computes into a private FB; deliberately draws nothing
+    return;
+  }
   renderBackdrop();
 
   if (carouselMode())

@@ -85,7 +85,7 @@ void Overview::renderStrip() const {
   // instability this removes.
   bandCol.a = std::clamp(cfg::strip.band_opacity.get() / 100.0, 0.0, 1.0) * bandE;
   const LRect bandR  = stripBand();
-  const Vector2D slide  = stripSlide(e);
+  const Vector2D slide  = stripOffset(e);
   const Vector2D scroll = stripScroll();
   safeRenderRect("band", pxb(CBox(bandR.x + slide.x, bandR.y + slide.y, bandR.w, bandR.h), s),
                  bandCol, {});
@@ -161,10 +161,8 @@ void Overview::renderStrip() const {
                    allCol, {.round = pxr(2, s)});
     } else {
       if (it.wins.empty() && cfg::strip.wallpaper != 0) {
-        bool live = false;
-        auto tex = backdropSource(live);
-        if ((!tex || !tex->ok()) && m_backdropSrcFB &&
-            m_backdropSrcFB->isAllocated())
+        SP<Render::ITexture> tex;
+        if (m_backdropSrcFB && m_backdropSrcFB->isAllocated())
           tex = m_backdropSrcFB->getTexture();
         if (tex && tex->ok()) {
           const double texW = std::max(1.0, static_cast<double>(tex->m_size.x));
@@ -257,7 +255,7 @@ void Overview::renderStripWindows() const {
   const double e = eased();
   if (e <= 0.01)
     return;
-  const Vector2D slide  = stripSlide(e);
+  const Vector2D slide  = stripOffset(e);
   const Vector2D scroll = stripScroll();
   const double scale = m->m_scale;
   const auto when    = Time::steadyNow();

@@ -253,7 +253,7 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `close_glyph_color` | color | `"0xffffffff"` | the `✕` glyph itself, drawn on top of `close_button_color` |
 | `label_color` | color | `"0xf2ffffff"` | window/workspace name text under tiles and strip cards |
 | `title_pill_color` | color | `"0xcc11151c"` | pill behind a tile's title label in desktop/canvas mode |
-| `backing_color` | color | `"0xff14181f"` | translucent-tile safety backing — only its RGB is used, the renderer applies its own low alpha |
+| `carousel_count_pill_color` | color | `"0xcc11151c"` | pill behind the carousel counter (`1 / 4`) |
 | `drop_hint_color` | color | `"0x38ffffff"` | drop-zone highlight flash on a workspace card while dragging |
 | `close_button_visibility` | `shift` \| `always` | `shift` | `shift`: close buttons only show in desktop/canvas mode (`key_desktop`) — `always`: show them on every tile and strip card all the time |
 | `close_button_icon` | string | `✕` | Glyph drawn in the close buttons |

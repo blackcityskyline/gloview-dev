@@ -120,9 +120,9 @@ struct colors {
   Color hover_border;
   Color select_border;
   Color shadow;
-  Color backing;
   Color label;
   Color title_pill;
+  Color carousel_count_pill;
   Color drop_hint;
   Color close_button;
   Color close_glyph;
@@ -143,8 +143,6 @@ struct blur {
   Int size;
   Int resolution;
   Color backdrop;
-  Int fullscreen_background;
-  Int frost_underlay;
 };
 
 inline blur blur;

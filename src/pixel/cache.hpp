@@ -26,8 +26,6 @@ class PixelCache {
                                const CHyprColor &col, int size,
                                int maxW = 0);
 
-    [[nodiscard]] SP<Render::ITexture> peekLabel(void *key, int maxW) const;
-
     // The close glyph, shared by every card: glyph() renders, closeGlyph() reads.
     SP<Render::ITexture> glyph(const std::string &icon, const CHyprColor &col);
     [[nodiscard]] SP<Render::ITexture> closeGlyph() const;

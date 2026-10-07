@@ -78,7 +78,7 @@ public:
   void paint();
 
   void renderBackdrop() const;
-  SP<Render::ITexture> backdropSource(bool &live) const;
+  void primeBackdrop();
   SP<Render::ITexture> renderBackdropSource(int W, int H) const;
 
   bool stripSlotGrabbed(size_t i, size_t j) const;
@@ -138,6 +138,17 @@ private:
   // The close hit 0 THIS frame and shouldRenderWindow already ran, so flipping
   // m_active off now skips the overlay.
   bool m_pendingDeactivate = false;
+  // Open in two phases: nothing is visible until a backdrop exists. open() parks here, the
+  // pass computes the composite into a PRIVATE framebuffer for a frame or two (nothing is
+  // drawn), and the first non-black composite promotes the open. Measured reason: the frame
+  // the overview is first visible had no backdrop of its own, and the wallpaper texture is
+  // mid-recreation right then, so it composed black. Painting late beats painting black.
+  // open() parks before it becomes visible, so "did the open take" is active OR parked.
+  // Every caller that tests m_active right after open() must test this instead, or it reads
+  // a waiting open as a failed one -- that is what silently disarmed alt+tab.
+  [[nodiscard]] bool openedOrParked() const { return m_active || m_pendingOpen; }
+  bool m_pendingOpen = false;
+  int m_pendingTicks = 0;
   bool m_pendingJumpClose  = false; // set after a jump ws-slide
   model::Recency m_recency;
   PHLWINDOWREF m_lastFocus;
@@ -231,10 +242,22 @@ private:
 
   mutable render::BlurCache m_blur;
   mutable SP<Render::IFramebuffer> m_backdropSrcFB;
+  // New composites are built here and only adopted once they read as a real picture, so a
+  // black attempt can never overwrite the good one.
+  mutable SP<Render::IFramebuffer> m_backdropScratchFB;
   mutable bool m_backdropDrawn = false;
-  mutable const void *m_lastLayerTex = nullptr;
-  mutable int m_layerStable = 0;
-  mutable std::chrono::steady_clock::time_point m_lastBackdropCapture{};
+  // The layer texture the saved composite was made from. Compared on every open, so the
+  // composite can be kept indefinitely instead of expiring on a timer: a TTL cannot tell
+  // "the desktop changed" from "the wallpaper texture is mid-recreation right now".
+  mutable const void *m_backdropSrcTex = nullptr;
+  // A video wallpaper replaces its source texture every frame. Detected from consecutive
+  // changes, so a one-off compositor re-creation of a static wallpaper is not mistaken for it.
+  // Such a source is composited once and then held: one frozen frame of the video, shown for
+  // the whole open. Its black-frame check is skipped -- a dark video frame is real content,
+  // not "not ready yet".
+  mutable const void *m_lastObservedTex = nullptr;
+  mutable int m_srcAnimStreak = 0;
+  mutable bool m_srcAnimated = false;
   mutable CBlurFilter m_blurFilter; // independent of decoration:blur:*
   void updateSnapshots();
   std::string cursorMode() const;
@@ -248,6 +271,13 @@ private:
   double stripOffset() const;
   LRect stripBand() const;
   Vector2D stripSlide(double e) const; // reveal slide-in at progress e
+  Vector2D stripPush(const LRect &band) const; // band yields to a preview that reached it
+  // THE strip displacement. Band, cards, the window previews inside them and the hit-test all
+  // go through this: computing it in each of them meant the previews and the hit-test drifted
+  // from the cards by exactly the push (measured: window previews stopped following the
+  // motion on any workspace that HAS windows).
+  Vector2D stripOffset(double e) const;
+  Vector2D pushOut(const LRect &r) const; // chrome yields to a preview
   Vector2D stripScroll() const;
   LRect stripCardAt(size_t i) const;   // card shifted by the scroll
   int stripItemAt(double lx, double ly) const;

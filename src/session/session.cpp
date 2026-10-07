@@ -300,6 +300,104 @@ Vector2D Overview::stripSlide(double e) const {
   }
 }
 
+// The band yields to a preview whose edge has reached it: the penetration depth becomes an
+// outward displacement, so contact reads as the window PUSHING the band instead of sliding
+// under it (measured before: the preview simply overrode the band and the two read as one
+// overlapping blob). The deepest preview wins -- the band is a single object. Capped at the
+// band's own thickness so a fullscreen window shoves it out of reach instead of dragging it
+// across the screen.
+// Generic yield, for chrome that is not the strip: displaced along the SHORTEST way out by
+// the overlap depth, so contact reads as the preview pushing it rather than drawing over it.
+// Deepest preview wins. The distance is bounded by the element's own size on the escape axis,
+// so nothing is ever dragged across the screen and no cap is needed.
+Vector2D Overview::pushOut(const LRect &r) const {
+  double best = 0.0;
+  Vector2D dir{0.0, 0.0};
+  const auto &tiles = m_scene.tiles();
+  for (size_t i = 0; i < tiles.size(); ++i) {
+    const LRect b = currentBox(tiles[i], static_cast<int>(i));
+    if (b.w < 1.0 || b.h < 1.0)
+      continue;
+    const double ox = std::min(b.x + b.w, r.x + r.w) - std::max(b.x, r.x);
+    const double oy = std::min(b.y + b.h, r.y + r.h) - std::max(b.y, r.y);
+    if (ox <= 0.0 || oy <= 0.0)
+      continue; // not touching
+
+    // SWALLOWED: the preview covers the element whole, so there is no cheaper axis to leave
+    // by and both overlaps equal the element's size. Eject toward the nearest edge instead,
+    // otherwise the displacement degenerates to one element-sized step and stops there -- the
+    // measured "nudges once, then stands still while the window draws over it".
+    Vector2D d{0.0, 0.0};
+    double depth = 0.0;
+    if (ox >= r.w && oy >= r.h) {
+      double near = r.x - b.x;
+      d = Vector2D{-1.0, 0.0};
+      if (b.x + b.w - (r.x + r.w) < near) {
+        near = b.x + b.w - (r.x + r.w);
+        d = Vector2D{1.0, 0.0};
+      }
+      if (r.y - b.y < near) {
+        near = r.y - b.y;
+        d = Vector2D{0.0, -1.0};
+      }
+      if (b.y + b.h - (r.y + r.h) < near) {
+        near = b.y + b.h - (r.y + r.h);
+        d = Vector2D{0.0, 1.0};
+      }
+      depth = near;
+    } else if (ox < oy) {
+      depth = ox;
+      d = Vector2D{std::copysign(1.0, r.cx() - b.cx()), 0.0};
+    } else {
+      depth = oy;
+      d = Vector2D{0.0, std::copysign(1.0, r.cy() - b.cy())};
+    }
+    if (depth > best) {
+      best = depth;
+      dir = d;
+    }
+  }
+  if (best <= 0.0)
+    return {};
+  return Vector2D{dir.x * best, dir.y * best};
+}
+
+Vector2D Overview::stripOffset(double e) const {
+  return stripSlide(e) + stripPush(stripBand());
+}
+
+Vector2D Overview::stripPush(const LRect &band) const {
+  double deepest = 0.0;
+  const auto &tiles = m_scene.tiles();
+  for (size_t i = 0; i < tiles.size(); ++i) {
+    const LRect b = currentBox(tiles[i], static_cast<int>(i));
+    if (b.w < 1.0 || b.h < 1.0)
+      continue;
+    double pen = 0.0;
+    switch (stripAnchor()) {
+    case Anchor::Bottom: pen = (b.y + b.h) - band.y; break;
+    case Anchor::Top:    pen = (band.y + band.h) - b.y; break;
+    case Anchor::Left:   pen = (band.x + band.w) - b.x; break;
+    case Anchor::Right:  pen = (b.x + b.w) - band.x; break;
+    }
+    deepest = std::max(deepest, pen);
+  }
+  if (deepest <= 0.0)
+    return {};
+  // Uncapped: the depth is bounded by the tile, and a strip shoved past the screen edge is
+  // exactly "задвигает". The cap this replaces held it to one band thickness, which cleared
+  // the band for a shallow overlap and left the workspace cards — riding the same slide —
+  // painted over the tile edge once the window grew to cover the strip (measured on exit).
+  const double d = deepest;
+  switch (stripAnchor()) {
+  case Anchor::Bottom: return Vector2D{0.0, d};
+  case Anchor::Top:    return Vector2D{0.0, -d};
+  case Anchor::Left:   return Vector2D{-d, 0.0};
+  case Anchor::Right:  return Vector2D{d, 0.0};
+  }
+  return {};
+}
+
 bool Overview::blurEnabled() const { return blurStrength() > 0.0F; }
 
 float Overview::blurStrength() const {
@@ -335,7 +433,7 @@ void Overview::toggleCarousel() {
     m_view.setCarouselOn( true); // BEFORE open(): buildTiles reads it
     m_view.setAllOverride( 1);
     open();
-    if (!m_active)
+    if (!openedOrParked())
       m_view.setAllOverride( -1);
     return;
   }
@@ -359,7 +457,7 @@ void Overview::toggleAllWorkspaces() {
     m_view.setAllOverride(
         1); // BEFORE open(), so buildTiles sees it
     open();
-    if (!m_active)
+    if (!openedOrParked())
       m_view.setAllOverride( -1);
     return;
   }
@@ -379,7 +477,7 @@ void Overview::altTabInvoke(bool reverse) {
     m_view.setAllOverride( 1);
     open();
     m_pendingStep = 0;
-    if (!m_active) {
+    if (!openedOrParked()) {
       m_view.setAllOverride( -1);
       return;
     }
@@ -461,8 +559,13 @@ void Overview::open() {
   layoutTiles();
 
   m_view.setCarouselOn( cfg::carousel.on_open != 0);
-  m_active = true;
-  m_opening = true;
+  // Parked, NOT active: the pass computes the backdrop privately (primeBackdrop) and flips
+  // m_active the moment a non-black composite exists. Going visible now is what put a
+  // backdrop-less frame on screen.
+  m_pendingOpen = true;
+  m_pendingTicks = 0;
+  m_active  = false;
+  m_opening = false;
   m_view.setJumpMode( false);
   m_pendingJumpClose = false;
   m_openStamp = std::chrono::steady_clock::now();
@@ -480,22 +583,23 @@ void Overview::open() {
   m_clocks.master.begin();
   m_clocks.tiles.begin();
   m_lastAnimTick = {};
-  hideLayers();
+  // hideLayers() is deliberately NOT called here: it runs at promotion instead. Fading the
+  // layers now would leave the desktop bare on frames where the overview draws nothing.
   m_cursor.onOpen(m, cursorMode());
-  static constexpr auto kBackdropCacheTTL = std::chrono::seconds(3);
-  const bool backdropStale =
-      (std::chrono::steady_clock::now() - m_lastBackdropCapture) >
-      kBackdropCacheTTL;
-  if (backdropStale) {
-    m_backdropDrawn = false;
-    // do NOT free the blur cache (it backs translucent tiles)
-    m_blur.valid = false;
-  }
+  // The backdrop composite is kept and never expires here. renderBackdropSource compares the
+  // source texture against the one the composite was made from and redraws when it really
+  // changed; it must not be reset by a timer, because right after an idle the wallpaper
+  // texture is mid-recreation and any from-scratch composite of it is black.
   debug::dbg("=== OPEN ===");
   damage();
 }
 
 void Overview::close() {
+  if (m_pendingOpen) { // never became visible, so there is nothing to animate away
+    m_pendingOpen = false;
+    m_pendingTicks = 0;
+    return;
+  }
   if (!m_active)
     return;
   // The landing workspace can have changed while the overview was up (all-workspaces,
@@ -569,6 +673,8 @@ void Overview::hardClose() {
 
   m_active = false;
   m_opening = false;
+  m_pendingOpen = false;
+  m_pendingTicks = 0;
   m_pendingDeactivate = false;
   m_view.setDesktop( false);
   m_newCardAnim = false;

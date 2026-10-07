@@ -60,13 +60,6 @@ SP<Render::ITexture> PixelCache::label(void *key, const std::string &text,
   return e.tex;
 }
 
-SP<Render::ITexture> PixelCache::peekLabel(void *key, int maxW) const {
-  const auto it = m_labels.find(key);
-  if (it == m_labels.end() || it->second.maxW != maxW)
-    return nullptr;
-  return it->second.tex;
-}
-
 SP<Render::ITexture> PixelCache::glyph(const std::string &icon,
                                         const CHyprColor &col) {
   if (!m_glyph || m_glyphIcon != icon) {

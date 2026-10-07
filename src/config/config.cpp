@@ -129,8 +129,6 @@ constexpr IntSpec kInts[] = {
     {&blur.passes, "plugin:gloview:blur_passes", 3},
     {&blur.size, "plugin:gloview:blur_size", 8},
     {&blur.resolution, "plugin:gloview:blur_resolution", 4},
-    {&blur.fullscreen_background, "plugin:gloview:fullscreen_background", 0},
-    {&blur.frost_underlay, "plugin:gloview:frost_underlay", 0}, // DEPRECATED no-op
     {&anim::enabled, "plugin:gloview:animations_enabled", 1},
     {&keys.alt_tab_commit_on_release, "plugin:gloview:alt_tab_commit_on_release", 1},
     {&behavior.focus_follows_mouse, "plugin:gloview:focus_follows_mouse", 1},
@@ -198,7 +196,6 @@ constexpr StrSpec kStrs[] = {
 
 constexpr ColorSpec kColors[] = {
     {&blur.backdrop, "plugin:gloview:backdrop_color", "0x73070a10"},
-    {&colors.backing, "plugin:gloview:backing_color", "0xff14181f"},
     {&colors.border, "plugin:gloview:border_color", "0x50ffffff"},
     {&colors.close_button, "plugin:gloview:close_button_color", "0xe6e23b3b"},
     {&colors.close_glyph, "plugin:gloview:close_glyph_color", "0xffffffff"},
@@ -215,6 +212,7 @@ constexpr ColorSpec kColors[] = {
     {&colors.strip_hover, "plugin:gloview:strip_hover_border", "0x80ffffff"},
     {&colors.strip_plus, "plugin:gloview:strip_plus_color", "0xd0eef4ff"},
     {&colors.title_pill, "plugin:gloview:title_pill_color", "0xcc11151c"},
+    {&colors.carousel_count_pill, "plugin:gloview:carousel_count_pill_color", "0xcc11151c"},
 };
 
 } // namespace

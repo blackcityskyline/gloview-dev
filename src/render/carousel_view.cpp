@@ -75,6 +75,10 @@ void Overview::renderCarousel() const {
     return ca.depth > cb.depth;
   });
 
+  // Counter first: the cards pass OVER it, so a pushed pill reads as shoved aside instead of
+  // sitting on top of the window it is supposed to be yielding to.
+  renderCarouselCounter();
+
   for (const int i : paint) {
     const int k = m_view.slotOf(static_cast<std::size_t>(i));
     const auto &card =
@@ -110,8 +114,6 @@ void Overview::renderCarousel() const {
     look.button = tileCloseButtons();
     drawTile(static_cast<size_t>(i), look);
   }
-
-  renderCarouselCounter();
 }
 
 void Overview::renderCarouselCounter() const {
@@ -123,8 +125,13 @@ void Overview::renderCarouselCounter() const {
   const double s = m->m_scale;
   const std::string text =
       std::to_string(m_scene.selected() + 1) + " / " + std::to_string(m_scene.tiles().size());
+  // Constant colour, like every other label caller. PixelCache keys on (text, maxW) and
+  // ignores the colour, so the FIRST render bakes whatever colour that frame had and it is
+  // reused until the text changes: passing get(eased()) here meant the counter was baked dim
+  // on entry (eased()~0) and only went normal once a switch changed the string (measured,
+  // every entry). The fade still rides the draw alpha below -- see .a = eased().
   if (auto tex = m_pixel.label(const_cast<char *>("/carousel/count"), text,
-                             cfg::colors.label.get(eased()), 15);
+                             cfg::colors.label.get(1.0), 15);
       tex && tex->m_size.x > 0) {
     const double bw = m_view.carousel().countW, bh = m_view.carousel().countH;
     // originX/Y are relative to m_view.carousel().area, not the monitor.
@@ -132,10 +139,21 @@ void Overview::renderCarouselCounter() const {
         m_view.carousel().area.x + m_view.carousel().originX + m_view.carousel().countX;
     const double by =
         m_view.carousel().area.y + m_view.carousel().originY + m_view.carousel().countY;
+    // The counter sits on a pill and yields to a preview that reaches it, exactly like the
+    // strip band: the overlap depth displaces it, so contact reads as the window pushing it
+    // instead of the two drawing over each other. Capped at the pill's own height.
+    const LRect pill{bx, by, bw, bh};
+    const Vector2D push = pushOut(pill);
+    const LRect pillAt{pill.x + push.x, pill.y + push.y, pill.w, pill.h};
+    // Radius == half the height with power 1.0 is a true capsule, not a rounded rect.
+    g_pHyprOpenGL->renderRect(
+        pxb(CBox(pillAt.x, pillAt.y, pillAt.w, pillAt.h), s),
+        cfg::colors.carousel_count_pill.get(eased()),
+        {.round = pxr(pillAt.h / 2.0, s), .roundingPower = 1.0});
     g_pHyprOpenGL->renderTexture(
         tex,
-        pxb(LRect{bx + (bw - tex->m_size.x) / 2.0,
-                  by + (bh - tex->m_size.y) / 2.0, tex->m_size.x,
+        pxb(LRect{pillAt.x + (pillAt.w - tex->m_size.x) / 2.0,
+                  pillAt.y + (pillAt.h - tex->m_size.y) / 2.0, tex->m_size.x,
                   tex->m_size.y},
             s),
         {.a = static_cast<float>(eased())});
