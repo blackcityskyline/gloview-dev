@@ -112,12 +112,29 @@ void Overview::buildStrip() {
     if (!ws || ws->m_monitor.lock() != m)
       continue;
     if (ws->m_isSpecialWorkspace) {
-      if (showSpecial &&
-          wsHasWindows(ws)) {
+      if (showSpecial && wsHasWindows(ws)) {
         model::StripItem it;
         it.ws = ws;
         it.id = ws->m_id;
         it.active = (ws == cur);
+        // Windows too. This card used to be added and skipped, so wins stayed empty
+        // and an empty card draws the wallpaper -- the special workspace showed a
+        // backdrop and no window, which is what it looked like for every user of it.
+        // rel comes from the window's on-screen position, which a stashed window keeps
+        // from when the special workspace was last shown: that is the only geometry
+        // there is for a workspace nobody is looking at.
+        for (const auto &w : Desktop::windowState()->windows()) {
+          if (!w || !w->m_isMapped || w->isHidden() || w->m_workspace != ws)
+            continue;
+          const auto p = w->positionAnimation()->goal();
+          const auto sz = w->sizeAnimation()->goal();
+          model::StripWin sw;
+          sw.win = w;
+          sw.rel = LRect{(p.x - m->m_position.x) / m->m_size.x,
+                         (p.y - m->m_position.y) / m->m_size.y,
+                         sz.x / m->m_size.x, sz.y / m->m_size.y};
+          it.wins.push_back(sw);
+        }
         m_strip.add(std::move(it));
       }
       continue;
