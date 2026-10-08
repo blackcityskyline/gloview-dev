@@ -11,17 +11,12 @@ namespace gloview {
 
 // Every clock here is pure linear progress; shaping lives in curves.cpp and
 // durations are re-read from config on every call.
-namespace {
-
+// The ladder spread is the user's, capped at 1: Stagger is the ceiling,
+// StaggerPerTile grows it with the tile count and must not push past it.
 double staggered(double base, int i, int n) {
-  if (n <= 1)
-    return base;
-  const double spread = std::min(anim::param(anim::Param::Stagger),
-                                anim::param(anim::Param::StaggerPerTile) * n);
-  const double start  = spread * (static_cast<double>(i) / (n - 1));
-  return std::clamp((base - start) / std::max(0.001, 1.0 - spread), 0.0, 1.0);
-}
-
+  return anim::stagger(base, i, n,
+                       std::min(anim::param(anim::Param::Stagger),
+                                anim::param(anim::Param::StaggerPerTile) * n));
 }
 
 // imperative rule > schema key > default; off -> 1ms, speed divides base

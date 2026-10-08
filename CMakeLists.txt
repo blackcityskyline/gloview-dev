@@ -114,6 +114,12 @@ add_test(NAME anim_styles
          COMMAND ${CMAKE_COMMAND} -E env sh -c
                  "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/anim_styles_check.cpp ${CMAKE_SOURCE_DIR}/src/anim_resolve.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/anim_styles_check && ${CMAKE_CURRENT_BINARY_DIR}/anim_styles_check ${CMAKE_SOURCE_DIR}")
 
+# The entry ladder, as arithmetic. staggered() reads the spread from anim::param() and
+# cannot be linked, so the part under test takes the spread handed in.
+add_test(NAME anim_stagger
+         COMMAND ${CMAKE_COMMAND} -E env sh -c
+                 "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/anim_stagger_check.cpp ${CMAKE_SOURCE_DIR}/src/anim_resolve.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/anim_stagger_check && ${CMAKE_CURRENT_BINARY_DIR}/anim_stagger_check")
+
 add_test(NAME curves
          COMMAND ${CMAKE_COMMAND} -E env sh -c
                  "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/curves_check.cpp ${CMAKE_SOURCE_DIR}/tests/hypr_stub.cpp ${CMAKE_SOURCE_DIR}/src/clock/curves.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/curves_check -llua -lhyprutils && ${CMAKE_CURRENT_BINARY_DIR}/curves_check")

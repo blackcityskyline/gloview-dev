@@ -44,6 +44,17 @@ Cfg resolve(const Inputs &in, int baseMs, const char *curveDefault) {
   return c;
 }
 
+double stagger(double base, int i, int n, double spread) {
+  if (n <= 1)
+    return base;
+  const double s = spread < 0.0 ? 0.0 : (spread > 1.0 ? 1.0 : spread);
+  const double start = s * (static_cast<double>(i) / (n - 1));
+  // 1 - s is floored away from zero: with s == 1 the staircase would divide by zero and
+  // the last tile would resolve to NaN, which propagates into a box and a NaN RECTs.
+  const double denom = 1.0 - s > 0.001 ? 1.0 - s : 0.001;
+  return std::clamp((base - start) / denom, 0.0, 1.0);
+}
+
 double resolveParam(bool hasValue, double value, double fallback) {
   return hasValue ? value : fallback;
 }

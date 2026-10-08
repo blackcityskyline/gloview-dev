@@ -132,4 +132,16 @@ inline constexpr const char *const kSwapStyles[] = {"horizontal", "slidevert", "
   return false;
 }
 
+// The entry stagger, as pure arithmetic.
+//
+// staggered() in clocks.cpp reads the spread from anim::param() and is therefore not
+// reachable from a test; this is the part under test, with the spread handed in. spread
+// is capped at 1 inside, so a caller passing 5 gets a staircase, not a negative
+// denominator -- see the test.
+//
+// n <= 1 returns base: a single tile cannot be staggered against anything, and the
+// staggered tile is exempt from the ladder by construction (clocks.cpp), so this is the
+// path every one-tile workspace takes on every switch.
+[[nodiscard]] double stagger(double base, int i, int n, double spread);
+
 } // namespace gloview::anim
