@@ -147,8 +147,6 @@ void Overview::renderStage(eRenderStage stage) {
       close();
     } else if (!showAllWorkspaces()) {
       // capture + replay reflow, else stale ghosts survive
-      debug::dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
-          " tiles=" + std::to_string(m_scene.tiles().size()));
       if (const auto prev = m_workspace.lock())
         m_view.setWsSlideDir( m->m_activeWorkspace->m_id > prev->m_id ? 1 : -1);
       m_workspace = m->m_activeWorkspace;
@@ -157,6 +155,27 @@ void Overview::renderStage(eRenderStage stage) {
       buildStrip();
       layoutTiles();
       startTileGlide(shown);
+      // startTileGlide marks every window it could match against the previous scene as
+      // already present (appear = 1), which is right for a reflow and wrong here: on a
+      // workspace switch the whole tile set is new content, and leaving a window unanimated
+      // is what made this path look different from the plugin's own Tab switch, which sets
+      // appear = 0 on everything. Same slide, same style key, whichever bind got here.
+      for (auto &t : m_scene.edit())
+        t.appear = 0.0;
+      m_clocks.rebuild.begin();
+      ensureAnimPump();
+      {
+        int appearing = 0;
+        for (const auto &t : m_scene.tiles())
+          if (t.appear < 1.0)
+            ++appearing;
+        debug::dbg("WSFOLLOW ->" + std::to_string(m->m_activeWorkspace->m_id) +
+                   " dir=" + std::to_string(m_view.wsSlideDir()) +
+                   " style=[" + m_enterStyle + "] tiles=" +
+                   std::to_string(m_scene.tiles().size()) + " animating=" +
+                   std::to_string(appearing) + " oldBoxes=" +
+                   std::to_string(shown.size()));
+      }
       // no blur invalidation: source id rechecked per frame
       if (m_scene.selected() < 0 || m_scene.selected() >= static_cast<int>(m_scene.tiles().size()))
         m_scene.select(m_scene.tiles().empty() ? -1 : 0);
