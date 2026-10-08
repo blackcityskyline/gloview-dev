@@ -8,6 +8,7 @@
 #include <hyprland/src/plugins/PluginAPI.hpp>
 
 #include "config/config.hpp"
+#include "anim_types.hpp"
 
 // THE animation registry.
 //
@@ -29,25 +30,8 @@ enum class Id : std::uint8_t {
   Count
 };
 
-struct Cfg {
-  bool        on = false;
-  double      ms = 0.0;
-  std::string curve;
-  std::string style;
-};
-
-// Imperative override layered over the registered keys (gloview.animation({...})).
-struct Rule {
-  std::optional<bool>        enabled;
-  std::optional<double>      speed;
-  std::optional<int>         ms;
-  std::optional<std::string> curve;
-  std::optional<std::string> style;
-};
-
-[[nodiscard]] const char *name(Id id);
-
-// Resolved configuration of one registered animation.
+// Cfg, Rule, Inputs and resolve() live in anim_types.hpp: they are plain values, and
+// keeping them free of hyprland/ includes is what lets a test reach the resolver.
 [[nodiscard]] Cfg cfg(Id id);
 
 // Name-keyed, for the Lua layer and for config-driven lookups only. An unknown name is

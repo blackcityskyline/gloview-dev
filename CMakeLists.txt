@@ -38,6 +38,7 @@ add_library(gloview SHARED
   src/clock/curves.cpp
   src/config/config.cpp
   src/anim.cpp
+  src/anim_resolve.cpp
   src/debug/log.cpp
   src/render/painter.cpp
   src/render/backdrop.cpp
@@ -94,9 +95,13 @@ add_test(NAME carousel_exit
 add_test(NAME config_keys
          COMMAND bash -c "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra ${CMAKE_SOURCE_DIR}/tests/config_keys_check.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/cfg_keys_check && ${CMAKE_CURRENT_BINARY_DIR}/cfg_keys_check ${CMAKE_SOURCE_DIR}")
 
-# The curve registry, headless. This is the floor of the animation harness: anim::cfg
-# cannot link without a compositor (Config::Values lives in the Hyprland binary), but the
-# curves decide the shape of every motion and are pure C++.
+# The animation precedence chain, headless. Reachable only because resolve() was split
+# out of anim.cpp: Config::Values lives in the Hyprland binary, so anim.cpp cannot be
+# linked into a test at all.
+add_test(NAME anim_resolve
+         COMMAND ${CMAKE_COMMAND} -E env sh -c
+                 "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/anim_resolve_check.cpp ${CMAKE_SOURCE_DIR}/src/anim_resolve.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/anim_resolve_check && ${CMAKE_CURRENT_BINARY_DIR}/anim_resolve_check")
+
 add_test(NAME curves
          COMMAND ${CMAKE_COMMAND} -E env sh -c
                  "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/curves_check.cpp ${CMAKE_SOURCE_DIR}/tests/hypr_stub.cpp ${CMAKE_SOURCE_DIR}/src/clock/curves.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/curves_check -llua -lhyprutils && ${CMAKE_CURRENT_BINARY_DIR}/curves_check")

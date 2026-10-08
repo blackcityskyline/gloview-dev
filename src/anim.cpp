@@ -96,35 +96,21 @@ const char *name(Id id) { return kRows[static_cast<std::size_t>(id)].name; }
 Cfg cfg(Id id) { return cfg(kRows[static_cast<std::size_t>(id)].name); }
 
 Cfg cfg(const char *n) {
-  Cfg c{};
-  const Row *r = find(n);
   // Not an animation: no motion, and crucially no invented duration.
+  const Row *r = find(n);
   if (!r)
-    return c;
+    return Cfg{};
 
-  double speed = r->speed ? static_cast<double>(r->speed.get()) : 1.0;
-  int absMs = -1;
-  c.on = g_globallyEnabled ? (g_globallyEnabled != 0) : true;
-  if (r->enabled && r->enabled.get() == 0)
-    c.on = false;
-  if (const auto *rule = ruleFor(r->name)) {
-    if (rule->enabled)  c.on = *rule->enabled;
-    if (rule->speed)    speed = *rule->speed;
-    if (rule->ms)       absMs = *rule->ms;
-  }
-  if (!c.on) {
-    c.ms = 1.0;
-    return c;
-  }
-  // The key IS the base duration -- it defaults to the table's base, so existing configs
-  // are unchanged -- and _speed still scales it. A Lua rule's ms overrides both outright.
-  const double base = absMs >= 0 ? static_cast<double>(absMs)
-                                  : static_cast<double>(r->ms.v ? r->ms.get() : r->base);
-  c.ms = std::max(16.0, base / std::clamp(speed, 0.01, 20.0));
-  c.curve = (ruleFor(r->name) && ruleFor(r->name)->curve)
-                ? *ruleFor(r->name)->curve
-                : (r->curve.v ? r->curve.get() : std::string(r->curveDef));
-  return c;
+  Inputs in;
+  in.globalEnabled = g_globallyEnabled ? (g_globallyEnabled != 0) : true;
+  in.enabled       = !(r->enabled && r->enabled.get() == 0);
+  in.hasMs         = static_cast<bool>(r->ms.v);
+  in.ms            = in.hasMs ? r->ms.get() : 0;
+  in.speed         = r->speed ? static_cast<double>(r->speed.get()) : 1.0;
+  in.curve         = static_cast<bool>(r->curve.v) ? r->curve.get() : std::string();
+  in.rule          = ruleFor(r->name);
+
+  return resolve(in, r->base, r->curveDef);
 }
 
 std::string style(const char *n) {
