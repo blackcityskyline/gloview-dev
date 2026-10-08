@@ -44,4 +44,8 @@ Cfg resolve(const Inputs &in, int baseMs, const char *curveDefault) {
   return c;
 }
 
+double resolveParam(bool hasValue, double value, double fallback) {
+  return hasValue ? value : fallback;
+}
+
 } // namespace gloview::anim

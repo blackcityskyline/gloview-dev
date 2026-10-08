@@ -39,21 +39,6 @@ enum class Id : std::uint8_t {
 [[nodiscard]] Cfg cfg(const char *name);
 [[nodiscard]] std::string style(const char *name);
 
-// SHAPE parameters: not how long an animation runs but how it is shaped. They belong to an
-// animation and live beside it here, rather than as literals in the render code that
-// consumes them. Resolved live, exactly like the rest of the registry.
-enum class Param : std::uint8_t {
-  Stagger,        // entry ladder: spread of the tiles over the window
-  StaggerPerTile, // ... per extra tile, capped by Stagger
-  Collapse,       // carousel: fraction of the exit spent shrinking the unfocused cards
-  PulseScale,     // pulse ring: how far past the tile edge it reaches
-  LiftScale,      // lift: how much the picked-up tile grows
-  LiftRise,       // lift: how far it rises, px
-  PopScale,        // pop: how much a tile is SMALLER at the start of its scale-in
-  ShadowOffset,    // tile shadow offset at rest, px
-  LiftShadow,      // tile shadow offset while lifted, px
-  Count
-};
 [[nodiscard]] double param(Param p);
 
 // Not animation styles: behaviour selectors that happen to live in the same config section.
