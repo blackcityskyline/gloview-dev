@@ -1,0 +1,277 @@
+#include <algorithm>
+#include <chrono>
+
+#include "../clock/curves.hpp"
+#include "../config/config.hpp"
+#include "../debug/log.hpp"
+#include "../overview.hpp"
+
+namespace gloview {
+
+// Every clock here is pure linear progress; shaping lives in curves.cpp and
+// durations are re-read from config on every call.
+namespace {
+
+double staggered(double base, int i, int n) {
+  if (n <= 1)
+    return base;
+  const double spread = std::min(anim::param(anim::Param::Stagger),
+                                anim::param(anim::Param::StaggerPerTile) * n);
+  const double start  = spread * (static_cast<double>(i) / (n - 1));
+  return std::clamp((base - start) / std::max(0.001, 1.0 - spread), 0.0, 1.0);
+}
+
+}
+
+// imperative rule > schema key > default; off -> 1ms, speed divides base
+anim::Id Overview::entryLeaf() const {
+  if (m_view.expoFlip() != 0)
+    return m_view.expoFlip() > 0 ? anim::Id::ExpoIn : anim::Id::ExpoOut;
+  return m_view.wsSlideDir() != 0 ? anim::Id::WsEnter : anim::Id::Appear;
+}
+
+anim::Id Overview::ghostLeaf() const {
+  if (m_view.expoFlip() != 0)
+    return m_view.expoFlip() > 0 ? anim::Id::ExpoIn : anim::Id::ExpoOut;
+  return m_view.wsSlideDir() != 0 ? anim::Id::WsExit : anim::Id::Appear;
+}
+
+anim::Id Overview::glideLeaf() const {
+  if (m_view.jumpMode()) return m_opening ? anim::Id::JumpIn : anim::Id::JumpOut;
+  if (m_view.expoFlip() != 0)
+    return m_view.expoFlip() > 0 ? anim::Id::ExpoIn : anim::Id::ExpoOut;
+  return carouselMode() ? anim::Id::CarouselStep : anim::Id::Glide;
+}
+
+double Overview::eased() const {
+  const auto id = (m_view.jumpMode() && !m_opening) ? anim::Id::JumpOut
+                  : m_opening                    ? anim::Id::Open
+                                                 : anim::Id::Close;
+  return curves::eval(anim::cfg(id).curve, m_progress);
+}
+
+// WINDOWED exit: hold the backdrop until our own tiles are done AND Hyprland has spent the
+// forced full frames close() asked for -- those are the frames it rebuilds its blur in.
+// Asking when the windows reached their goal geometry does NOT work: in the plain
+// open/close the real windows never move (the plugin draws previews and hides them), so
+// that test is true on frame 0 and holds nothing.
+bool Overview::backdropSettled() const {
+  const auto m = m_monitor.lock();
+  return m_clocks.tiles.done(animDuration()) && (!m || m->m_forceFullFrames <= 0);
+}
+
+// The backdrop is part of the SAME gesture as the tiles, the strip and the chrome: it
+// rides the open/close animation itself. That is the whole fix for the queued feel --
+// separate clocks made the strip arrive first and then the backdrop set about arriving,
+// with nothing joining them up. The gap a private clock was introduced for is handled by
+// the BASE, not by a timeline: with windows present the base is the blurred cache, so the
+// screen is blurred on frame 0 and the ramp has nothing to reveal anyway.
+//
+// WINDOWED exit is the one exception: the backdrop must stay until Hyprland has rebuilt
+// its blur. Fading out before that is what exposed a sharp desktop mid-flight.
+double Overview::blurAlpha() const {
+  if (!m_opening && !m_landingEmpty)
+    return 1.0;
+  return std::clamp(eased(), 0.0, 1.0);
+}
+
+double Overview::animDuration() const {
+  if (m_view.jumpMode() && !m_opening) return anim::cfg(anim::Id::JumpOut).ms;
+  return (m_opening ? anim::cfg(anim::Id::Open)
+                     : anim::cfg(anim::Id::Close))
+      .ms;
+}
+
+// CLOSE rides m_progress DOWN: tiles then match the collapsing chrome.
+// Read m_clocks.tileMs, not m_glide.ms: a glideLeaf() flip jumps progress.
+double Overview::tileProgress(int i) const {
+  const double glideMs = (m_clocks.tileMs > 0) ? m_clocks.tileMs : m_glide.ms;
+  // currentBox lerps natural -> target as e RISES, so close feeds it m_progress
+  // as-is. Flipping it put every card on its natural box on the first close frame.
+  const double base = m_opening ? m_clocks.tiles.raw(glideMs) : m_progress;
+  // The SELECTED tile is never staggered: stagger() assumes a rising 0..1, so on
+  // close it would delay the landing — the same flight, timed differently.
+  if (carouselMode() || i == m_scene.selected())
+    return base;
+  return staggered(base, i, static_cast<int>(m_scene.tiles().size()));
+}
+
+double Overview::tileAppear(int i) const {
+  return curves::eval(
+      m_entry.curve,
+      staggered(m_clocks.rebuild.raw(m_entry.ms), i,
+                static_cast<int>(m_scene.tiles().size())));
+}
+
+LRect Overview::currentBox(const model::Tile &t, int i) const {
+  const std::string &curve = m_clocks.tileCurve.empty() ? m_glide.curve : m_clocks.tileCurve;
+  const double e = curves::eval(curve, tileProgress(i));
+  const auto &a = t.natural;
+  const auto &b = t.target;
+  LRect r{lerp(a.x, b.x, e), lerp(a.y, b.y, e), lerp(a.w, b.w, e),
+          lerp(a.h, b.h, e)};
+  // A card off the carousel run has a zeroed target. Nothing paints it, so it
+  // must not resize on its way there either — hold the box it was last shown at.
+  if (carouselMode() && b.w < 1.0 && a.w >= 1.0)
+    r = a;
+  const double ap = t.appear < 1.0 ? tileAppear(i) : 1.0;
+  if (ap >= 1.0)
+    return r;
+  if (m_view.wsSlideDir() != 0 && m_enterStyle != "pop") {
+    if (const auto m = m_monitor.lock()) {
+      if (m_enterStyle == "slide")
+        r.x += static_cast<double>(m_view.wsSlideDir()) * m->m_size.x * (1.0 - ap);
+      else if (m_enterStyle == "slidevert")
+        r.y -= static_cast<double>(m->m_size.y) * (1.0 - ap);
+    }
+    if (m_enterStyle == "slide" || m_enterStyle == "slidevert" ||
+        m_enterStyle == "fade")
+      return r;
+  }
+  const double k  = 0.85 + 0.15 * ap;
+  const double cx = r.x + r.w / 2.0, cy = r.y + r.h / 2.0;
+  return LRect{cx - r.w * k / 2.0, cy - r.h * k / 2.0, r.w * k, r.h * k};
+}
+
+void Overview::updateAnimation() {
+  m_glide      = anim::cfg(glideLeaf());
+  m_entry      = anim::cfg(entryLeaf());
+  m_ghost      = anim::cfg(ghostLeaf());
+  m_lift       = anim::cfg(anim::Id::Lift);
+  m_enterStyle = anim::style("ws_enter");
+  m_exitStyle  = anim::style("ws_exit");
+
+  const double dur = animDuration();
+  // stall guard: rewind every clock past a render hole
+  const auto now = std::chrono::steady_clock::now();
+  if (m_lastAnimTick.time_since_epoch().count() != 0) {
+    const double gapMs =
+        std::chrono::duration<double, std::milli>(now - m_lastAnimTick).count();
+    if (gapMs > 100.0) {
+      const double glideMs = glideDur();
+      m_clocks.master.compensateStall(gapMs, dur);
+      m_clocks.tiles.compensateStall(gapMs, glideMs);
+      m_clocks.rebuild.compensateStall(gapMs, std::max(m_entry.ms, m_ghost.ms));
+      m_clocks.strip.compensateStall(gapMs, anim::cfg(anim::Id::StripStep).ms);
+      if (m_newCardAnim)
+        m_clocks.newCard.compensateStall(gapMs, newCardDur());
+      if (m_drag.lifted)
+        m_clocks.dragLift.compensateStall(gapMs, anim::cfg(anim::Id::Lift).ms);
+      m_fx.eachSwap([&](auto &fx) { fx.clock.compensateStall(gapMs, fx.ms); });
+    }
+  }
+  m_lastAnimTick = now;
+
+  if (m_drag.armed() && !m_drag.lifted) {
+    const double elapsedMs = std::chrono::duration<double, std::milli>(
+        now - m_drag.holdStartMs).count();
+    if (elapsedMs >= static_cast<double>(cfg::behavior.hold_lift_ms.get())) {
+      m_drag.lifted = true;
+      m_clocks.dragLift.begin();
+      damage();
+    } else {
+      static auto lastHoldDamage = std::chrono::steady_clock::time_point{};
+      const auto sinceLast = std::chrono::duration<double, std::milli>(
+          now - lastHoldDamage).count();
+      if (sinceLast >= 50.0) {
+        damage();
+        lastHoldDamage = now;
+      }
+    }
+  }
+
+  const auto st = anim::cfg(anim::Id::StripStep);
+  if (!m_clocks.strip.done(st.ms))
+    m_stripScroll =
+        lerp(m_stripScrollFrom, m_stripScrollTarget,
+             curves::eval(st.curve, m_clocks.strip.raw(st.ms)));
+  else
+    m_stripScroll = m_stripScrollTarget;
+
+  if (!m_fx.ghosts().empty() && m_clocks.rebuild.done(m_ghost.ms))
+    m_fx.clearGhosts();
+  // entries must settle explicitly or they keep evaluating curves forever
+  if (m_clocks.rebuild.done(m_entry.ms) &&
+      std::any_of(m_scene.tiles().begin(), m_scene.tiles().end(),
+                  [](const model::Tile &t) { return t.appear < 1.0; }))
+    for (auto &t : m_scene.edit())
+      t.appear = 1.0;
+
+  const auto pulse = anim::cfg(anim::Id::Pulse);
+  m_fx.eachPulse([&](auto &p) {
+    if (p.w.expired())
+      return;
+    p.p += std::min(34.0, std::chrono::duration<double, std::milli>(now - p.last)
+                              .count()) /
+           pulse.ms;
+    p.last = now;
+  });
+  // Pruned on each pulse's own accumulated fraction: a live config change must not
+  // shorten a ring that is already running.
+  m_fx.dropPulse(
+      [](const model::WinPulse &p) { return p.w.expired() || p.p >= 1.0; });
+
+  if (m_clocks.rebuild.done(m_ghost.ms) && m_clocks.rebuild.done(m_entry.ms)) {
+    m_view.setWsSlideDir( 0);
+    m_view.setExpoFlip( 0);
+    if (m_pendingJumpClose) {
+      m_pendingJumpClose = false;
+      close();
+    }
+  }
+
+  // prune on each flight's own clock; live config would cut landings short
+  m_fx.dropSwap([](const model::SwapFX &fx) {
+    return fx.win.expired() || fx.clock.raw(fx.ms) >= 1.0;
+  });
+
+  const double t = m_clocks.master.raw(dur);
+  m_progress = m_opening ? t : 1.0 - t;
+  if (m_newCardAnim && m_clocks.newCard.done(newCardDur())) {
+    m_newCardAnim = false;
+    m_newCardId = 0;
+  }
+  // NEVER zero m_progress: a transparent frame before deactivate() flashes.
+  // Clamp as soon as the flight ends, NOT together with the deactivate: the exit ramp
+  // outlives the close animation, and at exactly 0 the overlay paints nothing, Hyprland
+  // has no damage to serve, and the ramp runs on with no frames to show it (measured:
+  // 769ms of ticks with no render).
+  if (!m_opening && t >= 1.0 && m_progress <= 0.0)
+    m_progress = 1e-6;
+  // The overlay outlives the close animation by exactly the windowed-exit hold: that is
+  // what keeps the backdrop covering the screen until Hyprland's own blur has taken over
+  // on the windows that have just landed. Lingering past that would leave a transparent
+  // overlay over a sharp desktop, which is the gap all over again.
+  if (!m_opening && t >= 1.0 && m_clocks.tiles.done(dur) && backdropSettled())
+    m_pendingDeactivate = true;
+}
+
+bool Overview::animBusy() const {
+  return m_active &&
+         (secondaryAnimsActive() || !m_clocks.tiles.done(glideDur()) ||
+          m_newCardAnim || m_drag.lifted || !m_fx.swapfx().empty() ||
+          m_pendingJumpClose || m_pendingDeactivate ||
+          (m_opening && m_progress < 1.0) || (!m_opening && m_progress > 0.0));
+}
+
+double Overview::newCardScale() const {
+  if (!m_newCardAnim)
+    return 1.0;
+  return curves::eval(anim::cfg(anim::Id::Card).curve, m_clocks.newCard.raw(newCardDur()));
+}
+
+void Overview::animateStripTo(double from, double to) {
+  from = std::clamp(from, 0.0, std::max(0.0, m_stripScrollMax));
+  to   = std::clamp(to, 0.0, std::max(0.0, m_stripScrollMax));
+  const auto st = anim::cfg(anim::Id::StripStep);
+  if (!st.on || std::abs(to - from) < 0.5) {
+    m_stripScrollFrom = m_stripScrollTarget = m_stripScroll = to;
+    return;
+  }
+  m_stripScrollFrom = !m_clocks.strip.done(st.ms) ? m_stripScroll : from;
+  m_stripScrollTarget = to;
+  m_clocks.strip.begin();
+  ensureAnimPump();
+}
+
+}

@@ -29,16 +29,21 @@ add_library(gloview SHARED
   src/input/keys.cpp
   src/actions/actions.cpp
   src/layout.cpp
+  src/model/recency.cpp
   src/cursor.cpp
   src/blur.cpp
-  src/anim/clocks.cpp
-  src/anim/curves.cpp
+  src/pixel/cache.cpp
+  src/clock/clock.cpp
+  src/clock/clocks.cpp
+  src/clock/curves.cpp
   src/config/config.cpp
+  src/anim.cpp
   src/debug/log.cpp
   src/render/painter.cpp
   src/render/backdrop.cpp
   src/render/window_content.cpp
   src/render/tile_view.cpp
+  src/render/carousel_view.cpp
   src/render/strip_view.cpp
   src/render/fx.cpp
 )
@@ -71,6 +76,42 @@ install(TARGETS gloview LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 # lets one plugin-free frame flush the render pass. A plugin crash kills the whole session —
 # prefer a nested Hyprland for risky changes. (For installed plugins the user path is
 # `hyprpm enable/disable <name>` + `hyprpm reload`.)
+# Layout and exit self-checks. Both are plain asserts-over-arithmetic, no
+# compositor, so they run on every build: the carousel exit was shipped broken
+# three times (its progress read with the wrong sign) and a screenshot does not
+# tell a zero-size card from a small one.
+enable_testing()
+add_test(NAME recency
+         COMMAND ${CMAKE_COMMAND} -E env sh -c
+                 "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra ${CMAKE_SOURCE_DIR}/tests/recency_check.cpp ${CMAKE_SOURCE_DIR}/src/model/recency.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/recency_check && ${CMAKE_CURRENT_BINARY_DIR}/recency_check")
+add_test(NAME carousel_layout
+         COMMAND ${CMAKE_COMMAND} -E env sh -c
+                 "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/layout_carousel_check.cpp ${CMAKE_SOURCE_DIR}/src/layout.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/layout_check && ${CMAKE_CURRENT_BINARY_DIR}/layout_check")
+add_test(NAME carousel_exit
+         COMMAND ${CMAKE_COMMAND} -E env sh -c
+                 "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra ${CMAKE_SOURCE_DIR}/tests/carousel_exit_check.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/exit_check && ${CMAKE_CURRENT_BINARY_DIR}/exit_check")
+
+add_test(NAME config_keys
+         COMMAND bash -c "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra ${CMAKE_SOURCE_DIR}/tests/config_keys_check.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/cfg_keys_check && ${CMAKE_CURRENT_BINARY_DIR}/cfg_keys_check ${CMAKE_SOURCE_DIR}")
+
+# The load seam. Needs the real .so, so it only means anything once it has been
+# built: `ctest -R load_seam` afterwards, or CI, where the .so always exists.
+# SKIP_RETURN_CODE so a machine without Hyprland reports skip, not a fake failure.
+find_program(HYPRLAND_BIN Hyprland)
+add_test(NAME load_seam
+         COMMAND bash ${CMAKE_SOURCE_DIR}/tests/load_seam_check.sh
+                 $<TARGET_FILE:gloview> ${HYPRLAND_BIN}
+         SKIP_RETURN_CODE 77)
+
+# Hook signatures against the running compositor's exports. A mismatch makes
+# findFunctionsByName return nothing and initialize() fail, and hyprpm's plugin.load
+# swallows that, so the symptom reads as "my config did not take".
+add_test(NAME hook_signatures
+         COMMAND bash ${CMAKE_SOURCE_DIR}/tests/hook_signature_check.sh
+                 $<TARGET_FILE:gloview> ${HYPRLAND_BIN}
+                 ${CMAKE_SOURCE_DIR}/src/session/session.cpp
+         SKIP_RETURN_CODE 77)
+
 add_custom_target(reload
   COMMAND bash -c "hyprctl gloviewunload || true"
   COMMAND ${CMAKE_COMMAND} -E sleep 0.15

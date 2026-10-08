@@ -18,7 +18,8 @@ extern "C" {
 #include <lua.h>
 }
 
-#include "anim/curves.hpp"
+#include "clock/curves.hpp"
+#include "anim.hpp"
 #include "config/config.hpp"
 #include "overview.hpp"
 
@@ -27,36 +28,16 @@ inline std::unique_ptr<gloview::Overview> g_overviewOwned;
 
 namespace {
 
-// --- every plugin:gloview:* config value, grouped by concern ---
-// Color options are plain strings holding a hex literal in any accepted form
-// ("0xAARRGGBB", "#RRGGBB", …) — or a palette-resolved hex produced Lua-side
-// from a theme module (hyprbars pattern), see config/config.cpp.
-
-// One table drives ALL three invoke paths (dispatcher / hyprctl / Lua). Adding
-// an action = adding one entry here; the three registration loops below pick up
-// whichever paths its three name fields enable.
-//
-// hyprctl notes:
-//   gloview        exact command — reliable invoke path:  hyprctl gloview
-//   gloviewclose   close-only (no-op if not open): dismiss the overlay before
-//                  unloading. Unloading mid-render with the overview up tears
-//                  down the render hooks while an in-flight frame still
-//                  references them → Hyprland crash.
-//   gloviewunload  UNLOAD-safe teardown (run by the `reload` target before
-//                  `plugin unload`). Unlike gloviewclose (which only *starts*
-//                  the close animation), this drops all overlay state + the
-//                  recapture timer synchronously, so the next frame renders
-//                  with no plugin-owned pass elements and dlclose can't free a
-//                  callback still referenced mid-frame. Makes reload
-//                  deterministic.
+// null name field = that path is skipped. gloviewunload is UNLOAD-safe:
+// hardClose; gloviewclose only starts close, unloading there crashes.
 struct Action {
-    const char* dispatch; // suffix of the "gloview:<suffix>" dispatcher; nullptr = none
-    const char* hyprctl;  // exact hyprctl command; nullptr = none
-    const char* lua;      // function registered under gloview.*; nullptr = none
-    void (*invoke)();     // nullary; checks g_overview itself
+    const char* dispatch;
+    const char* hyprctl;
+    const char* lua;
+    void (*invoke)();
 };
 
-constexpr std::array<Action, 8> kActions{{
+constexpr std::array<Action, 9> kActions{{
     {"toggle", "gloview", "toggle",
      [] { if (g_overview) g_overview->toggle(); }},
     {"open", nullptr, "open",
@@ -64,10 +45,11 @@ constexpr std::array<Action, 8> kActions{{
     {"close", "gloviewclose", "close",
      [] { if (g_overview) g_overview->close(); }},
     {"desktop", "gloviewdesktop", "desktop",
-     [] { if (g_overview) g_overview->toggleDesktop(); }}, // toggle the free-arrange desktop mode
+     [] { if (g_overview) g_overview->toggleDesktop(); }},
     {"allworkspaces", "gloviewall", "allworkspaces",
-     [] { if (g_overview) g_overview->toggleAllWorkspaces(); }}, // open/toggle the all-workspaces expo view
-    // alt-tab cycling — see the alt_tab_* config keys
+     [] { if (g_overview) g_overview->toggleAllWorkspaces(); }},
+    {"togglecarousel", "gloviewcarousel", "togglecarousel",
+     [] { if (g_overview) g_overview->toggleCarousel(); }},
     {"alttab", "gloviewalttab", "alttab",
      [] { if (g_overview) g_overview->altTabInvoke(false); }},
     {"alttabback", "gloviewalttabback", "alttabback",
@@ -76,15 +58,13 @@ constexpr std::array<Action, 8> kActions{{
      [] { if (g_overview) g_overview->hardClose(); }},
 }};
 
-// addLuaFunction wants a raw int(*)(lua_State*) — no captures — so each Lua
-// route goes through a stateless thunk indexed like the table.
 template <size_t I>
 int luaInvoke(lua_State*) {
     kActions[I].invoke();
     return 0;
 }
 
-} // namespace
+}
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
     return HYPRLAND_API_VERSION;
@@ -93,15 +73,9 @@ APICALL EXPORT std::string PLUGIN_API_VERSION() {
 APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     g_handle = handle;
 
-    // Unmistakable load marker — before ANY other work, so it fires even if
-    // initialize() throws below. __DATE__/__TIME__ are compiler builtins that
-    // change on every single compile, unlike a git hash (no CMake wiring
-    // needed to get one). Purely a "is the fresh binary actually running"
-    // sanity check for live debugging sessions — grep for it in the log
-    // right after a hot-reload, before chasing anything else.
+    // build stamp first: grep the log to confirm a hot-reload loaded the new binary
     gloview::debug::dbg("[gloview] PLUGIN_INIT build=" __DATE__ " " __TIME__);
 
-    // The whole option schema lives in config/config.cpp (grouped by domain).
     gloview::cfg::registerAll(handle);
     gloview::curves::registerBuiltins();
 
@@ -111,10 +85,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         HyprlandAPI::addNotification(handle, "[gloview] initialization failed", CHyprColor(1.0, 0.2, 0.2, 1.0), 6000);
         g_overview = nullptr;
         g_overviewOwned.reset();
-        // Throw so Hyprland ejects the plugin (it catches this and runs unloadPlugin).
-        // Returning normally instead kept a half-alive instance loaded — dispatchers and
-        // config registered but no render hooks — which then blocked every later load
-        // attempt (two instances can't hook shouldRenderWindow twice).
+        // throw so Hyprland ejects us; a half-alive instance blocks later loads
         throw std::runtime_error("[gloview] initialization failed");
     }
 
@@ -147,13 +118,10 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
               HyprlandAPI::addLuaFunction(handle, "gloview", kActions[Is].lua,
                                           &luaInvoke<Is>)),
              ...);
-            // hl.plugin.gloview.curve(name, fn|{bezier}): custom curves
             HyprlandAPI::addLuaFunction(handle, "gloview", "curve",
                                         &gloview::curves::luaRegister);
-            // hl.plugin.gloview.animation({leaf=..., enabled=..., speed=...,
-            //                              ms=..., curve=..., style=...})
             HyprlandAPI::addLuaFunction(handle, "gloview", "animation",
-                                        &gloview::cfg::luaSetAnimRule);
+                                        &gloview::anim::luaSetRule);
         }
     }(std::make_index_sequence<kActions.size()>{});
 

@@ -30,12 +30,7 @@ void main() {
 }
 )#";
 
-// Separable 9-tap gaussian. Tap spacing = uRadius/4 so the kernel footprint is
-// ~+/-uRadius source texels; sigma = 3 in tap space. Sampling is linear, so a
-// sub-texel radius degrades into a smooth 1-2 tap blur instead of aliasing.
-// Runs at the BOTTOM of the dual-Kawase pyramid (see FRAG_KAWASE_DOWN/UP
-// below), i.e. on the smallest buffer, so its 9 taps per axis stay cheap
-// regardless of output resolution.
+// 9-tap separable gaussian at the pyramid BOTTOM: cost ignores output resolution.
 const char* const FRAG_SRC = R"#(
 #version 300 es
 precision highp float;
@@ -64,8 +59,6 @@ void main() {
 }
 )#";
 
-// Plain linear copy, used only for the degenerate resolution=1 case (no
-// pyramid levels at all — see CBlurFilter::render()).
 const char* const FRAG_BLIT = R"#(
 #version 300 es
 precision highp float;
@@ -77,12 +70,7 @@ void main() {
 }
 )#";
 
-// Dual-Kawase downsample: a 5-tap diamond (center weight 4, four diagonal
-// taps weight 1 each; sum 8) — the standard companion filter for an exact 2x
-// reduction, which is the only ratio a single non-mipmapped bilinear sample
-// can filter without aliasing. uHalfpixel = 0.5 / DESTINATION size, in
-// normalised UV units (both textures share the same [0,1] UV rect, so the
-// same vUv feeds source and destination).
+// 5-tap diamond downsample; uHalfpixel is 0.5 / DESTINATION size, not source.
 const char* const FRAG_KAWASE_DOWN = R"#(
 #version 300 es
 precision highp float;
@@ -100,9 +88,7 @@ void main() {
 }
 )#";
 
-// Dual-Kawase upsample: the matching 8-tap filter (4 corner taps weight 1, 4
-// edge taps weight 2; sum 12) for a 2x enlargement. uHalfpixel = 0.5 / SOURCE
-// size (the smaller texture being sampled FROM).
+// Matching 8-tap upsample; here uHalfpixel is 0.5 / SOURCE size.
 const char* const FRAG_KAWASE_UP = R"#(
 #version 300 es
 precision highp float;
@@ -165,7 +151,8 @@ GLuint linkProgram(const char* vsSrc, const char* fsSrc) {
     return prog;
 }
 
-} // namespace
+}
+
 
 CBlurFilter::~CBlurFilter() {
     destroyProgram();
@@ -211,7 +198,6 @@ bool CBlurFilter::compileProgram() {
     if (m_vbo == 0)
         glGenBuffers(1, &m_vbo);
 
-    // Fullscreen quad: position + uv, interleaved (stride 16 bytes).
     const float verts[4][4] = {
         {-1.0F, -1.0F, 0.0F, 0.0F},
         { 1.0F, -1.0F, 1.0F, 0.0F},
@@ -260,32 +246,11 @@ void CBlurFilter::destroyProgram() {
 }
 
 void CBlurFilter::ensureScratch(int w, int h) {
-    // How many dyadic (halving) pyramid steps get us from full res down to
-    // (approximately) the configured `resolution` divisor — e.g. resolution=4
-    // -> 2 levels (full -> 1/2 -> 1/4), resolution=6 -> 3 levels (-> 1/8, the
-    // nearest power of two, since a fractional halving isn't meaningful and
-    // every step must be a clean 2x for the Kawase filters to be correct).
-    // Clamped to kMaxLevels (5, i.e. resolution up to 32) to bound the
-    // fixed-size m_downFBs array.
-    //
-    // `resolution` (pyramid depth) is the PRIMARY blur-strength control, not
-    // just an anti-aliasing detail: each Kawase down+up step is itself a real
-    // box/tent filter over its input, and repeating it `levels` times is a
-    // substantial, compounding blur on its own — this is the entire basis of
-    // dual-Kawase blur as used by KDE/GNOME, who don't run a separate
-    // gaussian pass at all. (An earlier version of this function additionally
-    // capped `levels` down whenever the gaussian stage's OWN radius looked
-    // too small in texel terms, on the assumption that the pyramid itself
-    // contributed negligible blur — that assumption was wrong: it directly
-    // reduced pyramid depth, and with it total blur strength, and made
-    // `resolution` stop having any effect past that cap. Removed.)
+    // Dyadic halvings down to ~resolution as a power of two: every step must be
+    // a clean 2x. Clamped to kMaxLevels for the fixed-size FB array.
     const int levels = std::clamp(static_cast<int>(std::lround(std::log2(static_cast<double>(std::max(1, m_resolution))))), 0, kMaxLevels);
 
-    // Walk `levels` halvings to get the bottom-of-pyramid (post-gaussian) size —
-    // same loop shape as the pyramid allocation below, so this is guaranteed to
-    // land on exactly the same size the down-chain's last step actually produces
-    // (unlike computing it independently via a plain W/resolution divide, which
-    // can disagree with the halving chain for a non-power-of-two `resolution`).
+    // Same halving walk as the allocation: a plain W/resolution divide disagrees.
     int bw = w, bh = h;
     for (int i = 0; i < levels; ++i) {
         bw = std::max(1, (bw + 1) / 2);
@@ -310,9 +275,7 @@ void CBlurFilter::ensureScratch(int w, int h) {
     if (!m_fbB->isAllocated() || m_fbB->m_size != Vector2D(bw, bh))
         m_fbB->alloc(bw, bh);
 
-    // Intermediate pyramid levels 1 .. levels-1 (level `levels` is m_fbA/m_fbB
-    // above, level 0 is the caller's own source texture — never copied into an
-    // FBO of ours). Reused for both the down-chain and the up-chain in render().
+    // Level 0 is the caller's source texture, never copied into an FBO of ours.
     int lw = w, lh = h;
     for (int i = 0; i < m_levels - 1; ++i) {
         lw = std::max(1, (lw + 1) / 2);
@@ -337,11 +300,6 @@ void CBlurFilter::blitTex(const SP<Render::ITexture>& srcTex, GLuint prog, int l
     glUseProgram(0);
 }
 
-// The three pass helpers below are RAW: render() captures scissor/blend/FBO/
-// viewport state once for the whole chain and restores it at the end — a
-// save/restore scope per pass cost two viewport queries and two FBO rebinds
-// per pass (~20 extra GL calls per re-blur, which is EVERY frame for a live
-// video source).
 void CBlurFilter::gaussPass(const SP<Render::ITexture>& srcTex, const SP<Render::IFramebuffer>& dstFB, const Vector2D& texSize, const Vector2D& dir, float radius) {
     dstFB->bind();
     g_pHyprOpenGL->setViewport(0, 0, (int)dstFB->m_size.x, (int)dstFB->m_size.y);
@@ -400,45 +358,25 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
 
     ensureScratch(W, H);
 
-    // Fully snapshot the caller's blend state up front — both whether it's enabled AND the
-    // exact blend factors — so this call is a true no-op on it, regardless of which
-    // convention (straight vs premultiplied alpha, or anything else) the surrounding
-    // renderer happens to be using at the call site. The passes below all
-    // unconditionally glDisable(GL_BLEND) for their own opaque draws — restoring
-    // only the enable bit (an earlier version of this fix) put the right
-    // enabled/disabled flag back but left OUR OWN blend func in place regardless of what the
-    // caller actually had, which is wrong for anything relying on a different func.
-    // Capturing the full state here and restoring all of it at the end removes that
-    // guesswork entirely: whatever renderBackdrop()'s caller had set stays exactly as it
-    // was, whether that's this straight-alpha func or something else downstream (e.g.
-    // renderStrip(), drawn right after renderBackdrop() in the same pass) depends on.
+    // Snapshot the caller's blend FUNC, not just the enable bit: passes disable blending.
     const bool blendBefore = glIsEnabled(GL_BLEND) == GL_TRUE;
     GLint      blendSrcRGB = GL_ONE, blendDstRGB = GL_ZERO, blendSrcAlpha = GL_ONE, blendDstAlpha = GL_ZERO;
     glGetIntegerv(GL_BLEND_SRC_RGB, &blendSrcRGB);
     glGetIntegerv(GL_BLEND_DST_RGB, &blendDstRGB);
     glGetIntegerv(GL_BLEND_SRC_ALPHA, &blendSrcAlpha);
     glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDstAlpha);
-    // Same one-shot treatment for the scissor test (a stray scissor from
-    // another draw would clip the fullscreen quads) and the caller's FBO +
-    // viewport (the raw passes below bind their own targets). currentFB can
-    // legitimately be null outside a pass — guard the restore.
+    // Scissor and caller FBO/viewport too: a stray scissor clips the quads.
     const bool scissorBefore = glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE;
     glDisable(GL_SCISSOR_TEST);
     const auto callerFB = g_pHyprRenderer->m_renderData.currentFB;
     GLint      callerVp[4];
     glGetIntegerv(GL_VIEWPORT, callerVp);
 
-    // Radius is relative to the bottom buffer's actual texel size, which is the ACHIEVED
-    // downscale (1 << m_levels — the nearest power of two to the configured `resolution`,
-    // see ensureScratch()), not the raw config value, so the gaussian stage's footprint
-    // stays consistent with the buffer it's actually running on.
+    // Radius is in the bottom buffer's texels (1 << m_levels), not raw config.
     const float    strengthRadius = std::max(0.5F, (m_sizePx * m_strength) / static_cast<float>(1 << m_levels));
     const Vector2D blurSize{static_cast<float>(m_blurW), static_cast<float>(m_blurH)};
 
-    // 1) Dual-Kawase down-chain: source -> L1 -> L2 -> ... -> fbA (bottom). Each step is a
-    // proper 2x box/tent filter instead of one aliasing single jump (see blur.hpp for the
-    // full rationale) — resolution=1 (m_levels==0) has no levels to walk at all, so fbA is
-    // just a plain copy of the full-res source, matching the old single-scale behaviour.
+    // Down-chain: each step is a real 2x filter, never one aliasing jump.
     if (m_levels == 0) {
         m_fbA->bind();
         g_pHyprOpenGL->setViewport(0, 0, m_blurW, m_blurH);
@@ -455,18 +393,12 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
         }
     }
 
-    // 2) separable gaussian passes at the bottom of the pyramid, ping-pong between fbA/fbB
-    // (unchanged from the single-scale version — cheap here since the buffer is small
-    // regardless of output resolution).
     for (int p = 0; p < m_passes; ++p) {
         gaussPass(m_fbA->getTexture(), m_fbB, blurSize, {1.0F, 0.0F}, strengthRadius); // H: A->B
         gaussPass(m_fbB->getTexture(), m_fbA, blurSize, {0.0F, 1.0F}, strengthRadius); // V: B->A
     }
 
-    // 3) Dual-Kawase up-chain: fbA (bottom, post-gaussian) -> ... -> L1 -> dst (full res,
-    // opaque). Walked in reverse, reusing the SAME FBOs the down-chain used for each level —
-    // by the time we write into a level here its down-chain content is no longer needed, so
-    // this is the total extra scratch memory the pyramid costs over the old single buffer.
+    // Up-chain reuses the down-chain FBOs: consume a level before overwriting it.
     if (m_levels == 0) {
         dst->bind();
         g_pHyprOpenGL->setViewport(0, 0, W, H);
@@ -485,14 +417,7 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
         }
     }
 
-    // The dim colour is NOT composited here: the cache this writes must stay
-    // independent of backdrop_color (it is part of the per-frame key now) and
-    // of the animation — renderBackdrop() draws the dim rect itself, faded by
-    // the same curve as the blit alpha.
-
-    // Restore everything captured above: blend func + enable bit (the passes
-    // ran with blending disabled for their own opaque draws), scissor test,
-    // caller's FBO binding and viewport.
+    // No dim here: the cache stays free of backdrop_color and fade; renderBackdrop() draws it.
     glBlendFuncSeparate(blendSrcRGB, blendDstRGB, blendSrcAlpha, blendDstAlpha);
     if (!blendBefore)
         glDisable(GL_BLEND);
@@ -506,4 +431,4 @@ bool CBlurFilter::render(const SP<Render::ITexture>& src, const SP<Render::IFram
     return true;
 }
 
-} // namespace gloview
+}

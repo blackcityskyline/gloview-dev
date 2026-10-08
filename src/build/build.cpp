@@ -27,22 +27,18 @@ using Render::GL::g_pHyprOpenGL;
 namespace gloview {
 
 void Overview::buildTiles() {
-  // Canvas-parked boxes must survive this rebuild: carry each old tile's
-  // target/parked onto its window's fresh Tile.
+  // parked boxes survive the rebuild
   std::unordered_map<PHLWINDOWREF, std::pair<LRect, bool>> priorTargets;
-  for (const auto &t : m_tiles)
+  for (const auto &t : m_scene.tiles())
     if (t.parked)
       if (const auto w = t.win.lock())
         priorTargets.emplace(w, std::pair{t.target, true});
-  m_tiles.clear();
+  m_scene.edit().clear();
   const auto m = m_monitor.lock();
   const auto ws = m_workspace.lock();
   if (!m || !ws)
     return;
 
-  // Off-workspace windows (expo) render live from their last-committed texture,
-  // same as the strip cards. Membership shared with syncTiles via
-  // tileBelongs().
   for (const auto &w : Desktop::windowState()->windows()) {
     if (!tileBelongs(w, m, ws))
       continue;
@@ -53,20 +49,24 @@ void Overview::buildTiles() {
       t.target = it->second.first;
       t.parked = true;
     }
-    // settled goal(), not value(): a mid-desktop-jump value() carries the
-    // workspace-slide offset and would warp every preview.
+    // goal(), not value(): value() carries the slide offset
     const auto p = w->positionAnimation()->goal();
     const auto s = w->sizeAnimation()->goal();
     t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
                       std::max(1.0, s.x), std::max(1.0, s.y)};
-    m_tiles.push_back(t);
+    m_scene.edit().push_back(t);
   }
 
-  // cache each window's title texture, drawn under the tile on hover.
+  // NO makeEGLCurrent() here. buildTiles()/buildStrip() are reached from key handlers and
+  // dispatch (open(), the actions), where the current EGL context belongs to the compositor,
+  // not to us: making ours current there raised a foreign context over it and the NEXT GL
+  // call in renderBackdrop() threw bad_variant_access, killing the compositor (crash report
+  // hyprlandCrashReport41645: eglCreateContext EGL_BAD_MATCH -> renderBackdrop -> paint).
+  // The compositor makes our context current for every pass it drives, so the label
+  // pre-render is safe from renderStage and needs no context juggling here.
   if (g_pHyprOpenGL && g_pHyprRenderer) {
-    g_pHyprOpenGL->makeEGLCurrent();
     const auto lblCol = cfg::colors.label.get();
-    for (auto &t : m_tiles) {
+    for (auto &t : m_scene.edit()) {
       const auto w = t.win.lock();
       if (!w)
         continue;
@@ -75,19 +75,14 @@ void Overview::buildTiles() {
         text = w->m_class;
       if (text.size() > 80)
         text = text.substr(0, 79) + "…";
-      t.label = cachedLabel(w.get(), text, lblCol, 15);
+      t.labelKey  = w.get();
+      t.labelText = text;
+      t.label = m_pixel.windowLabel(w, text, lblCol, 15);
     }
-    // pre-render the "✕" (or configured) glyph once per icon (rendering text
-    // mid-pass is unsafe); re-rendered whenever close_button_icon changes so it
-    // takes effect live.
+    // glyph pre-rendered: text rendering mid-pass is unsafe
     const std::string closeIcon =
         cfg::look.close_button_icon.get();
-    if (!m_closeGlyph || m_closeGlyphIcon != closeIcon) {
-      m_closeGlyph = g_pHyprRenderer->renderText(closeIcon,
-          cfg::colors.close_glyph.get(), 16,
-          false, "", 0, 800);
-      m_closeGlyphIcon = closeIcon;
-    }
+    m_pixel.glyph(closeIcon, cfg::colors.close_glyph.get());
   }
 }
 
@@ -98,18 +93,6 @@ void Overview::buildStrip() {
     return;
   const auto cur = m_workspace.lock();
 
-  // Three explicit modes instead of a plain on/off: "show" (default) shows
-  // every numeric workspace up to the highest one in use, even ones that have
-  // NEVER been created — "neighbors" hides empty ones EXCEPT the displayed
-  // workspace's immediate numeric neighbors, cascading one hop at a time as you
-  // navigate into a run of them — "hide" is a pure filter: only occupied
-  // workspaces (plus whichever one is currently displayed), no empty exceptions
-  // at all. Hyprland only keeps a PHLWORKSPACE object for a workspace that was
-  // actually created/visited — an empty, never-visited one simply has no object
-  // to iterate — so "show"/"neighbors" can't just filter getWorkspaces(); the
-  // IDs with no real object get a VIRTUAL placeholder card
-  // (StripItem::virtualWs) instead, which lazily creates the real workspace the
-  // same way "+" does, but at that specific number.
   const std::string emptyMode =
       cfg::strip.empty_mode.get();
   const bool showSpecial = cfg::behavior.show_special != 0;
@@ -121,7 +104,7 @@ void Overview::buildStrip() {
   };
 
   std::unordered_map<int, PHLWORKSPACE>
-      real; // numeric id -> existing workspace object, this monitor
+      real;
   const int curId = (cur && !cur->m_isSpecialWorkspace) ? cur->m_id : -1;
   int highestId = 0;
   for (const auto &wref : State::workspaceState()->workspaces()) {
@@ -130,12 +113,12 @@ void Overview::buildStrip() {
       continue;
     if (ws->m_isSpecialWorkspace) {
       if (showSpecial &&
-          wsHasWindows(ws)) { // a scratchpad is only meaningful when populated
+          wsHasWindows(ws)) {
         model::StripItem it;
         it.ws = ws;
         it.id = ws->m_id;
         it.active = (ws == cur);
-        m_strip.push_back(std::move(it));
+        m_strip.add(std::move(it));
       }
       continue;
     }
@@ -144,11 +127,8 @@ void Overview::buildStrip() {
     real[ws->m_id] = ws;
     highestId = std::max(highestId, static_cast<int>(ws->m_id));
   }
-  // special-workspace cards (if any) were pushed straight into m_strip above
-  // and don't participate in numeric id ordering below; stash them aside and
-  // re-append after.
-  std::vector<model::StripItem> specialCards;
-  specialCards.swap(m_strip);
+  // special cards bypass the numeric ordering
+  std::vector<model::StripItem> specialCards = m_strip.takeAll();
 
   std::set<int> idsToShow;
   if (emptyMode == "hide") {
@@ -159,39 +139,29 @@ void Overview::buildStrip() {
     for (const auto &[id, ws] : real)
       if (ws == cur || wsHasWindows(ws))
         idsToShow.insert(id);
-    // cascading reveal: the displayed workspace's immediate numeric neighbors,
-    // even when neither has a real object yet — re-evaluated every buildStrip()
-    // call (i.e. every time the displayed workspace changes), so switching onto
-    // a freshly-revealed neighbor reveals ITS neighbor next, one hop at a time.
     if (curId > 0) {
       if (curId - 1 > 0)
         idsToShow.insert(curId - 1);
       idsToShow.insert(curId + 1);
     }
-  } else { // "show": every numeric id up to the highest one in use, even if
-           // never created.
-    // At least the 10 quick-access slots (key_workspace's default 1..0 =
-    // workspaces 1..10) are always offered; extend further if a higher
-    // workspace already exists.
+  } else {
     const int upTo = std::max({10, highestId, curId});
     for (int id = 1; id <= upTo; ++id)
       idsToShow.insert(id);
     for (const auto &[id, ws] :
-         real) // a manually-created id beyond `upTo` still shows
+         real)
       idsToShow.insert(id);
   }
   if (curId > 0)
     idsToShow.insert(
-        curId); // whatever's displayed always stays, occupied or not
+        curId);
 
-  // optional leading "All workspaces" card (toggles expo). Pushed FIRST so it
-  // sits at the strip's leading edge; skipped wherever cards are treated as
-  // workspaces (see the Kind::All guards).
+  // leading All-workspaces card; Kind::All guarded elsewhere
   if (cfg::strip.all_card != 0) {
     model::StripItem all;
     all.kind = model::StripItem::Kind::All;
     all.id = 0;
-    m_strip.push_back(std::move(all));
+    m_strip.add(std::move(all));
   }
 
   for (const int id : idsToShow) {
@@ -199,9 +169,8 @@ void Overview::buildStrip() {
     it.id = id;
     const auto found = real.find(id);
     if (found == real.end()) {
-      it.virtualWs = true; // no real PHLWORKSPACE object yet — lazily created
-                           // on click/drop
-      m_strip.push_back(std::move(it));
+      it.virtualWs = true; // created on click/drop
+      m_strip.add(std::move(it));
       continue;
     }
     const auto &ws = found->second;
@@ -219,27 +188,30 @@ void Overview::buildStrip() {
                      s.y / m->m_size.y};
       it.wins.push_back(sw);
     }
-    m_strip.push_back(std::move(it));
+    m_strip.add(std::move(it));
   }
-  for (auto &sc :
-       specialCards) // scratchpad card(s), if shown, sit after the numeric ones
-    m_strip.push_back(std::move(sc));
+  for (auto &sc : specialCards)
+    m_strip.add(std::move(sc));
 
-  // trailing "+" card to create a new workspace
   model::StripItem plus;
   plus.kind = model::StripItem::Kind::Plus;
   plus.id = 0;
-  m_strip.push_back(std::move(plus));
+  m_strip.add(std::move(plus));
 
-  // render workspace name labels (cached textures) up front
+  // NO makeEGLCurrent() here. buildTiles()/buildStrip() are reached from key handlers and
+  // dispatch (open(), the actions), where the current EGL context belongs to the compositor,
+  // not to us: making ours current there raised a foreign context over it and the NEXT GL
+  // call in renderBackdrop() threw bad_variant_access, killing the compositor (crash report
+  // hyprlandCrashReport41645: eglCreateContext EGL_BAD_MATCH -> renderBackdrop -> paint).
+  // The compositor makes our context current for every pass it drives, so the label
+  // pre-render is safe from renderStage and needs no context juggling here.
   if (g_pHyprOpenGL && g_pHyprRenderer) {
-    g_pHyprOpenGL->makeEGLCurrent();
     const auto lblCol = cfg::colors.label.get();
     for (auto &it : m_strip) {
       if (it.kind == model::StripItem::Kind::Plus)
         continue;
       if (it.kind == model::StripItem::Kind::All) {
-        it.label = cachedLabel((void *)-2, "All workspaces", lblCol, 13);
+        it.label = m_pixel.fixedLabel(pixel::Slot::All, "All workspaces", lblCol, 13);
         continue;
       }
       const auto ws = it.ws.lock();
@@ -249,24 +221,16 @@ void Overview::buildStrip() {
             return std::isdigit(static_cast<unsigned char>(c));
           });
       const std::string text = numeric ? ("Workspace " + nm) : nm;
-      it.label =
-          cachedLabel(ws ? (void *)ws.get() : (void *)(intptr_t)it.id, text,
-                      lblCol, 13);
+      it.label = ws ? m_pixel.workspaceLabel(ws, text, lblCol, 13)
+                    : m_pixel.virtualLabel(it.id, text, lblCol, 13);
     }
   }
 
-  // --- lay out the cards: monitor-aspect cards along the band, trailing "+" as
-  // the last.
-  //     Top/Bottom → horizontal row, Left/Right → vertical column. Each
-  //     reserves labelH above it for the name. The whole sequence (cards + "+")
-  //     is one scrollable group: centered when it fits, else scrolled
-  //     (m_stripScroll) so off-screen ends clip at the monitor edges and
-  //     nothing spills into the preview area.
   const LRect band = stripBand();
   const bool horiz = stripHorizontal();
   const double margin = cfg::strip.margin;
   const double gap = cfg::strip.gap;
-  const double labelH = 26.0;
+  const double labelH = cfg::strip.label_band;
   const double aspect = m->m_size.x / std::max(1.0, m->m_size.y);
 
   double cardW, cardH;
@@ -278,25 +242,20 @@ void Overview::buildStrip() {
     cardH = cardW / aspect;
   }
 
-  // size one card occupies along the band's main axis (a vertical column adds
-  // the label height per card; a horizontal row's labels live in the band's top
-  // margin)
   const double cellMain = horiz ? cardW : (cardH + labelH);
-  const int n = static_cast<int>(m_strip.size()); // includes the "+"
+  const int n = static_cast<int>(m_strip.size());
   const double bandMain = horiz ? band.w : band.h;
   const double availMain = std::max(1.0, bandMain - 2 * margin);
   const double groupMain = n * cellMain + std::max(0, n - 1) * gap;
   const double mainOrigin = (horiz ? band.x : band.y) + margin;
 
-  // base position of the first card (scroll == 0). Centered when the group
-  // fits, else flush to the start and scrollable.
   m_stripScrollMax = std::max(0.0, groupMain - availMain);
   const double start = (m_stripScrollMax <= 0.0)
                            ? mainOrigin + (availMain - groupMain) / 2.0
                            : mainOrigin;
 
-  const double cardX = band.x + margin;          // vertical: card column x
-  const double cardY = band.y + margin + labelH; // horizontal: card row y
+  const double cardX = band.x + margin;
+  const double cardY = band.y + margin + labelH;
 
   double main = start;
   for (auto &it : m_strip) {
@@ -307,10 +266,6 @@ void Overview::buildStrip() {
     main += cellMain + gap;
   }
 
-  // On open / rebuild, scroll the active workspace into view (centered) when
-  // the group overflows. If a strip was already on screen, GLIDE to the new
-  // offset (strip_step) — that is what makes each workspace step read as one
-  // motion; a first build snaps (from==want on a fresh session).
   const double prevScroll = m_stripScrollTarget;
   m_stripScroll = 0.0;
   double want = 0.0;
@@ -328,9 +283,6 @@ void Overview::buildStrip() {
   animateStripTo(prevScroll, want);
 }
 
-// Scroll offset of the strip group along its main axis (horizontal → x,
-// vertical → y), applied on top of each card's base position wherever cards are
-// drawn or hit-tested.
 Vector2D Overview::stripScroll() const {
   return stripHorizontal() ? Vector2D{-m_stripScroll, 0.0}
                            : Vector2D{0.0, -m_stripScroll};
@@ -342,17 +294,11 @@ LRect Overview::stripCardAt(size_t i) const {
   const LRect &c = m_strip[i].card;
   const Vector2D scroll = stripScroll();
   const Vector2D slide =
-      stripSlide(eased()); // strip cards slide in/out with the open/close
-  // animation (renderStrip/renderStripWindows apply the same offset) — omitting
-  // it here made anything hit-tested or drawn via this helper (notably the
-  // strip close buttons) sit glued at the settled position while the card body
-  // visibly slid past underneath (task #7).
+      stripOffset(eased()); // draw and hit-test must share this slide
   return LRect{c.x + slide.x + scroll.x, c.y + slide.y + scroll.y, c.w, c.h};
 }
 
-// A strip window's on-screen slot rect given the CARD rect it sits in (already
-// scroll/slide-adjusted by the caller — shared by rendering and hit-testing so
-// both always agree on where a given window's preview actually is).
+// `card` is already scroll/slide-adjusted.
 LRect Overview::stripWinSlotRect(const model::StripItem &it, const LRect &card,
                                  size_t j) const {
   if (j >= it.wins.size())
@@ -364,11 +310,20 @@ LRect Overview::stripWinSlotRect(const model::StripItem &it, const LRect &card,
 
 void Overview::layoutTiles() {
   const auto m = m_monitor.lock();
-  if (!m || m_tiles.empty())
+  if (!m || m_scene.empty())
     return;
 
+  // The renderer asks m_view.engine() / m_view.run(), never the config: free-arrange, the all/one
+  // flip and the carousel switch each override what `layout` says.
+  m_view.setEngine(m_view.desktop() ? Engine::Natural
+                                    : parseEngine(cfg::grid.layout.get().c_str()));
+  // A separate mechanism over any layout, only in the all-workspaces view: a
+  // single workspace's handful of tiles has nothing to arrange against.
+  m_view.setRun( m_view.carouselOn() && cfg::carousel.enabled != 0 && !m_view.desktop() &&
+         showAllWorkspaces());
+
   LayoutCfg cfg;
-  cfg.engine = parseEngine(cfg::grid.layout.get().c_str());
+  cfg.engine = m_view.engine();
   cfg.gap = cfg::grid.gap;
   const int padX = cfg::grid.padding;
   const int padT = cfg::grid.padding_top;
@@ -377,9 +332,7 @@ void Overview::layoutTiles() {
   cfg.padRight = padX;
   cfg.padTop = padT;
   cfg.padBottom = padB;
-  // Keep the main previews clear of the strip: reserve the band's full
-  // footprint (offset + thickness) on whichever edge it is anchored to, on top
-  // of the configured breathing room.
+  // reserve the band footprint on its anchored edge
   const double bandSpan = stripThickness() + stripOffset();
   switch (stripAnchor()) {
   case Anchor::Bottom:
@@ -398,11 +351,8 @@ void Overview::layoutTiles() {
   }
   cfg.maxScale = cfg::grid.max_scale;
 
-  // Desktop (canvas) mode: fit the WHOLE monitor into the usable area and place
-  // each preview at its real scaled position — a shrunk live desktop. A dragged
-  // preview keeps its parked spot (t.parked), sticky across rebuilds. Never
-  // touches real windows.
-  if (m_desktopMode) {
+  // whole monitor scaled into the usable box
+  if (m_view.desktop()) {
     const double usableX = cfg.padLeft;
     const double usableY = cfg.padTop;
     const double usableW =
@@ -411,54 +361,122 @@ void Overview::layoutTiles() {
         std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom);
     const double s = std::min({usableW / m->m_size.x, usableH / m->m_size.y,
                                static_cast<double>(cfg.maxScale)});
-    m_desktopS = s;
-    m_desktopOx = usableX + (usableW - m->m_size.x * s) / 2.0;
-    m_desktopOy = usableY + (usableH - m->m_size.y * s) / 2.0;
-    for (auto &t : m_tiles) {
-      if (t.parked) // user-placed: nothing to compute
+    m_view.setTransform(s, usableX + (usableW - m->m_size.x * s) / 2.0,
+                        usableY + (usableH - m->m_size.y * s) / 2.0);
+    for (auto &t : m_scene.edit()) {
+      if (t.parked)
         continue;
-      t.target = LRect{m_desktopOx + t.natural.x * s,
-                       m_desktopOy + t.natural.y * s,
+      t.target = LRect{m_view.ox() + t.natural.x * s,
+                       m_view.oy() + t.natural.y * s,
                        std::max(1.0, t.natural.w * s),
                        std::max(1.0, t.natural.h * s)};
     }
     return;
   }
+  m_view.clearCards();
+
+  // The run replaces the main area wholesale: it lays one window against its
+  // neighbours, which a grid of boxes cannot express. Slots are built AROUND
+  // selection = relayout, not repaint.
+  if (m_view.run()) {
+    const int sel = m_scene.hasSelection() ? m_scene.selected() : 0;
+    const LRect usable{cfg.padLeft, cfg.padTop,
+                       std::max(1.0, m->m_size.x - cfg.padLeft - cfg.padRight),
+                       std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};
+    CarouselMetrics mt;
+    mt.visibleCards = std::max(1, static_cast<int>(cfg::carousel.cards.get()));
+    // The user's zoom on the run, on top of whatever the fit allows.
+    mt.scale = std::max(0.1, static_cast<double>(cfg::carousel.scale.get()));
+    // The standard card is a FULLSCREEN window's box — the whole monitor, not the
+    // padded usable rect, so containment is honest.
+    mt.boxW = m->m_size.x;
+    mt.boxH = m->m_size.y;
+    if (const int w = static_cast<int>(cfg::carousel.card_width.get()); w > 0) {
+      mt.boxW = std::min(static_cast<double>(w), m->m_size.x);
+      mt.boxH = mt.boxW * m->m_size.y / m->m_size.x;
+    }
+
+    const auto n = static_cast<int>(m_scene.size());
+    std::vector<std::size_t> slot;
+    {
+      std::vector<const void *> keys;
+      keys.reserve(m_scene.size());
+      for (const auto &t : m_scene.tiles())
+        keys.push_back(t.win.lock().get());
+      m_recency.order(keys, slot);
+    }
+    auto lead = std::find(slot.begin(), slot.end(), static_cast<std::size_t>(sel));
+    int selSlot = lead == slot.end() ? 0 : static_cast<int>(lead - slot.begin());
+
+
+    if (m_pendingStep != 0 && selSlot >= 0) {
+      const int nxt =
+          ((selSlot + m_pendingStep) % n + n) % n;
+      m_scene.select(static_cast<int>(slot[static_cast<std::size_t>(nxt)]));
+      selSlot = nxt;
+    }
+
+    // Card k is slot k, so the centred card is the one at the selection's own
+    // position in the sequence.
+    m_view.resolve(m_view.engine(), computeCarousel(n, selSlot, usable, mt),
+                   sel, slot);
+    for (int k = 0; k < n; ++k) {
+      const auto i = slot[static_cast<std::size_t>(k)];
+      const auto &c = m_view.carousel().cards[static_cast<std::size_t>(k)];
+      auto &t = m_scene.edit()[i];
+      // Zero target = off-run: nothing paints it, and a zeroed box keeps the glide
+      // from resizing the card on its way out.
+      t.target = c.visible ? LRect{usable.x + m_view.carousel().originX + c.x,
+                                  usable.y + m_view.carousel().originY +
+                                      m_view.carousel().stripY + c.y,
+                                  c.w, c.h}
+                           : LRect{};
+      // Capture the caption HERE, where the card width is known, cut to it. Paint
+      // only reads: mid-pass text rendering is unsafe, and asking at paint time
+      // measured the pill off the uncut entry.
+      if (c.visible && t.win.lock())
+        // The fitted box, not the card: a portrait window is drawn narrower than
+        // the standard card, and the pill is sized off what it actually covers.
+        t.label = m_pixel.windowLabel(t.win.lock(), t.labelText,
+                                      cfg::colors.label.get(1.0), 15,
+                                      static_cast<int>(std::max(
+                                          1.0, tileBox(i, t.target).w - 28.0)));
+    }
+    return;
+  }
+  m_view.clearCards();
 
   std::vector<LRect> nat;
-  nat.reserve(m_tiles.size());
-  for (const auto &t : m_tiles)
+  nat.reserve(m_scene.size());
+  for (const auto &t : m_scene.tiles())
     nat.push_back(t.natural);
 
   const auto out =
       computeLayout(nat, LRect{0, 0, m->m_size.x, m->m_size.y}, cfg);
-  for (size_t i = 0; i < m_tiles.size(); ++i)
-    m_tiles[i].target = out[i];
+  for (size_t i = 0; i < m_scene.size(); ++i)
+    m_scene.edit()[i].target = out[i];
 }
 
-// Rebuild tiles/strip, then glide each survivor from its captured box into its
-// new slot without re-running the chrome reveal (m_progress pinned at 1).
-// Shared by drop-to-workspace and close-window.
+// Survivors glide from their captured boxes; no chrome re-reveal.
 std::vector<std::pair<PHLWINDOW, LRect>>
 Overview::captureCurrentBoxes(PHLWINDOW exclude) const {
   std::vector<std::pair<PHLWINDOW, LRect>> boxes;
-  boxes.reserve(m_tiles.size());
-  for (size_t i = 0; i < m_tiles.size(); ++i) {
-    if (const auto win = m_tiles[i].win.lock(); win && win != exclude)
-      boxes.emplace_back(win, currentBox(m_tiles[i], static_cast<int>(i)));
+  const auto &tiles = m_scene.tiles();
+  boxes.reserve(tiles.size());
+  for (size_t i = 0; i < tiles.size(); ++i) {
+    if (const auto win = tiles[i].win.lock(); win && win != exclude)
+      boxes.emplace_back(win, currentBox(tiles[i], static_cast<int>(i)));
   }
   return boxes;
 }
 
-// After a rebuild+relayout: freeze every tile at the box it is shown at right
-// now (from `oldBoxes`, captured before the rebuild; empty = keep the freshly
-// assigned naturals, i.e. a plain open starts from the real boxes) and restart
-// the tile clock. The next frames glide into the fresh targets.
+// Freeze tiles at their shown boxes (`oldBoxes`, pre-rebuild); empty = keep
+    // the fresh naturals, so a plain open starts from the real boxes.
 void Overview::startTileGlide(
     const std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes) {
   bool newcomers = false;
   if (!oldBoxes.empty()) {
-    for (auto &t : m_tiles) {
+    for (auto &t : m_scene.edit()) {
       t.natural = t.target;
       bool matched = false;
       for (const auto &[oldWin, oldBox] : oldBoxes)
@@ -470,43 +488,41 @@ void Overview::startTileGlide(
       t.appear = matched ? 1.0 : 0.0;
       newcomers |= !matched;
     }
-    // ghosts: EVERY tile the rebuild removed fades/scales out where it was —
-    // including all->one collapse, where the disappearing half of the grid
-    // must animate out, not vanish one frame. (Windows are still alive
-    // behind the opaque backdrop; the soft translucent render keeps it
-    // reading as dispersal.)
-    m_ghosts.clear();
+    // Every removed tile fades out where it was — never vanishes one frame.
+    m_fx.clearGhosts();
     for (const auto &[oldWin, oldBox] : oldBoxes) {
       bool kept = false;
-      for (auto &t : m_tiles)
+      for (auto &t : m_scene.edit())
         if (t.win.lock() == oldWin) { kept = true; break; }
       if (!kept)
-        m_ghosts.push_back(model::Ghost{oldWin, oldBox});
+        m_fx.addGhost(model::Ghost{oldWin, oldBox});
     }
   } else
-    for (auto &t : m_tiles)
+    for (auto &t : m_scene.edit())
       t.appear = 1.0;
-  m_tileClock.begin();
-  m_tileClockMs    = m_glide.ms;    // snapshot: glideDur() must return THIS value
-  m_tileClockCurve = m_glide.curve; // snapshot: currentBox() must use THIS curve
-  if (newcomers || !m_ghosts.empty()) {
-    m_rebuildClock.begin();
+  m_clocks.tiles.begin();
+  m_clocks.tileMs    = m_glide.ms;
+  m_clocks.tileCurve = m_glide.curve; // snapshot: currentBox() must use THIS curve
+  if (newcomers || !m_fx.ghosts().empty()) {
+    m_clocks.rebuild.begin();
     ensureAnimPump(); // frames must keep coming while population runs
   }
 }
 
 void Overview::replayReflow(
     std::vector<std::pair<PHLWINDOW, LRect>> &oldBoxes) {
-  m_hovered = m_hoveredStrip = -1;
+  m_scene.clearHover();
   buildTiles();
   buildStrip();
   layoutTiles();
   startTileGlide(oldBoxes);
-  if (m_selected >= static_cast<int>(m_tiles.size()))
-    m_selected = m_tiles.empty() ? -1 : static_cast<int>(m_tiles.size()) - 1;
+  // Clamped, never past the end: an index that ran off the cards indexed dead
+  // memory on the next read.
+  if (m_scene.selected() >= static_cast<int>(m_scene.size()))
+    m_scene.select(m_scene.empty() ? -1 : static_cast<int>(m_scene.size()) - 1);
   m_progress = 1.0;
   m_opening = true;
-  m_timeline.pinEnd(animDuration()); // chrome settled; only the tiles glide
+  m_clocks.master.pinEnd(animDuration());
   damage();
 }
 
@@ -517,11 +533,7 @@ void Overview::syncTiles() {
   if (!ws)
     return;
 
-  // The displayed window set can change while up (window closes, or opens/moves
-  // onto this workspace/monitor). Detect any add/remove with tileBelongs() —
-  // the SAME predicate buildTiles() uses, so the count settles in one frame
-  // (else reflow every frame, the expo-mode churn bug) — then glide via
-  // replayReflow (chrome stays at 1).
+  // Add/remove detection MUST reuse buildTiles()'s predicate (tileBelongs).
   const auto m = m_monitor.lock();
   const auto belongs = [&](const PHLWINDOW &w) {
     return tileBelongs(w, m, ws);
@@ -531,11 +543,11 @@ void Overview::syncTiles() {
     if (belongs(w))
       ++expected;
 
-  bool diff = expected != m_tiles.size();
+  bool diff = expected != m_scene.size();
   if (!diff)
-    for (const auto &t : m_tiles) {
+    for (const auto &t : m_scene.tiles()) {
       const auto w = t.win.lock();
-      if (!belongs(w)) { // a tracked window died or left this workspace
+      if (!belongs(w)) {
         diff = true;
         break;
       }
@@ -543,15 +555,15 @@ void Overview::syncTiles() {
   if (!diff)
     return;
 
+  // The recency service caches the live set, so it is pruned against the set the
+  // tiles were just measured against. A dead window's entry would otherwise hold a
+  // slot that Hyprland's next window at the same address inherits.
+  pruneRecency();
+
   auto oldBoxes = captureCurrentBoxes();
 
-  // Desktop mode: adding/removing a window must NOT shuffle the others.
-  // buildTiles() carries every parked target across the rebuild, so survivors
-  // stay put automatically; only the newcomer flows to its real scaled spot.
-  if (m_desktopMode)
-    for (auto &t : m_tiles)
-      t.parked = true;
-
+  // NOT parking here: `parked` means "the user dropped this window here", and only
+  // the drop path may set it. Parking every survivor froze free-arrange.
   replayReflow(oldBoxes);
 }
 
@@ -561,10 +573,7 @@ void Overview::restoreFill() {
       w->wlSurface()->m_fillIgnoreSmall = false;
 }
 
-// Fade out bars/popups so they don't bleed through the translucent backdrop:
-// stash each layer surface's alpha goal and drive it to 0; restoreLayers()
-// animates them back. Fully reversible (nothing persists past close); works for
-// any layer-shell client.
+// Fade bars/popups to 0 so they don't bleed through the translucent backdrop.
 void Overview::hideLayers() {
   const auto m = m_monitor.lock();
   if (!m)
@@ -573,10 +582,17 @@ void Overview::hideLayers() {
   const bool ovl = cfg::layer.hide_overlay != 0;
   if (!top && !ovl)
     return;
-  const auto fade = [this](const std::vector<PHLLSREF> &layer) {
+  const auto fade = [this, &m](const std::vector<PHLLSREF> &layer) {
     for (const auto &ref : layer) {
       const auto ls = ref.lock();
       if (!ls)
+        continue;
+      // The wallpaper is NOT chrome. It is the one thing that keeps the desktop from being
+      // an empty black buffer on the first frame, and fading it here is what produces the
+      // entry blackout: Hyprland renders the wallpaper at alpha 0 into the monitor FB, then
+      // our opaque entry base goes down on top of nothing. m_background IS its texture.
+      if (ls->wlSurface() && ls->wlSurface()->resource() &&
+          ls->wlSurface()->resource()->m_current.texture.get() == m->m_background.get())
         continue;
       auto &a = ls->alpha()[Desktop::View::LS_ALPHA_FADE];
       if (!a)

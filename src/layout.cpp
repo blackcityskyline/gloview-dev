@@ -13,7 +13,6 @@ LRect inset(const LRect& a, const LayoutCfg& c) {
     return LRect{a.x + c.padLeft, a.y + c.padTop, std::max(1.0, a.w - c.padLeft - c.padRight), std::max(1.0, a.h - c.padTop - c.padBottom)};
 }
 
-// Split `n` items into `rows` near-equal groups, earlier rows get the extra.
 std::vector<int> rowCounts(int n, int rows) {
     std::vector<int> out(rows, n / rows);
     for (int i = 0; i < n % rows; ++i)
@@ -26,17 +25,13 @@ struct RowPlan {
     std::vector<int> counts;
 };
 
-// For a fixed row count, the best uniform scale that fits every row in width
-// and the stack in height, given per-window natural sizes (in input order).
 RowPlan planForRows(const std::vector<LRect>& w, const LRect& area, const LayoutCfg& cfg, int rows) {
     const auto counts = rowCounts(static_cast<int>(w.size()), rows);
 
-    // Gaps are a fixed pixel size and are NOT scaled with the tiles, so the
-    // scale must apply only to the tile content that remains after the gaps are
-    // carved out of the area — otherwise wide rows overflow and tiles bleed off
-    // screen / overlap.
+    // Gaps are unscaled: the scale applies only to content left after carving
+    // gaps out of the area, else wide rows overflow the area.
     double sW         = cfg.maxScale;
-    double totalH     = 0.0; // unscaled stacked content height (max per row)
+    double totalH     = 0.0;
     double totalGapsH = std::max(0, rows - 1) * cfg.gap;
     int    idx        = 0;
     for (int r = 0; r < rows; ++r) {
@@ -60,10 +55,8 @@ std::vector<LRect> layoutRows(const std::vector<LRect>& w, const LRect& area, co
     if (n == 0)
         return {};
 
-    // Sorted reading order (top-to-bottom, then left-to-right) keeps tiles near where the
-    // real windows live, which reads more naturally than raw order — UNLESS the caller
-    // already put them in a meaningful order (e.g. MRU for Alt-Tab) and wants it preserved;
-    // cfg.preserveOrder skips this spatial re-sort so row-major fill reflects input order.
+    // Spatial reading order, unless cfg.preserveOrder: a caller-supplied order
+    // (e.g. MRU for alt-tab) must survive untouched.
     std::vector<int> order(n);
     std::iota(order.begin(), order.end(), 0);
     if (!cfg.preserveOrder) {
@@ -77,7 +70,6 @@ std::vector<LRect> layoutRows(const std::vector<LRect>& w, const LRect& area, co
     for (int i = 0; i < n; ++i)
         sorted[i] = w[order[i]];
 
-    // pick the row count that yields the largest tiles.
     RowPlan best;
     int     bestRows = 1;
     for (int rows = 1; rows <= n; ++rows) {
@@ -89,7 +81,6 @@ std::vector<LRect> layoutRows(const std::vector<LRect>& w, const LRect& area, co
     }
 
     const double s = best.scale;
-    // total stack height at this scale, to vertically center.
     double totalH = 0.0;
     {
         int idx = 0;
@@ -115,13 +106,12 @@ std::vector<LRect> layoutRows(const std::vector<LRect>& w, const LRect& area, co
         for (int c = 0; c < best.counts[r]; ++c, ++idx) {
             const double tw = sorted[idx].w * s;
             const double th = sorted[idx].h * s;
-            outSorted[idx]  = LRect{x, y + (rowH - th) / 2.0, tw, th}; // baseline-center within row
+            outSorted[idx]  = LRect{x, y + (rowH - th) / 2.0, tw, th};
             x += tw + cfg.gap;
         }
         y += rowH + cfg.gap;
     }
 
-    // unsort back to input order
     std::vector<LRect> out(n);
     for (int i = 0; i < n; ++i)
         out[order[i]] = outSorted[i];
@@ -155,7 +145,6 @@ std::vector<LRect> layoutNatural(const std::vector<LRect>& w, const LRect& area,
     const int n = static_cast<int>(w.size());
     if (n == 0)
         return {};
-    // bounding box of all naturals
     double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
     for (const auto& r : w) {
         minX = std::min(minX, r.x);
@@ -195,6 +184,103 @@ Engine parseEngine(const char* s) {
     if (std::strcmp(s, "natural") == 0)
         return Engine::Natural;
     return Engine::Rows;
+}
+
+// ONE standard box for every card, the size a fullscreen window occupies, so the
+// run's geometry cannot depend on which window is centred — only its content
+// differs. A smaller window is fitted whole inside it, undeformed, which also keeps
+// the content's corner arcs off the ring.
+//
+// Cards are laid out from the FOCUSED one, overlapping, centred in the usable rect
+// — which already carries the strip's band in the padding, so that is the centre of
+// the free space and it moves with the strip. Nothing is anchored to the run's own
+// extent: with an even card count the run is not symmetric.
+CarouselLayout computeCarousel(int count, int selected, const LRect& screen,
+                               const CarouselMetrics& mt) {
+    CarouselLayout L;
+    L.area = screen;
+    if (count <= 0)
+        return L;
+    L.cards.resize(static_cast<size_t>(count));
+    L.countW = mt.countW;
+    L.countH = mt.countH;
+
+    const int want = std::max(1, mt.visibleCards);
+    const int shown = std::min(want, count);
+    L.visibleCards = shown;
+
+    const int centerSlot = shown / 2;
+    const int leftSlots = centerSlot;
+    const int rightSlots = shown - 1 - centerSlot;
+
+    const int sel = ((selected % count) + count) % count;
+    std::vector<int> slotOf(static_cast<size_t>(count), 99);
+    std::vector<int> idxOfSlot;
+    idxOfSlot.reserve(static_cast<size_t>(shown));
+    for (int rel = -leftSlots; rel <= rightSlots; ++rel) {
+        const int idx = ((sel + rel) % count + count) % count;
+        slotOf[static_cast<size_t>(idx)] = rel;
+        idxOfSlot.push_back(idx);
+    }
+
+    const double boxW = std::max(1.0, mt.boxW);
+    const double boxH = std::max(1.0, mt.boxH);
+    const auto sizeAt = [&](int depth) {
+        if (depth <= 0)
+            return 1.0;
+        if (depth == 1)
+            return mt.nearK;
+        return mt.farK * std::pow(mt.taper, static_cast<double>(depth - 2));
+    };
+    const auto wAt = [&](int depth) { return boxW * sizeAt(depth); };
+    const auto pitchAt = [&](int depth) { return wAt(depth) * mt.pitchK; };
+    // Symmetric extent: the wider side decides, so even counts still fit.
+    // The outermost step for every slot over-measures, only conservatively.
+    const int reach = std::max(leftSlots, rightSlots);
+    const double stripW =
+        wAt(0) + (pitchAt(reach) + wAt(reach) * 0.5) * static_cast<double>(reach) * 2.0;
+    // The caption hangs below the centred card, so the panel reserves room.
+    const double stripH = boxH + mt.captionGap + mt.captionH;
+
+    // One uniform scale so the run fits both axes at once.
+    const double availW = std::max(1.0, screen.w - mt.screenMargin * 2.0);
+    const double availH = std::max(1.0, screen.h - mt.screenMargin * 2.0 -
+                                             mt.countH - mt.sectionGap);
+    const double k =
+        std::min({1.0, availW / std::max(1.0, stripW),
+                  availH / std::max(1.0, stripH)}) * mt.scale;
+    // It may NOT push the FOCUSED CARD past the screen: a ladder absorbs the zoom because
+    // neighbours shrink it, a lone card has none, and at zoom 2 it came out twice the
+    // monitor wide — over the strip band and off both edges.
+    const double kCard =
+        std::min(k, std::min(screen.w / boxW, screen.h / stripH));
+
+    // kCard, not k: a panel measured at the unclamped scale is taller than what it holds.
+    L.stripW = stripW * kCard;
+    L.stripH = stripH * kCard;
+    L.panelW = L.stripW;
+    L.panelH = mt.countH + mt.sectionGap + L.stripH;
+    L.stripY = mt.countH + mt.sectionGap;
+    // Card x is absolute inside the usable rect, so originX stays 0.
+    L.originX = 0.0;
+    L.originY = std::round((screen.h - L.panelH) * 0.5);
+    L.countX = std::round((screen.w - mt.countW) * 0.5);
+
+    for (const int idx : idxOfSlot) {
+        const int slot = slotOf[static_cast<size_t>(idx)];
+        CarouselLayout::Card& c = L.cards[static_cast<size_t>(idx)];
+        c.visible = true;
+        c.showCaption = slot == 0;
+        c.depth = std::abs(slot);
+        // Each card centred on its own slot's position, at its depth's size.
+        c.w = boxW * sizeAt(std::abs(slot)) * kCard;
+        c.h = boxH * sizeAt(std::abs(slot)) * kCard;
+        // x reads c.w, so it has to come after it.
+        c.x = (screen.w - c.w) * 0.5 +
+              static_cast<double>(slot) * pitchAt(std::abs(slot)) * kCard;
+            c.y = (boxH * kCard - c.h) * 0.5;
+    }
+    return L;
 }
 
 } // namespace gloview
