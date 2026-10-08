@@ -51,6 +51,11 @@ anim::Id Overview::masterId() const {
   return anim::Id::Close;
 }
 
+// How far the close has run, 0 -> 1. m_progress runs DOWN on a close (1 open -> 0 closed);
+// read forwards it looks exactly like no animation. Every exit fraction reads it here so
+// the shrink, the fade and the clock cannot disagree about where the close is.
+double Overview::exitT() const { return m_opening ? 0.0 : 1.0 - m_progress; }
+
 double Overview::eased() const {
   return curves::eval(anim::cfg(masterId()).curve, m_progress);
 }
@@ -114,6 +119,17 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
   // must not resize on its way there either — hold the box it was last shown at.
   if (carouselMode() && b.w < 1.0 && a.w >= 1.0)
     r = a;
+  // The deck's hide motion, in the grid as well as the run. A card that cannot land was
+  // pinned to its own box by close(); without this it simply stood there while the
+  // backdrop faded and was gone in a frame. The run stands down here: it knows the card's
+  // depth, which this does not, and applies the same predicate itself -- two shrinks of the
+  // same card would compound into k*k.
+  if (!carouselMode() && !m_opening && anim::cardHides(0, tileGoesHome(t))) {
+    const double k =
+        anim::hideShrink(exitT(), anim::param(anim::Param::Collapse));
+    const double cx = r.cx(), cy = r.cy();
+    r = LRect{cx - r.w * k * 0.5, cy - r.h * k * 0.5, r.w * k, r.h * k};
+  }
   const double ap = t.appear < 1.0 ? tileAppear(i) : 1.0;
   if (ap >= 1.0)
     return r;

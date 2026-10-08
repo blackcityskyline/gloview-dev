@@ -20,11 +20,14 @@
 // model::Scene::focused(), which pulls in Hyprland types.
 
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 
 #include "../src/anim_types.hpp"
 
+using gloview::anim::cardHides;
 using gloview::anim::DismissIntent;
+using gloview::anim::hideShrink;
 using gloview::anim::TileExit;
 using gloview::anim::tileExit;
 using gloview::anim::toggleIntent;
@@ -106,6 +109,59 @@ int main() {
   assert(DismissIntent::Commit != DismissIntent::Cancel);
   assert(tileExit(true) == TileExit::Home && tileExit(false) == TileExit::InPlace);
   std::puts("committing a focus and going home are independent");
+
+  // --- who plays the hide ----------------------------------------------------------------
+  // THIS is the architecture the user described: one hide motion, applied to every card,
+  // and the ONLY difference between committing and cancelling is whether one card is
+  // spared it because it is landing. Three cells, and the third is what did not exist.
+  //
+  // Cell 1: the centred card of the run, and its window IS on the landing workspace. It is
+  // the one card being committed to -- it flies home and must not touch the shrink, or the
+  // seamless handover becomes a visible one.
+  assert(!cardHides(0, true));
+  // Cell 2: a side card of the run. It was always hidden this way, whatever its workspace.
+  assert(cardHides(3, true));
+  assert(cardHides(1, true));
+  // Cell 3: the centred card, and it CANNOT land. On a cancel that is every card in the
+  // deck, and each one has to hide exactly like the side cards do. Asserting depth 0 here
+  // is the regression: the rule used to be "not the centred one", which left this card
+  // pretending to fly somewhere and then dropped it.
+  assert(cardHides(0, false));
+  std::puts("the centred card hides whenever it cannot land, at any depth");
+
+  // The rule is one predicate, not three call sites: the grid passes depth 0 for every
+  // card, which is right -- nothing in a grid is "in front" -- and gets "cannot land" as
+  // its only reason to hide. That is what makes a cancel take a whole grid out.
+  assert(cardHides(0, false) == cardHides(7, false));
+  assert(!cardHides(0, true) && cardHides(0, false));
+  std::puts("grid and run ask the same question");
+
+  // --- the hide motion itself -------------------------------------------------------------
+  // shrink toward the card's own centre, finishing at `collapse` of the close. A card that
+  // is still shrinking when the overlay goes is the pop the user reported, so collapse is
+  // where the shrink ENDS, not where it begins.
+  {
+    constexpr double c = 0.5;
+    assert(std::abs(hideShrink(0.0, c) - 1.0) < 1e-12); // the close has not started
+    assert(std::abs(hideShrink(c / 2, c) - 0.5) < 1e-12);
+    assert(hideShrink(c, c) < 1e-12);   // gone by the time the backdrop is still holding
+    assert(hideShrink(c * 2, c) < 1e-12);
+  }
+  std::puts("the shrink runs 1 -> 0 and finishes at collapse");
+
+  // A negative or zero collapse would divide by zero and hand the compositor a NaN box.
+  // The guard is the difference between "the card vanished" and "the compositor drew
+  // garbage", so it is asserted rather than assumed.
+  for (const double bad : {0.0, -1.0, -0.5}) {
+    for (const double out : {0.0, 0.25, 1.0, 4.0}) {
+      const double k = hideShrink(out, bad);
+      assert(std::isfinite(k));
+      assert(k >= 0.0 && k <= 1.0);
+    }
+  }
+  // out past 1 (a close resumed from a seek) clamps instead of going negative.
+  assert(hideShrink(-1.0, 0.5) == 1.0);
+  std::puts("nonsense collapse cannot produce a NaN box");
 
   std::puts("OK");
   return 0;

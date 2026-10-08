@@ -206,4 +206,30 @@ enum class TileExit : std::uint8_t { Home, InPlace };
   return windowOnLandingWs ? TileExit::Home : TileExit::InPlace;
 }
 
+// THE deck's hide motion, and the one rule that says who plays it.
+//
+// The carousel has always shrunk every card that was not the centred one toward its own
+// centre while the close ran out -- that is what the rest of the deck does when a window
+// is committed to. A grid never had it, which is the whole of the bug: cancelling out of
+// an all-workspaces deck whose windows live on other workspaces left the grid with nothing
+// to play, so the cards sat there and were dropped.
+//
+// The rule is one predicate so both layouts ask it. A card hides when it cannot land
+// (nothing is being committed, or its window is not on the workspace we land on) or when
+// it is not the focused card in the carousel. It lands only when both are false -- which
+// is exactly the one card being committed to, in the one layout that can do it.
+[[nodiscard]] constexpr bool cardHides(int carouselDepth, bool canLand) {
+  return !canLand || carouselDepth != 0;
+}
+
+// shrink toward the card's own centre. out runs 0 -> 1 across the close; collapse is the
+// fraction of it the shrink occupies, so it finishes early and the card is gone while the
+// backdrop is still holding. collapse <= 0 would divide by zero and produce a NaN box,
+// which the compositor then draws.
+[[nodiscard]] constexpr double hideShrink(double out, double collapse) {
+  const double c = collapse > 1e-6 ? collapse : 1e-6;
+  const double k = 1.0 - out / c;
+  return k < 0.0 ? 0.0 : (k > 1.0 ? 1.0 : k);
+}
+
 } // namespace gloview::anim

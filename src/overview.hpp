@@ -213,6 +213,8 @@ private:
   anim::Id ghostLeaf() const;
   anim::Id glideLeaf() const;
   double entryFade(size_t i) const;
+  // How far the close has run, 0 -> 1. Every exit fraction reads it through this.
+  double exitT() const;
   // Will this tile's window actually be on screen when the overlay leaves? Only then is
   // its natural box a destination rather than a rectangle on a workspace that is not
   // coming. See anim::tileExit.

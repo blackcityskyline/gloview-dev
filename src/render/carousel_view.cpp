@@ -95,13 +95,13 @@ void Overview::renderCarousel() const {
     look.box = currentBox(t, i);
     // m_progress runs DOWN on close (1 open -> 0 closed); every exit fraction
     // reads it through exitT. Read backwards it looks exactly like no animation.
-    const double exitT = m_opening ? 0.0 : 1.0 - m_progress;
-    // The focused card keeps currentBox's own lerp, as in every other layout — one
-    // motion, one implementation. An unfocused card is pinned by close() (its real
-    // geometry IS the focused card's), so it only shrinks on the close curve.
-    if (!m_opening && card.depth != 0) {
-      const double k = std::clamp(1.0 - exitT / anim::param(anim::Param::Collapse),
-                                  0.0, 1.0);
+    // The deck's ONE hide rule, same predicate as the grid's: a card that cannot land
+    // hides whatever its depth, which is what makes a cancel take the whole deck out
+    // instead of leaving the centred card pretending to be on its way somewhere. A card
+    // that CAN land and is centred keeps currentBox's own lerp — one motion, one place.
+    if (!m_opening && anim::cardHides(card.depth, tileGoesHome(t))) {
+      const double k =
+          anim::hideShrink(exitT(), anim::param(anim::Param::Collapse));
       const double cx = look.box.cx(), cy = look.box.cy();
       look.box = LRect{cx - look.box.w * k * 0.5, cy - look.box.h * k * 0.5,
                        look.box.w * k, look.box.h * k};
