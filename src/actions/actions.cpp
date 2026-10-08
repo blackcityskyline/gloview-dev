@@ -401,13 +401,19 @@ void Overview::switchToWorkspace(const model::StripItem &it, bool instant) {
   for (auto &t : m_scene.edit())
     t.appear = 0.0;
   m_fx.clearGhosts();
-  bool sameSet = true;
+  // Whether every window of the old workspace is still in the tile set. Declared true
+  // and never assigned, so the "identical set" branch below always ran and called
+  // setWsSlideDir(0): switching by plugin bind or by clicking the strip cleared the
+  // slide, and the tiles fell to the scale-in instead of the configured style.
+  bool sameSet = !oldBoxes.empty();
   for (const auto &[oldWin, oldBox] : oldBoxes) {
     bool kept = false;
     for (const auto &t : m_scene.tiles())
       if (t.win.lock() == oldWin) { kept = true; break; }
-    if (!kept)
+    if (!kept) {
       m_fx.addGhost(model::Ghost{oldWin, oldBox});
+      sameSet = false;
+    }
   }
   // A ws slide is a CONTENT change; with the set identical it left frame one empty.
   if (sameSet && !oldBoxes.empty()) {
