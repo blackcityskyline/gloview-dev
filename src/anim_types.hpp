@@ -12,6 +12,7 @@
 // globals, no functions that read state.
 
 #include <cstddef>
+#include <string_view>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -101,5 +102,34 @@ inline constexpr const char *const kParamKeys[kParamCount] = {
 
 inline constexpr double kParamDefaults[kParamCount] = {0.08, 0.015, 0.5, 0.10,
                                                        0.07, 5.0, 0.15, 16.0, 30.0};
+
+// The style names a motion can be given, in one place.
+//
+// These were five string comparisons spread across clocks.cpp and actions.cpp, and the
+// set of legal values existed only as those comparisons: adding a style meant writing a
+// branch, and forgetting one left a value accepted by the config and silently ignored by
+// the motion that read it. A test cannot check a set it cannot see, so it is declared.
+//
+// Enter styles (ws_enter_style / ws_exit_style) drive the workspace slide.
+inline constexpr const char *const kEnterStyles[] = {"slide", "slidevert", "fade", "pop"};
+
+// Swap styles (grid_swap_style / strip_swap_style) drive the exchange flight, and mirror
+// model::SwapStyle one-for-one. jump_style is separate: it adds "instant".
+inline constexpr const char *const kSwapStyles[] = {"horizontal", "slidevert", "fade",
+                                                    "pop"};
+
+[[nodiscard]] constexpr bool isEnterStyle(std::string_view s) {
+  for (const char *k : kEnterStyles)
+    if (s == k)
+      return true;
+  return false;
+}
+
+[[nodiscard]] constexpr bool isSwapStyle(std::string_view s) {
+  for (const char *k : kSwapStyles)
+    if (s == k)
+      return true;
+  return false;
+}
 
 } // namespace gloview::anim
