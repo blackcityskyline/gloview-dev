@@ -163,6 +163,13 @@ void Overview::renderStage(eRenderStage stage) {
       for (auto &t : m_scene.edit())
         t.appear = 0.0;
       m_clocks.rebuild.begin();
+      // Arm the slide AFTER the rebuild clock starts. updateAnimation clears wsSlideDir
+      // whenever both entry clocks already read done, and on a hop from an empty
+      // workspace the previous frame's clocks are done -- so a direction armed earlier
+      // in this same frame was wiped before anything painted, which is why dir read 0 in
+      // the log for exactly this case and the tiles fell to the scale-in.
+      if (const auto prev = m_workspace.lock())
+        m_view.setWsSlideDir( m->m_activeWorkspace->m_id > prev->m_id ? 1 : -1);
       ensureAnimPump();
       {
         int appearing = 0;
