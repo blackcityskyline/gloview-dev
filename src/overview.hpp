@@ -213,6 +213,10 @@ private:
   anim::Id ghostLeaf() const;
   anim::Id glideLeaf() const;
   double entryFade(size_t i) const;
+  // Will this tile's window actually be on screen when the overlay leaves? Only then is
+  // its natural box a destination rather than a rectangle on a workspace that is not
+  // coming. See anim::tileExit.
+  [[nodiscard]] bool tileGoesHome(const model::Tile &t) const;
   void kickPulse(const PHLWINDOW &w);
   void beginSwapFX(const PHLWINDOW &w, const LRect &from,
                    model::SwapStyle style, double ms,

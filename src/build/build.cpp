@@ -412,7 +412,7 @@ void Overview::layoutTiles() {
   // neighbours, which a grid of boxes cannot express. Slots are built AROUND
   // selection = relayout, not repaint.
   if (m_view.run()) {
-    const int sel = m_scene.hasSelection() ? m_scene.selected() : 0;
+    const int sel = m_scene.focused();
     const LRect usable{cfg.padLeft, cfg.padTop,
                        std::max(1.0, m->m_size.x - cfg.padLeft - cfg.padRight),
                        std::max(1.0, m->m_size.y - cfg.padTop - cfg.padBottom)};

@@ -532,14 +532,36 @@ int Overview::blurResolution() const {
   return std::clamp(cfg::blur.resolution.get(), 1, 32);
 }
 
+// The close lands on m_workspace, which focusAndClose re-points at the focused window's
+// workspace when one is committed. So "will this window be there" is exactly "is it on
+// m_workspace" -- one comparison, no policy of its own; anim::tileExit holds the policy.
+bool Overview::tileGoesHome(const model::Tile &t) const {
+  const auto w    = t.win.lock();
+  const auto land = m_workspace.lock();
+  if (!w || !land)
+    return true; // nothing to compare against: keep the flight we have always done
+  return w->m_workspace == land;
+}
+
 void Overview::toggle() {
   debug::dbg("TOGGLE tick=" + std::to_string(m_frameTick) +
              " active=" + std::to_string(m_active) +
              " opening=" + std::to_string(m_opening));
-  if (m_active && m_opening)
-    close();
-  else
-    open();
+  // While the overview is up the toggle means "go to what I am looking at", the same thing
+  // Enter means. It used to close unconditionally, so the one bind the user reaches for
+  // first either dropped them on the workspace they started from or -- once the deck held
+  // windows from elsewhere -- animated a focus it then cancelled.
+  switch (anim::toggleIntent(m_active && m_opening, m_scene.focused() >= 0)) {
+    case anim::DismissIntent::Open:
+      open();
+      break;
+    case anim::DismissIntent::Commit:
+      activateSelection();
+      break;
+    case anim::DismissIntent::Cancel:
+      close();
+      break;
+  }
 }
 
 // Asymmetric on purpose, NOT a copy of the "a" binding: one -> all with the run
@@ -737,11 +759,11 @@ void Overview::close() {
 
   // close: target = shown, natural = real geometry
   if (const auto m = m_monitor.lock()) {
-    // Two passes on purpose: the pin test needs m_scene.tiles()[m_scene.selected()].natural, which
+    // Two passes on purpose: the pin test needs the focused tile's natural, which
     // the loop rewrites as it goes — testing inside it reads the pre-close value.
     LRect selNat{};
-    if (m_scene.selected() >= 0 && m_scene.selected() < static_cast<int>(m_scene.tiles().size())) {
-      if (const auto w = m_scene.tiles()[static_cast<size_t>(m_scene.selected())].win.lock()) {
+    if (m_scene.focused() >= 0) {
+      if (const auto w = m_scene.tiles()[static_cast<size_t>(m_scene.focused())].win.lock()) {
         const auto p = w->positionAnimation()->goal();
         const auto s = w->sizeAnimation()->goal();
         selNat = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
@@ -749,18 +771,28 @@ void Overview::close() {
       }
     }
     for (auto &t : m_scene.edit()) {
-      t.target = currentBox(t, static_cast<int>(&t - m_scene.tiles().data()));
-      // The natural box is where the tile RETURNS TO. When several windows share
-      // one geometry — maximized windows, off-screen workspaces — the unfocused
-      // cards land under the focused one (drawn last), so their exit is invisible
-      // whatever it animates to. Each gets its own exit.
+      const int i = static_cast<int>(&t - m_scene.tiles().data());
+      t.target = currentBox(t, i);
+      // The natural box is where the tile RETURNS TO -- so it is only a destination when
+      // the window will really be there. Opening on an empty workspace, switching to all
+      // and pressing Escape leaves nothing on the landing workspace: every card's natural
+      // box then belonged to a workspace that is not coming, and the exit spent itself
+      // flying each one toward a tile it could never occupy before dropping it in a
+      // single frame. Those cards leave standing and dissolve instead (entryFade).
       if (const auto w = t.win.lock()) {
+        if (anim::tileExit(tileGoesHome(t)) == anim::TileExit::InPlace) {
+          t.natural = t.target;
+          continue;
+        }
         const auto p = w->positionAnimation()->goal();
         const auto s = w->sizeAnimation()->goal();
         t.natural = LRect{p.x - m->m_position.x, p.y - m->m_position.y,
                           std::max(1.0, s.x), std::max(1.0, s.y)};
-        if (carouselMode() && static_cast<int>(&t - m_scene.tiles().data()) != m_scene.selected() &&
-            selNat.w >= 1.0 && std::abs(t.natural.x - selNat.x) < 1.0 &&
+        // When several windows share one geometry — maximized windows, off-screen
+        // workspaces — the unfocused cards land under the focused one (drawn last), so
+        // their exit is invisible whatever it animates to. Each gets its own exit.
+        if (carouselMode() && i != m_scene.focused() && selNat.w >= 1.0 &&
+            std::abs(t.natural.x - selNat.x) < 1.0 &&
             std::abs(t.natural.y - selNat.y) < 1.0 &&
             std::abs(t.natural.w - selNat.w) < 1.0 &&
             std::abs(t.natural.h - selNat.h) < 1.0)

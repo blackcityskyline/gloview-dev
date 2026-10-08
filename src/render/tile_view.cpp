@@ -82,6 +82,13 @@ double Overview::entryFade(size_t i) const {
   if (i >= m_scene.tiles().size())
     return 1.0;
   const auto &t = m_scene.tiles()[i];
+  // A card with nowhere to go cannot fly anywhere -- close() pinned its natural box to its
+  // own tile box -- so it leaves by dissolving on the master clock instead of standing
+  // still until the overlay is torn out from under it. Only ever on a close that is NOT
+  // committing: fading a window that is about to become real reads as a double image
+  // (AGENTS.md), so every tile that does go home stays at full alpha and flies.
+  if (!m_opening && anim::tileExit(tileGoesHome(t)) == anim::TileExit::InPlace)
+    return eased();
   if (t.appear >= 1.0 || m_view.wsSlideDir() == 0 || m_enterStyle != "fade")
     return 1.0;
   return tileAppear(static_cast<int>(i));
@@ -128,7 +135,7 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
   const auto shadowCol  = cfg::colors.shadow.get(1.0);
 
   const bool framed   = static_cast<int>(i) == m_scene.hoveredTile() || look.lift;
-  const bool selected = static_cast<int>(i) == m_scene.selected() && !look.lift;
+  const bool selected = static_cast<int>(i) == m_scene.focused() && !look.lift;
   const bool focused  = cfg::look.show_focus_border != 0 && (framed || selected);
   // Whichever ring ends up on top is the one the content has to tuck under.
   const int ringW = focused ? (framed ? cfg::look.hover_border_size

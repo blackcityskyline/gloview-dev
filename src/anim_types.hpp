@@ -172,4 +172,38 @@ enum class MasterLeaf : std::uint8_t { Open, Close, JumpOut };
   return opening || landingEmpty;
 }
 
+// What the toggle key means, and where a card goes when the overlay leaves.
+//
+// Both decisions used to be implicit and both went wrong the same way: the overview was
+// opened on an empty workspace, switched to all-workspaces (which builds tiles from other
+// workspaces), and then Escape, Enter and the toggle bind all ended in the same
+// Overview::close(). Every one of them spent the whole exit flying a card toward the tile
+// box the window would have had if we had committed to it, and then dropped it in a single
+// frame, because the workspace we landed on held nothing. The user had been shown a window
+// manager tiling motion for a window that was never going to be there.
+//
+// Toggle therefore means "take me to what I am looking at" while the overview is up, and
+// only opens when it is down. Enter already meant that; the toggle did not, and having two
+// keys for one intent and a third that silently matched neither was the bug.
+enum class DismissIntent : std::uint8_t { Open, Cancel, Commit };
+
+// haveFocusableTile is false on an empty workspace. Committing nothing is cancelling, and
+// saying so here keeps it from becoming an activateSelection() that quietly closes.
+[[nodiscard]] constexpr DismissIntent toggleIntent(bool overviewOpen,
+                                                  bool haveFocusableTile) {
+  if (!overviewOpen)
+    return DismissIntent::Open;
+  return haveFocusableTile ? DismissIntent::Commit : DismissIntent::Cancel;
+}
+
+// Home = the window belongs to the workspace this close lands on, so its natural box is
+// where it is genuinely going and the flight is seamless.
+// InPlace = it does not. The natural box is then a rectangle on a workspace that is not
+// coming, and animating toward it is the lie above.
+enum class TileExit : std::uint8_t { Home, InPlace };
+
+[[nodiscard]] constexpr TileExit tileExit(bool windowOnLandingWs) {
+  return windowOnLandingWs ? TileExit::Home : TileExit::InPlace;
+}
+
 } // namespace gloview::anim

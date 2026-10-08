@@ -89,9 +89,9 @@ double Overview::tileProgress(int i) const {
   // currentBox lerps natural -> target as e RISES, so close feeds it m_progress
   // as-is. Flipping it put every card on its natural box on the first close frame.
   const double base = m_opening ? m_clocks.tiles.raw(glideMs) : m_progress;
-  // The SELECTED tile is never staggered: stagger() assumes a rising 0..1, so on
+  // The FOCUSED tile is never staggered: stagger() assumes a rising 0..1, so on
   // close it would delay the landing — the same flight, timed differently.
-  if (carouselMode() || i == m_scene.selected())
+  if (carouselMode() || i == m_scene.focused())
     return base;
   return staggered(base, i, static_cast<int>(m_scene.tiles().size()));
 }

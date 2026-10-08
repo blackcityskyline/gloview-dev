@@ -127,7 +127,7 @@ void Overview::renderCarouselCounter() const {
     return;
   const double s = m->m_scale;
   const std::string text =
-      std::to_string(m_scene.selected() + 1) + " / " + std::to_string(m_scene.tiles().size());
+      std::to_string(m_scene.focused() + 1) + " / " + std::to_string(m_scene.tiles().size());
   // Constant colour, like every other label caller. PixelCache keys on (text, maxW) and
   // ignores the colour, so the FIRST render bakes whatever colour that frame had and it is
   // reused until the text changes: passing get(eased()) here meant the counter was baked dim

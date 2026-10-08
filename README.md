@@ -82,6 +82,10 @@ Dispatchers: `gloview:toggle`, `gloview:open`, `gloview:close`, `gloview:desktop
 `gloview:alttab` / `gloview:alttabback` (alt-tab cycling — see `alt_tab_*` below).
 Or `hyprctl gloview` / `gloviewclose` / `gloviewdesktop` / `gloviewall` / `gloviewalttab` / `gloviewalttabback`
 
+`gloview:toggle` is not a plain close: closed it opens, open with a card focused it
+confirms that card (switches to its workspace and focuses it — the same thing Enter does),
+and open with nothing focused it cancels. Use `gloview:close` for an unconditional cancel.
+
 Lua:
 
 ```lua

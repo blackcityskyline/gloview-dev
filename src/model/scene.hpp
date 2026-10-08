@@ -35,6 +35,18 @@ class Scene {
     }
     void select(int i) { m_selected = i; }
 
+    // The one answer to "which tile is focused", for paint AND input alike.
+    //
+    // The array can hold tiles while nothing is selected: the overview opened on an empty
+    // workspace (no tiles, select(-1)), the user switched to all-workspaces, and the
+    // rebuild produced tiles without re-selecting. layoutTiles already answered "none ->
+    // tile 0" for that case and drew it centred, so the user had a focused-looking card on
+    // screen while every input path asked selected(), read -1, and acted on nothing --
+    // which is why Enter did nothing at all and the exit fell through to a bare close.
+    [[nodiscard]] int focused() const {
+      return hasSelection() ? m_selected : (m_tiles.empty() ? -1 : 0);
+    }
+
     void stepSelection(int dir) {
       if (m_tiles.empty())
         return;

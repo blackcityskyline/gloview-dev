@@ -89,7 +89,7 @@ void Overview::onKey(const IKeyboard::SKeyEvent &e, bool &cancel) {
   else if (keyMatches(k, mods, cfg::keys.activate.get()))
     activateSelection();
   else if (keyMatches(k, mods, cfg::keys.close_window.get()))
-    closeTileWindow(m_scene.selected());
+    closeTileWindow(m_scene.focused());
   else if (keyMatches(k, mods, cfg::keys.left.get()))
     moveSelection(-1, 0);
   else if (keyMatches(k, mods, cfg::keys.right.get()))
@@ -404,8 +404,12 @@ void Overview::stepAltTab(int dir) {
 
 void Overview::activateSelection() {
   PHLWINDOW w;
-  if (m_scene.selected() >= 0 && m_scene.selected() < static_cast<int>(m_scene.tiles().size()))
-    w = m_scene.tiles()[m_scene.selected()].win.lock();
+  // focused(), not selected(): the card the user can SEE centred is the one Enter must
+  // commit to. Asking the raw index got -1 whenever the deck was rebuilt onto a selection
+  // the overview never had -- an empty workspace switched to all-workspaces -- so Enter
+  // activated nothing and the exit became a bare close.
+  if (const int f = m_scene.focused(); f >= 0)
+    w = m_scene.tiles()[static_cast<size_t>(f)].win.lock();
   focusAndClose(w, Desktop::FOCUS_REASON_KEYBIND);
 }
 

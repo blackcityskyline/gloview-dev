@@ -126,6 +126,12 @@ add_test(NAME anim_master
          COMMAND ${CMAKE_COMMAND} -E env sh -c
                  "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/anim_master_check.cpp ${CMAKE_SOURCE_DIR}/src/anim_resolve.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/anim_master_check && ${CMAKE_CURRENT_BINARY_DIR}/anim_master_check")
 
+# What the toggle key means, and whether a card's natural box is a destination. Escape,
+# Enter and the toggle bind all ended in close() and all showed the same lying exit.
+add_test(NAME dismiss
+         COMMAND ${CMAKE_COMMAND} -E env sh -c
+                 "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/dismiss_check.cpp ${CMAKE_SOURCE_DIR}/src/anim_resolve.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/dismiss_check && ${CMAKE_CURRENT_BINARY_DIR}/dismiss_check")
+
 add_test(NAME curves
          COMMAND ${CMAKE_COMMAND} -E env sh -c
                  "${CMAKE_CXX_COMPILER} -std=c++23 -Wall -Wextra -I ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/tests/curves_check.cpp ${CMAKE_SOURCE_DIR}/tests/hypr_stub.cpp ${CMAKE_SOURCE_DIR}/src/clock/curves.cpp -o ${CMAKE_CURRENT_BINARY_DIR}/curves_check -llua -lhyprutils && ${CMAKE_CURRENT_BINARY_DIR}/curves_check")
