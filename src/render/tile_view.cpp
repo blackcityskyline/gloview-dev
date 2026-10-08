@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "../anim.hpp"
 #include <cmath>
 #include <ctime>
 
@@ -134,7 +135,10 @@ void Overview::drawTile(size_t i, const TileLook &look) const {
                                       : cfg::look.select_border_size)
                             : cfg::look.border_size;
 
-  dropShadow(box, s, shadowCol, look.lift ? cfg::look.shadow_radius_lift : cfg::look.shadow_radius, look.lift ? 30.0 : 16.0,
+  dropShadow(box, s, shadowCol,
+             look.lift ? cfg::look.shadow_radius_lift : cfg::look.shadow_radius,
+             look.lift ? anim::param(anim::Param::LiftShadow)
+                       : anim::param(anim::Param::ShadowOffset),
              static_cast<float>(e * cfg::look.shadow_alpha * f), round, roundPow);
 
   if (look.frame) {

@@ -64,8 +64,14 @@ static cfg::Float g_params[static_cast<std::size_t>(Param::Count)];
 static const char *const kParamKeys[] = {"appear_stagger", "appear_stagger_per_tile",
                                           "carousel_step_collapse",
                                           "pulse_ring_scale",
-                                          "lift_scale", "lift_rise"};
-static const double kParamDefaults[] = {0.08, 0.015, 0.5, 0.10, 0.07, 5.0};
+                                          "lift_scale", "lift_rise",
+                                          "appear_pop_scale",
+                                          "shadow_offset", "lift_shadow_offset"};
+// The last three were literals in the render code: the scale-in depth, and the tile
+// shadow offset at rest and while lifted. Shape, not timing. The shadow RADIUS was
+// already configurable (shadow_radius / shadow_radius_lift); the offset was not.
+static const double kParamDefaults[] = {0.08, 0.015, 0.5, 0.10, 0.07, 5.0,
+                                        0.15, 16.0, 30.0};
 
 namespace {
 std::unordered_map<std::string, Rule> g_rules;

@@ -65,6 +65,9 @@ enum class Param : std::uint8_t {
   PulseScale,     // pulse ring: how far past the tile edge it reaches
   LiftScale,      // lift: how much the picked-up tile grows
   LiftRise,       // lift: how far it rises, px
+  PopScale,        // pop: how much a tile is SMALLER at the start of its scale-in
+  ShadowOffset,    // tile shadow offset at rest, px
+  LiftShadow,      // tile shadow offset while lifted, px
   Count
 };
 [[nodiscard]] double param(Param p);

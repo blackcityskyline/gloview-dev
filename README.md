@@ -194,6 +194,9 @@ rather than per-leaf keys:
 | `pulse_ring_scale` | `0.10` | ring growth per pulse frame |
 | `lift_scale` | `0.07` | how much a lifted preview grows |
 | `lift_rise` | `5.0` | px a lifted preview rises |
+| `appear_pop_scale` | `0.15` | how much a tile is smaller at the start of its scale-in (used by `ws_enter_style = pop`) |
+| `shadow_offset` | `16.0` | tile shadow offset at rest, px |
+| `lift_shadow_offset` | `30.0` | tile shadow offset while dragging, px |
 
 Style keys:
 

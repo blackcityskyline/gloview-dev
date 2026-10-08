@@ -2,6 +2,7 @@
 #include <chrono>
 
 #include "../clock/curves.hpp"
+#include "../anim.hpp"
 #include "../config/config.hpp"
 #include "../debug/log.hpp"
 #include "../overview.hpp"
@@ -128,7 +129,9 @@ LRect Overview::currentBox(const model::Tile &t, int i) const {
         m_enterStyle == "fade")
       return r;
   }
-  const double k  = 0.85 + 0.15 * ap;
+  // How small a tile is at the start of its scale-in, from anim::param so a user can
+  // deepen or flatten the pop. The 0.15 was a literal here and meant to be tuned.
+  const double k = 1.0 - anim::param(anim::Param::PopScale) * (1.0 - ap);
   const double cx = r.x + r.w / 2.0, cy = r.y + r.h / 2.0;
   return LRect{cx - r.w * k / 2.0, cy - r.h * k / 2.0, r.w * k, r.h * k};
 }
