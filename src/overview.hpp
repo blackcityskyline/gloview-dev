@@ -297,6 +297,7 @@ private:
   // per-window fades — a fading original under the preview reads as double vision.
   double eased() const; // chrome opacity / backdrop progress
   double animDuration() const; // read LIVE, so config applies in-flight
+  [[nodiscard]] anim::Id masterId() const; // which leaf drives the master clock
   double glideDur() const { return m_clocks.tileMs > 0 ? m_clocks.tileMs : anim::cfg(glideLeaf()).ms; }
   bool entrySettled() const;
   uint32_t altTabModBit() const;

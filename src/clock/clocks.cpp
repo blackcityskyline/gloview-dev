@@ -39,11 +39,20 @@ anim::Id Overview::glideLeaf() const {
   return carouselMode() ? anim::Id::CarouselStep : anim::Id::Glide;
 }
 
+// The master leaf is decided once, by masterLeaf(), and read by both the curve lookup
+// below and animDuration() -- they were separate expressions of the same question and
+// nothing checked that they agreed.
+anim::Id Overview::masterId() const {
+  switch (anim::masterLeaf(m_view.jumpMode(), m_opening)) {
+    case anim::MasterLeaf::Open:    return anim::Id::Open;
+    case anim::MasterLeaf::JumpOut: return anim::Id::JumpOut;
+    case anim::MasterLeaf::Close:   break;
+  }
+  return anim::Id::Close;
+}
+
 double Overview::eased() const {
-  const auto id = (m_view.jumpMode() && !m_opening) ? anim::Id::JumpOut
-                  : m_opening                    ? anim::Id::Open
-                                                 : anim::Id::Close;
-  return curves::eval(anim::cfg(id).curve, m_progress);
+  return curves::eval(anim::cfg(masterId()).curve, m_progress);
 }
 
 // WINDOWED exit: hold the backdrop until our own tiles are done AND Hyprland has spent the
@@ -66,17 +75,12 @@ bool Overview::backdropSettled() const {
 // WINDOWED exit is the one exception: the backdrop must stay until Hyprland has rebuilt
 // its blur. Fading out before that is what exposed a sharp desktop mid-flight.
 double Overview::blurAlpha() const {
-  if (!m_opening && !m_landingEmpty)
+  if (!anim::backdropFades(m_opening, m_landingEmpty))
     return 1.0;
   return std::clamp(eased(), 0.0, 1.0);
 }
 
-double Overview::animDuration() const {
-  if (m_view.jumpMode() && !m_opening) return anim::cfg(anim::Id::JumpOut).ms;
-  return (m_opening ? anim::cfg(anim::Id::Open)
-                     : anim::cfg(anim::Id::Close))
-      .ms;
-}
+double Overview::animDuration() const { return anim::cfg(masterId()).ms; }
 
 // CLOSE rides m_progress DOWN: tiles then match the collapsing chrome.
 // Read m_clocks.tileMs, not m_glide.ms: a glideLeaf() flip jumps progress.

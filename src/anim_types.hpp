@@ -144,4 +144,32 @@ inline constexpr const char *const kSwapStyles[] = {"horizontal", "slidevert", "
 // path every one-tile workspace takes on every switch.
 [[nodiscard]] double stagger(double base, int i, int n, double spread);
 
+// Which leaf drives the master clock, and whether the backdrop rides it.
+//
+// These two decisions were written out three times in clocks.cpp -- eased(),
+// animDuration() and blurAlpha() each re-derived them from m_opening and m_view.jumpMode,
+// and nothing checked that the three agreed. They did once drift, which is what
+// jump_in/jump_out being separate leaves now exists to prevent.
+//
+// jumpMode means the overview was closed by a digit key rather than by its own dismiss,
+// so it needs a different exit: the window keeps flying, and the clock that carries the
+// close has to keep carrying it.
+//
+// The backdrop rule is the one from AGENTS.md: with windows present it never fades on the
+// way out (their own blur covers it), and on an empty workspace there is nothing to cover,
+// so it does.
+enum class MasterLeaf : std::uint8_t { Open, Close, JumpOut };
+
+[[nodiscard]] constexpr MasterLeaf masterLeaf(bool jumpMode, bool opening) {
+  if (jumpMode && !opening)
+    return MasterLeaf::JumpOut;
+  return opening ? MasterLeaf::Open : MasterLeaf::Close;
+}
+
+// true = the backdrop fades with the clock; false = it holds at full and the real
+// windows' own blur covers the exit.
+[[nodiscard]] constexpr bool backdropFades(bool opening, bool landingEmpty) {
+  return opening || landingEmpty;
+}
+
 } // namespace gloview::anim
