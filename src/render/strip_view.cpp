@@ -281,6 +281,15 @@ void Overview::renderStripWindows() const {
       if (swapfxActive(w))
         continue;
       const LRect slot = stripWinSlotRect(it, card, j);
+      // A slot smaller than a pixel cannot carry content, and renderWindowLive drops
+      // it on exactly that check -- so a stashed or floating window would leave no
+      // trace at all. Written per slot: the answer to "why is there no window here" is
+      // this number, and without it the question is unanswerable after the fact.
+      if (slot.w < 1.0 || slot.h < 1.0)
+        debug::dbg("strip slot dropped: card " + std::to_string(i) + " slot " +
+                   std::to_string(j) + " rel=" + std::to_string(it.wins[j].rel.w) +
+                   "x" + std::to_string(it.wins[j].rel.h) + " -> " +
+                   std::to_string(slot.w) + "x" + std::to_string(slot.h));
       const int round = clampRound(previewRound, slot.w, slot.h);
       // renderWindowLive takes monitor PIXEL coords; pxb()'s .round() snap keeps
       // content off the chrome by a sub-pixel (hairline gap at the corner).

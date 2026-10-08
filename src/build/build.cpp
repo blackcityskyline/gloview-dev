@@ -96,6 +96,15 @@ void Overview::buildStrip() {
   const std::string emptyMode =
       cfg::strip.empty_mode.get();
   const bool showSpecial = cfg::behavior.show_special != 0;
+  // How many windows the predicate below accepts on this workspace. Split out because
+  // the debug line needs it and duplicating the predicate in a log is how they drift.
+  const auto countMappedOn = [](const PHLWORKSPACE &w) {
+    int n = 0;
+    for (const auto &win : Desktop::windowState()->windows())
+      if (win && win->m_isMapped && !win->isHidden() && win->m_workspace == w)
+        ++n;
+    return n;
+  };
   const auto wsHasWindows = [](const PHLWORKSPACE &w) {
     for (const auto &win : Desktop::windowState()->windows())
       if (win && win->m_isMapped && !win->isHidden() && win->m_workspace == w)
@@ -135,6 +144,13 @@ void Overview::buildStrip() {
                          sz.x / m->m_size.x, sz.y / m->m_size.y};
           it.wins.push_back(sw);
         }
+        // Every special card, every rebuild: a special workspace that shows a backdrop
+        // and no window is the failure this whole branch was added for, and the only
+        // way to tell "no window was collected" from "the slot was clipped away" later
+        // is to have written down what was collected here.
+        debug::dbg("strip special: ws=" + std::to_string(it.id) + " name=" + ws->m_name +
+                   " wins=" + std::to_string(it.wins.size()) +
+                   " mapped=" + std::to_string(countMappedOn(ws)));
         m_strip.add(std::move(it));
       }
       continue;
