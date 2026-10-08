@@ -160,7 +160,12 @@ void Overview::renderStrip() const {
           safeRenderRect("all", pxb(CBox(gx + col * (cw + cg), gy + r * (ch + cg), cw, ch), s),
                    allCol, {.round = pxr(2, s)});
     } else {
-      if (it.wins.empty() && cfg::strip.wallpaper != 0) {
+      // Wallpaper under the windows too, not just on empty cards. The condition used
+      // to be it.wins.empty(), so a card with a floating window showed flat card colour
+      // everywhere the window did not cover -- and a 300x300 window on a 1366x768 screen
+      // covers about 2% of the card, which read as "no wallpaper at all". The window
+      // paints over it, so this only fills what the windows leave bare.
+      if (cfg::strip.wallpaper != 0) {
         SP<Render::ITexture> tex;
         if (m_backdropSrcFB && m_backdropSrcFB->isAllocated())
           tex = m_backdropSrcFB->getTexture();
@@ -281,11 +286,28 @@ void Overview::renderStripWindows() const {
       if (swapfxActive(w))
         continue;
       const LRect slot = stripWinSlotRect(it, card, j);
+      // A slot smaller than a pixel cannot carry content, and renderWindowLive drops
+      // it on exactly that check -- so a stashed or floating window would leave no
+      // trace at all. Written per slot: the answer to "why is there no window here" is
+      // this number, and without it the question is unanswerable after the fact.
+      if (slot.w < 1.0 || slot.h < 1.0)
+        debug::dbg("strip slot dropped: card " + std::to_string(i) + " slot " +
+                   std::to_string(j) + " rel=" + std::to_string(it.wins[j].rel.w) +
+                   "x" + std::to_string(it.wins[j].rel.h) + " -> " +
+                   std::to_string(slot.w) + "x" + std::to_string(slot.h));
       const int round = clampRound(previewRound, slot.w, slot.h);
       // renderWindowLive takes monitor PIXEL coords; pxb()'s .round() snap keeps
       // content off the chrome by a sub-pixel (hairline gap at the corner).
       const CBox slotPx = pxb(slot, scale);
       const CBox cardPx = pxb(card, scale);
+      if (slot.w >= 1.0 && slot.h >= 1.0 && it.ws && it.ws->m_isSpecialWorkspace)
+        // Collected, sized, and about to be handed to renderWindowLive -- which drops it
+        // again on destPx.w/h if the pixel box rounds to nothing. Only special cards:
+        // this prints once per card per frame and would bury everything else.
+        debug::dbg("strip special slot: " + std::to_string(slotPx.w) + "x" +
+                   std::to_string(slotPx.h) + "px of " + std::to_string(slot.w) + "x" +
+                   std::to_string(slot.h) + " card=" + std::to_string(card.w) + "x" +
+                   std::to_string(card.h));
       // The slot's own ring is a hover/select ring when grabbed; otherwise the
       // plain border. Whichever it is, the content radius has to follow it.
       const int ringW = stripSlotGrabbed(i, j) ? 2 : cfg::look.border_size;
