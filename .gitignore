@@ -2,3 +2,6 @@ build/
 build-old/
 *.so
 .commandcode/
+
+__pycache__/
+*.pyc
