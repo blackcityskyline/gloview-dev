@@ -23,6 +23,7 @@
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
+#include <hyprland/src/state/WorkspaceState.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/render/Texture.hpp>
 #include <hyprland/src/render/pass/ClearPassElement.hpp>
@@ -143,6 +144,7 @@ Overview::~Overview() {
   m_active = false;
   m_opening = false;
   restoreLayers();
+  restorePreviewVisibility();
   restoreFill();
   releaseNewWorkspaces();
   if (m_animPump) { m_animPump->cancel(); m_animPump.reset(); }
@@ -258,7 +260,7 @@ bool Overview::initialize() {
         CHyprColor(1.0, 0.2, 0.2, 1.0), 6000);
   }
 
-  // Input routing. Both are required: half of this is worse than none, because the
+    // Input routing. Both are required: half of this is worse than none, because the
   // overview would look modal for the keyboard and not for the mouse.
   struct FocusHook {
     const char *name;
@@ -543,6 +545,99 @@ bool Overview::tileGoesHome(const model::Tile &t) const {
   return w->m_workspace == land;
 }
 
+// The compositor decides what to draw from three pieces of state, and for a window that is
+// not on the ACTIVE workspace all three say "no": the workspace is faded out, the window's
+// fullscreen alpha is 0, and the window's surfaces carry a visibleRegion left over from
+// whenever they were last on screen. The live preview then reads a resource with no
+// committed buffer and a geometry that was never given the layout.
+//
+// ScrollOverview clears all three before drawing a preview and puts them back afterwards.
+// Same three, same calls -- forceWorkspaceAlphaVisible / forceWindowVisible /
+// forceWindowSurfaceVisibility.
+void Overview::forcePreviewVisibility() {
+  for (const auto &wsref : State::workspaceState()->workspaces()) {
+    const auto ws = wsref.lock();
+    if (!ws || !ws->m_alpha)
+      continue;
+    bool seen = false;
+    for (const auto &e : m_forcedAlphaWs)
+      if (e.ws.get() == ws.get()) { seen = true; break; }
+    if (!seen) {
+      ForcedWsAlpha e;
+      e.ws  = ws;
+      e.val = ws->m_alpha->value();
+      m_forcedAlphaWs.push_back(e);
+    }
+    ws->m_alpha->setValueAndWarp(1.F);
+    *ws->m_alpha = 1.F;
+  }
+
+  const auto forceWindow = [this](const PHLWINDOW &w) {
+    if (!w)
+      return;
+    constexpr auto FS_ALPHA = Desktop::View::WINDOW_ALPHA_FULLSCREEN;
+    bool wseen = false;
+      for (const auto &e : m_forcedWindows)
+        if (e.w.get() == w.get()) { wseen = true; break; }
+      if (!wseen) {
+        ForcedWinVis e;
+        e.w        = w;
+        e.alphaVal = w->alpha(FS_ALPHA)->value();
+        m_forcedWindows.push_back(e);
+      }
+    if (const auto& a = w->alpha(FS_ALPHA))
+      a->setValueAndWarp(1.F);
+    if (!w->wlSurface() || !w->wlSurface()->resource())
+      return;
+    w->wlSurface()->resource()->breadthfirst(
+        [this](SP<CWLSurfaceResource> s, const Vector2D &, void *) {
+          if (!s)
+            return;
+          const auto HL = Desktop::View::CWLSurface::fromResource(s);
+          if (!HL)
+            return;
+          bool seen = false;
+          for (const auto &e : m_forcedRegions)
+            if (e.hl.get() == HL.get()) { seen = true; break; }
+          if (!seen) {
+            ForcedRegion e;
+            e.hl     = HL;
+            e.region = HL->m_visibleRegion;
+            m_forcedRegions.push_back(e);
+          }
+          HL->m_visibleRegion = {};
+        },
+        nullptr);
+  };
+
+  for (const auto &t : m_scene.tiles())
+    forceWindow(t.win.lock());
+  for (const auto &it : m_strip)
+    for (const auto &sw : it.wins)
+      forceWindow(sw.win.lock());
+}
+
+void Overview::restorePreviewVisibility() {
+  for (const auto &[ws, val] : m_forcedAlphaWs)
+    if (ws && ws->m_alpha)
+      ws->m_alpha->setValueAndWarp(val);
+  m_forcedAlphaWs.clear();
+
+  for (const auto &[w, aVal] : m_forcedWindows) {
+    if (!w)
+      continue;
+    constexpr auto FS_ALPHA = Desktop::View::WINDOW_ALPHA_FULLSCREEN;
+    if (const auto& a = w->alpha(FS_ALPHA))
+      *a = aVal;
+  }
+  m_forcedWindows.clear();
+
+  for (const auto &[hl, region] : m_forcedRegions)
+    if (hl)
+      hl->m_visibleRegion = region;
+  m_forcedRegions.clear();
+}
+
 void Overview::toggle() {
   debug::dbg("TOGGLE tick=" + std::to_string(m_frameTick) +
              " active=" + std::to_string(m_active) +
@@ -651,6 +746,22 @@ void Overview::open() {
   const auto openEntryStamp = std::chrono::steady_clock::now();
   if (m_active && m_opening)
     return;
+  // Before anything else: make every workspace, and every window we may draw, eligible to
+  // be rendered. Taken from ScrollOverview (yayuuu/hyprland-scroll-overview), which solves
+  // exactly this and does it here:
+  //
+  //   * an inactive workspace's windows carry no committed buffer and a default
+  //     geometry (measured: three windows of one scrolling workspace all reporting
+  //     pos=6,6 size=1354, buf=0), so the live preview reads a texture that is not theirs
+  //     -- a blank card, a flicker on every border crossing, a neighbour's pixels on the
+  //     hovered one;
+  //   * a window's HLSurface keeps a visibleRegion computed for the workspace it was last
+  //     drawn on, and the surface pass clips against it, so a card draws nothing.
+  //
+  // The alternative was asking the compositor to render inactive workspaces: that crashes
+  // it inside endRender -> useFP16 -> println (hyprlandCrashReport389377 and 603004). This
+  // touches no compositor hook and moves no focus.
+  forcePreviewVisibility();
 
   const auto m = State::monitorState()
                     ->query()
@@ -812,6 +923,7 @@ void Overview::close() {
 
 // sync teardown for unload: close() only STARTS it; unload first -> SEGV
 void Overview::hardClose() {
+  restorePreviewVisibility();
   cancelPendingClick();
   if (m_animPump) {
     m_animPump->cancel();
@@ -934,6 +1046,7 @@ void Overview::pruneRecency() {
 }
 
 void Overview::deactivate() {
+  restorePreviewVisibility();
   if (const auto mm = m_monitor.lock()) {
     mm->m_blurFBDirty = true;
     // The window is still flying into its tile here, so Hyprland's own blur is not

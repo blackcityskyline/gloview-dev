@@ -138,6 +138,10 @@ void Overview::renderStage(eRenderStage stage) {
     m_commitPending = true;
   relayoutCarousel();
   syncTiles();
+  // syncTiles() just rebuilt the deck, so any window on it may be one the compositor has
+  // never drawn. Re-assert the three pieces of state every frame; it is idempotent and
+  // only touches what a not-active workspace would skip.
+  forcePreviewVisibility();
   updateSnapshots();
 
   if (m_opening && m->m_activeWorkspace != m_liveWsAtOpen.lock()) {

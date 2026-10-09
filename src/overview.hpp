@@ -219,6 +219,27 @@ private:
   // its natural box a destination rather than a rectangle on a workspace that is not
   // coming. See anim::tileExit.
   [[nodiscard]] bool tileGoesHome(const model::Tile &t) const;
+  // Clear the three pieces of state that make the compositor skip a window that is not on
+  // the active workspace: the workspace's alpha, the window's fullscreen alpha, and each
+  // surface's visibleRegion. ScrollOverview does the same; without it a window from
+  // another workspace previews as an empty frame. Restored on the way out.
+  void forcePreviewVisibility();
+  void restorePreviewVisibility();
+  struct ForcedWsAlpha {
+    PHLWORKSPACEREF ws;
+    float val;
+  };
+  struct ForcedWinVis {
+    PHLWINDOWREF w;
+    float alphaVal;
+  };
+  struct ForcedRegion {
+    SP<Desktop::View::CWLSurface> hl;
+    CRegion region;
+  };
+  std::vector<ForcedWsAlpha> m_forcedAlphaWs;
+  std::vector<ForcedWinVis> m_forcedWindows;
+  std::vector<ForcedRegion> m_forcedRegions;
   void kickPulse(const PHLWINDOW &w);
   void beginSwapFX(const PHLWINDOW &w, const LRect &from,
                    model::SwapStyle style, double ms,

@@ -536,6 +536,16 @@ void Overview::startTileGlide(
   m_clocks.tiles.begin();
   m_clocks.tileMs    = m_glide.ms;
   m_clocks.tileCurve = m_glide.curve; // snapshot: currentBox() must use THIS curve
+  // EVERY card is about to move: natural was just rewritten to the box each one occupied,
+  // and the glide clock starts at 0. Not one of them is where it is about to be drawn, so
+  // the old pixels are garbage and the whole monitor has to be repainted. Without this
+  // the only damage in the frame was whatever the pointer left behind, and the cards
+  // that moved drew over stale ones -- the flicker on every relayout.
+  //
+  // It has to be here rather than at the call sites: this is the one function that starts
+  // a glide, and the callers disagree about it. replayReflow() damaged, relayoutCarousel()
+  // did not -- which is why hovering the run flickered and switching workspaces did not.
+  damage();
   if (newcomers || !m_fx.ghosts().empty()) {
     m_clocks.rebuild.begin();
     ensureAnimPump(); // frames must keep coming while population runs

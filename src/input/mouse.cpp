@@ -195,6 +195,20 @@ void Overview::updateHover() {
     }
     const auto m = m_monitor.lock();
     if (m) {
+      // A selection move is not a two-tile repaint. The focused tile changes its ring,
+      // its content radius and its exemption from the entry ladder, and the run rebuilds
+      // every slot around it -- so the pixels that changed are not confined to the tiles
+      // the pointer crossed. Damaging only those two left the rest of the frame holding
+      // the previous one's image, which is the reported symptom exactly: a card that
+      // flickers as the pointer crosses its border, and a slice of a DIFFERENT card
+      // showing up on the one being hovered.
+      //
+      // Cost is one extra full-monitor repaint on a boundary crossing, which is a
+      // fraction of a frame. Cheaper than guessing which tiles the move touched.
+      if (oldSel != m_scene.selected()) {
+        damage();
+        return;
+      }
       auto dmgTile = [&](int idx) {
         if (idx < 0 || idx >= static_cast<int>(m_scene.tiles().size()))
           return;
