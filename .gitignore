@@ -6,3 +6,10 @@ build-old/
 __pycache__/
 *.pyc
 graphify-out/
+
+# Local-only agent memory. Never push these: they are session working notes
+# for whoever is driving this checkout, not repo content. Note they were
+# already tracked historically, so they remain in old remote history.
+REFACTORING.md
+ARCHITECTURE.md
+CLAUDE.md
