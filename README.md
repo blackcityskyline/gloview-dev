@@ -17,8 +17,10 @@ src/
 ├── actions/              commands: drop/swap/workspace/focus (dispatcher + hyprctl + Lua from one table)
 ├── render/               the painter (one pass element, fixed z-slots), backdrop blur cache,
 │                         window-content leaf (immediate surface drawing), tile/strip views, fx
-├── anim/                 the animation registry: enum Id, config keys, defaults, shape
+├── anim.{hpp,cpp}        the animation registry: enum Id, config keys, defaults, shape
 │                         params, Lua rules. Also where the Lua C API is bridged (extern "C")
+├── anim_types.hpp        shared animation types: cardHides, tileExit, toggleIntent
+├── anim_resolve.cpp      resolve()/resolveParam(), split out of anim.cpp for testability
 ├── clock/                time domain: Tween, per-effect clocks, curve registry (native + Lua)
 ├── pixel/                caches: labels, close glyph, entry snapshots
 ├── config/               the typed option schema, grouped by domain; live handles
@@ -229,7 +231,6 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 
 | `preview_round` | int (px) | `12` | Corner radius for every window-shaped preview — main grid tiles AND strip card previews (with their borders/shadows) — clamped down automatically on the smaller strip thumbnails |
 | `preview_round_power` | float | `2.0` | Corner curve exponent (`2` = circular, higher = squarer "squircle"), applied consistently to the same set of elements as `preview_round` |
-| `strip_preview_round` | — | — | **Deprecated**, no longer read — strip window previews now share `preview_round`/`preview_round_power` |
 | `blur` | float `0`..`1` | `1.0` | Backdrop + strip blur strength (`0` = off; fractions allowed) |
 | `blur_passes` | int `1`..`16` | `3` | Backdrop blur gaussian iterations (more = softer) |
 | `blur_size` | int (px) | `8` | Backdrop blur radius in screen pixels |
@@ -293,9 +294,6 @@ gloview.animation({ leaf = "glide", curve = "fluent_decel" })
 | `close_glyph_color` | color | `"0xffffffff"` | the `✕` glyph itself, drawn on top of `close_button_color` |
 | `label_color` | color | `"0xf2ffffff"` | window/workspace name text under tiles and strip cards |
 | `title_pill_color` | color | `"0xcc11151c"` | pill behind a tile's title label in desktop/canvas mode |
-| `lift_ms` | int | `400` | the raise when a tile is picked up |
-| `swap_fly_ms` | int | `400` | the flight between slots on a swap |
-| `drop_ms` | int | `400` | window landing after a drop |
 | `carousel_count_pill_color` | color | `"0xcc11151c"` | pill behind the carousel counter (`1 / 4`) |
 | `appear_stagger` | float | `0.08` | entry ladder: how far the tile entry is spread across the window (as a fraction) |
 | `appear_stagger_per_tile` | float | `0.015` | extra spread per tile, capped by `appear_stagger` |
@@ -371,7 +369,7 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   anchored to, so the centre follows it: a top or bottom strip leaves the centre
   where it is, a left or right one shifts it.
 - **The run tapers and overlaps.** The focused card is the standard box; each
-  step out is a fraction of it (100%, 76%, 56%, then 8% smaller per step), and
+  step out is a fraction of it (100%, 76%, 56%, then ×0.8 per step), and
   the step to a neighbour is 81.6% of *that neighbour's own width*, so every card
   is tucked in by the same share and the taper changes the size but not how
   tight the run looks. Because the focused card is placed absolutely rather
@@ -400,7 +398,8 @@ window set. With `carousel = 0` the layout runs untouched in both views.
   it is shortened to fit with a trailing `…`; the pill re-renders at the largest
   prefix that fits and is cached, so it costs one render per card, not per frame.
 - **A drop zone at the opposite edge closes.** A card dragged from the run onto
-  the 50px band along the edge opposite the strip's anchor closes that window, in
+  the band along the edge opposite the strip's anchor (`kill_zone_size`, 40px by
+  default) closes that window, in
   the carousel and in any plain layout alike. The band spans the **whole monitor
   width** — a narrow target in the middle of a wide edge is something to aim at,
   and the glow reads as a panel rather than as light.
