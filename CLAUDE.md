@@ -117,3 +117,9 @@ the layers before the plugin had drawn its backdrop. Fixed by making the composi
 permanent, comparing it against the source texture every frame, absorbing failed
 attempts in a scratch framebuffer, and parking the overview until the composite is
 really there. Details and the five dead ends are in REFACTORING.md.
+
+## Agent skills
+
+Publishing, fetching or triaging work: `docs/agents/issue-tracker.md` (GitHub Issues via `gh`).
+Triage vocabulary: `docs/agents/triage-labels.md`.
+Domain glossary and ADRs: `docs/agents/domain.md` (single-context; `/domain-modeling` creates them lazily).
