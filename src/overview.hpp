@@ -100,7 +100,6 @@ public:
 
   void rearmanim() const;
   void ensureAnimPump();
-  SP<CEventLoopTimer> m_animPump; // null when no animation is running
 
   void finishPendingDeactivate();
 
@@ -269,6 +268,7 @@ private:
   CFunctionHook *m_setPointerFocusHook = nullptr;
   CFunctionHook *m_setKeyboardFocusHook = nullptr;
 
+  SP<CEventLoopTimer> m_animPump; // null when no animation is running
   CCursorModule m_cursor; // KMS plane preferred, software erases-and-redraws
 
   mutable render::BlurCache m_blur;
